@@ -3,19 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CharonSpace</title>
+    <title>CharonSpace - 登录</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
 </head>
 <body>
     <div id="app">
-        <div class="container">
-            <h1>CharonSpace</h1>
-            <div class="content">
-                <p v-if="loading">加载中...</p>
-                <p v-else-if="error">错误: {{ error }}</p>
-                <p v-else>后端数据: <strong>{{ data.name }}</strong></p>
+        <!-- 登录页面 -->
+        <div class="container" v-if="!isLoggedIn">
+            <h1>用户登录</h1>
+            <div class="login-form">
+                <div class="form-group">
+                    <label for="username">用户名</label>
+                    <input type="text" id="username" v-model="username" placeholder="请输入用户名" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input type="password" id="password" v-model="password" placeholder="请输入密码" required>
+                </div>
+                <div class="error-message" v-if="error">{{ error }}</div>
+                <button class="login-btn" @click="login" :disabled="isLoading">
+                    {{ isLoading ? '登录中...' : '登录' }}
+                </button>
+            </div>
+        </div>
+
+        <!-- 登录成功页面 -->
+        <div class="container" v-else>
+            <h1>登录成功</h1>
+            <div class="success-message">
+                <p>欢迎回来，<strong>{{ username }}</strong>！</p>
+                <button class="logout-btn" @click="logout">登出</button>
             </div>
         </div>
     </div>

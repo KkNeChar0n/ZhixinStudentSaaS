@@ -3,26 +3,75 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
-            data: {},
-            loading: true,
+            username: '',
+            password: '',
+            isLoggedIn: false,
+            isLoading: false,
             error: null
         };
     },
     mounted() {
-        this.fetchData();
+        // 页面加载时检查用户是否已登录
+        this.checkLoginStatus();
     },
     methods: {
-        async fetchData() {
+        // 检查登录状态
+        async checkLoginStatus() {
             try {
-                this.loading = true;
-                const response = await axios.get('/api/data');
-                this.data = response.data;
+                const response = await axios.get('/api/profile', { withCredentials: true });
+                if (response.data.username) {
+                    this.isLoggedIn = true;
+                    this.username = response.data.username;
+                    this.error = null;
+                }
+            } catch (err) {
+                // 未登录或其他错误，不显示错误信息
+                this.isLoggedIn = false;
+            }
+        },
+        
+        // 登录方法
+        async login() {
+            if (!this.username || !this.password) {
+                this.error = '用户名和密码不能为空';
+                return;
+            }
+            
+            try {
+                this.isLoading = true;
+                this.error = null;
+                
+                const response = await axios.post('/api/login', {
+                    username: this.username,
+                    password: this.password
+                }, { withCredentials: true });
+                
+                if (response.data.message === '登录成功') {
+                    this.isLoggedIn = true;
+                    this.username = response.data.username;
+                    this.password = ''; // 清空密码
+                }
+            } catch (err) {
+                this.error = err.response?.data?.error || '登录失败，请检查用户名和密码';
+                console.error('Login error:', err);
+            } finally {
+                this.isLoading = false;
+            }
+        },
+        
+        // 登出方法
+        async logout() {
+            try {
+                this.isLoading = true;
+                await axios.post('/api/logout', {}, { withCredentials: true });
+                this.isLoggedIn = false;
+                this.username = '';
                 this.error = null;
             } catch (err) {
-                this.error = err.message;
-                console.error('Error fetching data:', err);
+                this.error = '登出失败，请稍后重试';
+                console.error('Logout error:', err);
             } finally {
-                this.loading = false;
+                this.isLoading = false;
             }
         }
     }
