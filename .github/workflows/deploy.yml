@@ -47,7 +47,7 @@ jobs:
             mysql -u root -p"qweasd123Q!" < "$BACKEND_PATH/init_db.sql"
             
             # 创建systemd服务文件
-            cat > /tmp/charonspace-backend.service << SYSTEMD_EOF
+            cat > /tmp/charonspace-backend.service << 'SYSTEMD_EOF'
 [Unit]
 Description=CharonSpace Backend Service
 After=network.target
