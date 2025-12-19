@@ -15,7 +15,7 @@ createApp({
         async fetchData() {
             try {
                 this.loading = true;
-                const response = await axios.get('http://localhost:5000/api/data');
+                const response = await axios.get('http://charonspace.asia/api/data');
                 this.data = response.data;
                 this.error = null;
             } catch (err) {
