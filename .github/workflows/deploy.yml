@@ -23,11 +23,61 @@ jobs:
       - name: Deploy to server
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
-            # 在这里添加你的部署命令
-            # 例如：
-            # cd /path/to/your/project
-            # git pull origin main
-            # npm install
-            # npm run build
-            # systemctl restart your-service
+            # 设置项目路径
+            PROJECT_PATH=/home/charonspace
+            FRONTEND_PATH=$PROJECT_PATH/frontend
+            BACKEND_PATH=$PROJECT_PATH/backend
+            
+            # 确保项目目录存在
+            mkdir -p $PROJECT_PATH
+            
+            # 如果项目已存在，拉取最新代码
+            if [ -d "$PROJECT_PATH/.git" ]; then
+              cd $PROJECT_PATH
+              git pull origin main
+            else
+              git clone https://github.com/yourusername/your-repository.git $PROJECT_PATH
+            fi
+            
+            # 安装后端依赖
+            cd $BACKEND_PATH
+            pip3 install -r requirements.txt
+            
+            # 配置环境变量（根据实际情况修改）
+            export DB_USER=root
+            export DB_PASSWORD=your_mysql_password
+            export DB_HOST=localhost
+            
+            # 创建systemd服务文件（如果不存在）
+            if [ ! -f /etc/systemd/system/charonspace-backend.service ]; then
+              cat > /etc/systemd/system/charonspace-backend.service << EOF
+[Unit]
+Description=CharonSpace Backend Service
+After=network.target
+
+[Service]
+User=${{ secrets.SERVER_USER }}
+WorkingDirectory=$BACKEND_PATH
+Environment="DB_USER=root"
+Environment="DB_PASSWORD=your_mysql_password"
+Environment="DB_HOST=localhost"
+ExecStart=/usr/bin/python3 $BACKEND_PATH/app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+            fi
+            
+            # 重新加载systemd并启动服务
+            sudo systemctl daemon-reload
+            sudo systemctl enable charonspace-backend
+            sudo systemctl restart charonspace-backend
+            
+            # 前端部署（直接复制文件到web服务器目录）
+            # 假设使用Nginx，网站根目录为/var/www/html
+            sudo cp -r $FRONTEND_PATH/* /var/www/html/
+            sudo chown -R www-data:www-data /var/www/html/
+            
+            echo "部署完成！"
           "
