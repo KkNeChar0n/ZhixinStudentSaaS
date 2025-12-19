@@ -30,7 +30,7 @@
         </div>
 
         <!-- 登录成功页面 -->
-        <div v-else>
+        <div v-else class="app-container">
             <!-- 页面头部：用户名和登出按钮 -->
             <header class="header">
                 <div class="header-right">
@@ -39,33 +39,80 @@
                 </div>
             </header>
 
-            <!-- 页面主体：学生列表 -->
-            <main class="main-container">
-                <h1>学生列表</h1>
-                <div class="loading" v-if="isLoading">加载中...</div>
-                <div class="error-message" v-if="error">{{ error }}</div>
-                <table class="students-table" v-if="students.length > 0">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>姓名</th>
-                            <th>性别</th>
-                            <th>手机号</th>
-                            <th>年级</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="student in students" :key="student.id">
-                            <td>{{ student.id }}</td>
-                            <td>{{ student.name }}</td>
-                            <td>{{ student.sex }}</td>
-                            <td>{{ student.phone }}</td>
-                            <td>{{ student.grade }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <div class="no-data" v-else-if="!isLoading">暂无学生数据</div>
-            </main>
+            <!-- 页面主体：侧边菜单 + 内容区域 -->
+            <div class="main-content">
+                <!-- 侧边菜单 -->
+                <aside class="sidebar">
+                    <h2>管理菜单</h2>
+                    <ul class="menu-list">
+                        <li class="menu-item" :class="{ active: currentPage === 'students' }" @click="switchPage('students')">
+                            学生管理
+                        </li>
+                        <li class="menu-item" :class="{ active: currentPage === 'coaches' }" @click="switchPage('coaches')">
+                            教练管理
+                        </li>
+                    </ul>
+                </aside>
+
+                <!-- 内容区域 -->
+                <div class="content">
+                    <!-- 学生列表页面 -->
+                    <div v-if="currentPage === 'students'">
+                        <h1>学生列表</h1>
+                        <div class="loading" v-if="isLoadingStudents">加载中...</div>
+                        <div class="error-message" v-if="studentsError">{{ studentsError }}</div>
+                        <table class="students-table" v-if="students.length > 0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>姓名</th>
+                                    <th>性别</th>
+                                    <th>手机号</th>
+                                    <th>年级</th>
+                                    <th>教练</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="student in students" :key="student.id">
+                                    <td>{{ student.id }}</td>
+                                    <td>{{ student.name }}</td>
+                                    <td>{{ student.sex }}</td>
+                                    <td>{{ student.phone }}</td>
+                                    <td>{{ student.grade }}</td>
+                                    <td>{{ student.coaches || '无' }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="no-data" v-else-if="!isLoadingStudents">暂无学生数据</div>
+                    </div>
+
+                    <!-- 教练列表页面 -->
+                    <div v-if="currentPage === 'coaches'">
+                        <h1>教练列表</h1>
+                        <div class="loading" v-if="isLoadingCoaches">加载中...</div>
+                        <div class="error-message" v-if="coachesError">{{ coachesError }}</div>
+                        <table class="coaches-table" v-if="coaches.length > 0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>姓名</th>
+                                    <th>性别</th>
+                                    <th>电话</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="coach in coaches" :key="coach.id">
+                                    <td>{{ coach.id }}</td>
+                                    <td>{{ coach.name }}</td>
+                                    <td>{{ coach.sex }}</td>
+                                    <td>{{ coach.phone }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="no-data" v-else-if="!isLoadingCoaches">暂无教练数据</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     <script src="app.js"></script>
