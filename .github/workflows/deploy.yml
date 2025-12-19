@@ -21,60 +21,23 @@ jobs:
         run: ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
       
       - name: Deploy to server
-        run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
-            # 设置项目路径
-            PROJECT_PATH=/home/charonspace
-            FRONTEND_PATH="$PROJECT_PATH/frontend"
-            BACKEND_PATH="$PROJECT_PATH/backend"
-            
-            # 确保项目目录存在
-            mkdir -p "$PROJECT_PATH"
-            
-            # 如果项目已存在，拉取最新代码
-            if [ -d "$PROJECT_PATH/.git" ]; then
-              cd "$PROJECT_PATH"
-              git pull origin main
-            else
-              git clone https://github.com/KkNeChar0n/ZhixinStudentSaaS.git "$PROJECT_PATH"
-            fi
-            
-            # 安装后端依赖
-            cd "$BACKEND_PATH"
-            pip3 install -r requirements.txt
-            
-            # 初始化数据库
-            mysql -u root -p"qweasd123Q!" < "$BACKEND_PATH/init_db.sql"
-            
-            # 创建systemd服务文件
-            cat > /tmp/charonspace-backend.service << 'SYSTEMD_EOF'
-[Unit]
-Description=CharonSpace Backend Service
-After=network.target
-
-[Service]
-User=charon
-WorkingDirectory=$BACKEND_PATH
-Environment="DB_USER=root"
-Environment="DB_PASSWORD=qweasd123Q!"
-Environment="DB_HOST=localhost"
-ExecStart=/usr/bin/python3 $BACKEND_PATH/app.py
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-SYSTEMD_EOF
-            
-            # 部署服务文件
-            sudo mv /tmp/charonspace-backend.service /etc/systemd/system/
-            sudo systemctl daemon-reload
-            sudo systemctl enable charonspace-backend
-            sudo systemctl restart charonspace-backend
-            
-            # 前端部署
-            sudo mkdir -p /var/www/html
-            sudo cp -r "$FRONTEND_PATH"/* /var/www/html/
-            sudo chown -R www-data:www-data /var/www/html/
-            
-            echo "部署完成！"
-          EOF
+        run: >
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} 
+          "PROJECT_PATH=/home/charonspace && 
+          FRONTEND_PATH=$PROJECT_PATH/frontend && 
+          BACKEND_PATH=$PROJECT_PATH/backend && 
+          mkdir -p $PROJECT_PATH && 
+          if [ -d \"$PROJECT_PATH/.git\" ]; then 
+            cd $PROJECT_PATH && git pull origin main; 
+          else 
+            git clone https://github.com/KkNeChar0n/ZhixinStudentSaaS.git $PROJECT_PATH; 
+          fi && 
+          cd $BACKEND_PATH && pip3 install -r requirements.txt && 
+          echo '[Unit]\nDescription=CharonSpace Backend Service\nAfter=network.target\n\n[Service]\nUser=${{ secrets.SERVER_USER }}\nWorkingDirectory='"$BACKEND_PATH"'\nEnvironment=\"DB_USER=root\"\nEnvironment=\"DB_PASSWORD=qweasd123Q!\"\nEnvironment=\"DB_HOST=localhost\"\nExecStart=/usr/bin/python3 '"$BACKEND_PATH"'/app.py\nRestart=always\n\n[Install]\nWantedBy=multi-user.target' > /tmp/charonspace-backend.service && 
+          sudo mv /tmp/charonspace-backend.service /etc/systemd/system/ && 
+          sudo systemctl daemon-reload && 
+          sudo systemctl enable charonspace-backend && 
+          sudo systemctl restart charonspace-backend && 
+          sudo cp -r $FRONTEND_PATH/* /var/www/html/ && 
+          sudo chown -R www-data:www-data /var/www/html/ && 
+          echo \"部署完成！\""
