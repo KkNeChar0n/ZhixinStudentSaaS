@@ -15,7 +15,7 @@ createApp({
         async fetchData() {
             try {
                 this.loading = true;
-                const response = await axios.get('http://123.56.84.70:5000/api/data');
+                const response = await axios.get('/api/data');
                 this.data = response.data;
                 this.error = null;
             } catch (err) {

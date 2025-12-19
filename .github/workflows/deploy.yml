@@ -63,5 +63,9 @@ jobs:
             sudo cp -r "${FRONTEND_PATH}"/* /var/www/html/
             sudo chown -R www-data:www-data /var/www/html/
             
+            # 配置Nginx反向代理
+            sudo cp "${BACKEND_PATH}/nginx.conf" /etc/nginx/conf.d/charonspace.conf
+            sudo systemctl restart nginx
+            
             echo "部署完成！"
           EOF
