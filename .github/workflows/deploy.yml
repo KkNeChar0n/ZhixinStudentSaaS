@@ -65,7 +65,20 @@ jobs:
             
             # 配置Nginx反向代理
             sudo cp "${BACKEND_PATH}/nginx.conf" /etc/nginx/conf.d/charonspace.conf
+            
+            # 调试信息：检查Nginx配置和前端文件
+            echo "=== 调试信息 ==="
+            echo "当前Nginx配置文件："
+            sudo ls -la /etc/nginx/conf.d/
+            echo "前端文件目录内容："
+            sudo ls -la /var/www/html/
+            echo "Nginx服务状态："
+            sudo systemctl status nginx --no-pager
+            
+            # 重启Nginx服务
             sudo systemctl restart nginx
+            echo "Nginx重启后状态："
+            sudo systemctl status nginx --no-pager
             
             echo "部署完成！"
           EOF
