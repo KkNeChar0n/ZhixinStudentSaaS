@@ -49,7 +49,8 @@ jobs:
             
             # 创建systemd服务文件 - 使用安全的方式
             SYSTEMD_CONTENT="[Unit]\nDescription=CharonSpace Backend Service\nAfter=network.target\n\n[Service]\nUser=charon\nWorkingDirectory=${BACKEND_PATH}\nEnvironment=\"DB_USER=root\"\nEnvironment=\"DB_PASSWORD=qweasd123Q!\"\nEnvironment=\"DB_HOST=localhost\"\nExecStart=/usr/bin/python3 ${BACKEND_PATH}/app.py\nRestart=always\n\n[Install]\nWantedBy=multi-user.target"
-            echo "$SYSTEMD_CONTENT" > /tmp/charonspace-backend.service
+            # 使用echo -e启用转义字符解析
+            echo -e "$SYSTEMD_CONTENT" > /tmp/charonspace-backend.service
             
             # 部署服务文件
             sudo mv /tmp/charonspace-backend.service /etc/systemd/system/
