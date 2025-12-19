@@ -45,7 +45,7 @@ jobs:
             
             # 配置环境变量（根据实际情况修改）
             export DB_USER=root
-            export DB_PASSWORD=your_mysql_password
+            export DB_PASSWORD=qweasd123Q!
             export DB_HOST=localhost
             
             # 创建systemd服务文件（如果不存在）
