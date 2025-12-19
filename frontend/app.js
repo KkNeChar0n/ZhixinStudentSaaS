@@ -28,7 +28,7 @@ createApp({
         // 检查登录状态
         async checkLoginStatus() {
             try {
-                const response = await axios.get('http://localhost:5001/api/profile', { withCredentials: true });
+                const response = await axios.get('http://localhost:5000/api/profile', { withCredentials: true });
                 if (response.data.username) {
                     this.isLoggedIn = true;
                     this.username = response.data.username;
@@ -48,7 +48,7 @@ createApp({
                 this.isLoadingStudents = true;
                 this.studentsError = null;
                 
-                const response = await axios.get('http://localhost:5001/api/students', { withCredentials: true });
+                const response = await axios.get('http://localhost:5000/api/students', { withCredentials: true });
                 this.students = response.data.students;
             } catch (err) {
                 this.studentsError = err.response?.data?.error || '获取学生列表失败';
@@ -64,7 +64,7 @@ createApp({
                 this.isLoadingCoaches = true;
                 this.coachesError = null;
                 
-                const response = await axios.get('http://localhost:5001/api/coaches', { withCredentials: true });
+                const response = await axios.get('http://localhost:5000/api/coaches', { withCredentials: true });
                 this.coaches = response.data.coaches;
             } catch (err) {
                 this.coachesError = err.response?.data?.error || '获取教练列表失败';
@@ -96,7 +96,7 @@ createApp({
                 this.isLoading = true;
                 this.error = null;
                 
-                const response = await axios.post('http://localhost:5001/api/login', {
+                const response = await axios.post('http://localhost:5000/api/login', {
                     username: this.username,
                     password: this.password
                 }, { withCredentials: true });
@@ -120,7 +120,7 @@ createApp({
         async logout() {
             try {
                 this.isLoading = true;
-                await axios.post('http://localhost:5001/api/logout', {}, { withCredentials: true });
+                await axios.post('http://localhost:5000/api/logout', {}, { withCredentials: true });
                 this.isLoggedIn = false;
                 this.username = '';
                 this.error = null;
