@@ -7,7 +7,8 @@ createApp({
             password: '',
             isLoggedIn: false,
             isLoading: false,
-            error: null
+            error: null,
+            students: []
         };
     },
     mounted() {
@@ -23,10 +24,28 @@ createApp({
                     this.isLoggedIn = true;
                     this.username = response.data.username;
                     this.error = null;
+                    // 登录状态下获取学生列表
+                    this.getStudents();
                 }
             } catch (err) {
                 // 未登录或其他错误，不显示错误信息
                 this.isLoggedIn = false;
+            }
+        },
+        
+        // 获取学生列表
+        async getStudents() {
+            try {
+                this.isLoading = true;
+                this.error = null;
+                
+                const response = await axios.get('/api/students', { withCredentials: true });
+                this.students = response.data.students;
+            } catch (err) {
+                this.error = err.response?.data?.error || '获取学生列表失败';
+                console.error('Get students error:', err);
+            } finally {
+                this.isLoading = false;
             }
         },
         
@@ -50,6 +69,8 @@ createApp({
                     this.isLoggedIn = true;
                     this.username = response.data.username;
                     this.password = ''; // 清空密码
+                    // 登录成功后获取学生列表
+                    this.getStudents();
                 }
             } catch (err) {
                 this.error = err.response?.data?.error || '登录失败，请检查用户名和密码';
@@ -67,6 +88,7 @@ createApp({
                 this.isLoggedIn = false;
                 this.username = '';
                 this.error = null;
+                this.students = []; // 清空学生列表
             } catch (err) {
                 this.error = '登出失败，请稍后重试';
                 console.error('Logout error:', err);

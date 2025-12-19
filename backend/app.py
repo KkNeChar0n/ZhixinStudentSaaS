@@ -71,5 +71,31 @@ def logout():
     session.pop('username', None)
     return jsonify({'message': '登出成功'}), 200
 
+# API接口：获取学生列表
+@app.route('/api/students', methods=['GET'])
+def get_students():
+    if 'username' not in session:
+        return jsonify({'error': '未登录'}), 401
+    
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+        
+        # 查询所有学生信息
+        cursor.execute("SELECT id, name, sex, phone, grade FROM student")
+        students = cursor.fetchall()
+        
+        return jsonify({'students': students}), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
