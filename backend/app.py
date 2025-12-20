@@ -41,6 +41,7 @@ def login():
         # 查询用户
         cursor.execute("SELECT username FROM useraccount WHERE username = %s AND password = %s", (username, password))
         user = cursor.fetchone()
+        return jsonify({'error': user}), 400
         
         if user:
             # 登录成功，保存到会话
