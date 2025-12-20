@@ -33,7 +33,7 @@ def login():
         password = data.get('password')
         
         if not username or not password:
-            return jsonify({'error': '用户名和密码不能为空'}), 400
+            return jsonify({'error': '123'}), 400
             
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
