@@ -41,14 +41,13 @@ def login():
         # 查询用户
         cursor.execute("SELECT username FROM useraccount WHERE username = %s AND password = %s", (username, password))
         user = cursor.fetchone()
-        return jsonify({'error': user}), 400
         
         if user:
             # 登录成功，保存到会话
             session['username'] = user['username']
             return jsonify({'message': '登录成功', 'username': user['username']}), 200
         else:
-            return jsonify({'error': '用户名或密码错误'}), 401
+            return jsonify({'error': user}), 401
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
