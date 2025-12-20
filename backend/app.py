@@ -5,7 +5,7 @@ import os
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')  # 用于会话加密
-CORS(app, supports_credentials=True)  # 配置跨域访问，支持凭证
+CORS(app, origins='http://123.56.84.70', supports_credentials=True)  # 配置跨域访问，支持凭证，只允许特定源
 
 # 数据库连接配置
 db_config = {
@@ -72,4 +72,4 @@ def logout():
     return jsonify({'message': '登出成功'}), 200
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5001)
