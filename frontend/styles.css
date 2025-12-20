@@ -116,13 +116,6 @@ h1 {
     text-align: center;
 }
 
-/* 应用容器样式 */
-.app-container {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-}
-
 /* 页面头部样式 */
 .header {
     background-color: #2c3e50;
@@ -152,67 +145,19 @@ h1 {
 }
 
 /* 主内容区样式 */
-.main-content {
-    display: flex;
-    flex: 1;
-    min-height: calc(100vh - 60px); /* 减去头部高度 */
+.main-container {
+    max-width: 1000px;
+    margin: 30px auto;
+    padding: 0 20px;
 }
 
-/* 侧边菜单样式 */
-.sidebar {
-    width: 200px;
-    background-color: #2c3e50;
-    color: white;
-    padding: 20px;
-    height: calc(100vh - 60px); /* 减去头部高度 */
-}
-
-.sidebar h2 {
-    font-size: 18px;
-    margin-bottom: 20px;
-    color: #ecf0f1;
-    text-align: center;
-}
-
-.menu-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.menu-item {
-    padding: 12px 15px;
-    margin: 5px 0;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background-color 0.3s;
-    font-size: 16px;
-}
-
-.menu-item:hover {
-    background-color: #34495e;
-}
-
-.menu-item.active {
-    background-color: #3498db;
-    font-weight: bold;
-}
-
-/* 内容区域样式 */
-.content {
-    flex: 1;
-    padding: 30px;
-    background-color: #f0f2f5;
-}
-
-.content h1 {
+.main-container h1 {
     text-align: center;
     margin-bottom: 30px;
-    color: #2c3e50;
 }
 
 /* 学生列表表格样式 */
-.students-table, .coaches-table {
+.students-table {
     width: 100%;
     border-collapse: collapse;
     background-color: #fff;
@@ -222,29 +167,24 @@ h1 {
 }
 
 .students-table th,
-.students-table td,
-.coaches-table th,
-.coaches-table td {
+.students-table td {
     padding: 15px;
     text-align: left;
     border-bottom: 1px solid #ecf0f1;
 }
 
-.students-table th,
-.coaches-table th {
+.students-table th {
     background-color: #3498db;
     color: #fff;
     font-weight: bold;
     font-size: 16px;
 }
 
-.students-table tr:hover,
-.coaches-table tr:hover {
+.students-table tr:hover {
     background-color: #f8f9fa;
 }
 
-.students-table tr:last-child td,
-.coaches-table tr:last-child td {
+.students-table tr:last-child td {
     border-bottom: none;
 }
 
@@ -276,6 +216,7 @@ h1 {
     background-color: #fdf2f2;
     border-radius: 4px;
     margin-bottom: 20px;
-    max-width: 100%;
-    width: 100%;
+    max-width: 1000px;
+    margin-left: auto;
+    margin-right: auto;
 }

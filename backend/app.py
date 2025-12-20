@@ -33,7 +33,7 @@ def login():
         password = data.get('password')
         
         if not username or not password:
-            return jsonify({'error': '123'}), 400
+            return jsonify({'error': '用户名和密码不能为空'}), 400
             
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
@@ -47,7 +47,7 @@ def login():
             session['username'] = user['username']
             return jsonify({'message': '登录成功', 'username': user['username']}), 200
         else:
-            return jsonify({'error': user}), 401
+            return jsonify({'error': '用户名或密码错误'}), 401
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -87,44 +87,7 @@ def get_students():
         cursor.execute("SELECT id, name, sex, phone, grade FROM student")
         students = cursor.fetchall()
         
-        # 为每个学生获取关联的教练信息
-        for student in students:
-            cursor.execute("""
-                SELECT c.name FROM coach c
-                JOIN student_coach sc ON c.id = sc.coach_id
-                WHERE sc.student_id = %s
-            """, (student['id'],))
-            coaches = cursor.fetchall()
-            # 将教练名称用逗号分隔
-            student['coaches'] = ', '.join([coach['name'] for coach in coaches])
-        
         return jsonify({'students': students}), 200
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
-
-# API接口：获取教练列表
-@app.route('/api/coaches', methods=['GET'])
-def get_coaches():
-    if 'username' not in session:
-        return jsonify({'error': '未登录'}), 401
-    
-    connection = None
-    cursor = None
-    try:
-        connection = get_db_connection()
-        cursor = connection.cursor(pymysql.cursors.DictCursor)
-        
-        # 查询所有教练信息
-        cursor.execute("SELECT id, name, sex, phone FROM coach")
-        coaches = cursor.fetchall()
-        
-        return jsonify({'coaches': coaches}), 200
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
