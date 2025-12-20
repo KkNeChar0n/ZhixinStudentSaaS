@@ -18,7 +18,7 @@ createApp({
         // 检查登录状态
         async checkLoginStatus() {
             try {
-                const response = await axios.get('http://123.56.84.70:5000/api/profile', { withCredentials: true });
+                const response = await axios.get('/api/profile', { withCredentials: true });
                 if (response.data.username) {
                     this.isLoggedIn = true;
                     this.username = response.data.username;
@@ -41,7 +41,7 @@ createApp({
                 this.isLoading = true;
                 this.error = null;
                 
-                const response = await axios.post('http://123.56.84.70:5000/api/login', {
+                const response = await axios.post('/api/login', {
                     username: this.username,
                     password: this.password
                 }, { withCredentials: true });
@@ -63,7 +63,7 @@ createApp({
         async logout() {
             try {
                 this.isLoading = true;
-                await axios.post('http://123.56.84.70:5000/api/logout', {}, { withCredentials: true });
+                await axios.post('/api/logout', {}, { withCredentials: true });
                 this.isLoggedIn = false;
                 this.username = '';
                 this.error = null;
