@@ -71,5 +71,82 @@ def logout():
     session.pop('username', None)
     return jsonify({'message': '登出成功'}), 200
 
+# API接口：获取学生列表
+@app.route('/api/students', methods=['GET'])
+def get_students():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+        
+        # 查询学生列表，包括关联的性别、年级和教练信息
+        cursor.execute("""
+            SELECT 
+                s.id, 
+                s.name AS student_name, 
+                sx.sex, 
+                g.grade, 
+                s.phone, 
+                GROUP_CONCAT(c.name SEPARATOR ', ') AS coach_names
+            FROM 
+                student s
+            JOIN 
+                sex sx ON s.sex_id = sx.id
+            JOIN 
+                grade g ON s.grade_id = g.id
+            LEFT JOIN 
+                student_coach sc ON s.id = sc.student_id
+            LEFT JOIN 
+                coach c ON sc.coach_id = c.id
+            GROUP BY 
+                s.id, s.name, sx.sex, g.grade, s.phone
+        """)
+        
+        students = cursor.fetchall()
+        return jsonify({'students': students}), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取教练列表
+@app.route('/api/coaches', methods=['GET'])
+def get_coaches():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+        
+        # 查询教练列表，包括关联的性别信息
+        cursor.execute("""
+            SELECT 
+                c.id, 
+                c.name AS coach_name, 
+                sx.sex, 
+                c.subject, 
+                c.phone
+            FROM 
+                coach c
+            JOIN 
+                sex sx ON c.sex_id = sx.id
+        """)
+        
+        coaches = cursor.fetchall()
+        return jsonify({'coaches': coaches}), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)

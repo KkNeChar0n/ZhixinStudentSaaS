@@ -7,7 +7,10 @@ createApp({
             password: '',
             isLoggedIn: false,
             isLoading: false,
-            error: null
+            error: null,
+            activeMenu: 'students',
+            students: [],
+            coaches: []
         };
     },
     mounted() {
@@ -23,10 +26,40 @@ createApp({
                     this.isLoggedIn = true;
                     this.username = response.data.username;
                     this.error = null;
+                    // 登录成功后获取学生和教练数据
+                    this.fetchStudents();
+                    this.fetchCoaches();
                 }
             } catch (err) {
                 // 未登录或其他错误，不显示错误信息
                 this.isLoggedIn = false;
+            }
+        },
+        
+        // 设置活动菜单
+        setActiveMenu(menu) {
+            this.activeMenu = menu;
+        },
+        
+        // 获取学生数据
+        async fetchStudents() {
+            try {
+                const response = await axios.get('/api/students');
+                this.students = response.data.students;
+            } catch (err) {
+                console.error('获取学生数据失败:', err);
+                this.error = '获取学生数据失败';
+            }
+        },
+        
+        // 获取教练数据
+        async fetchCoaches() {
+            try {
+                const response = await axios.get('/api/coaches');
+                this.coaches = response.data.coaches;
+            } catch (err) {
+                console.error('获取教练数据失败:', err);
+                this.error = '获取教练数据失败';
             }
         },
         
@@ -50,6 +83,9 @@ createApp({
                     this.isLoggedIn = true;
                     this.username = response.data.username;
                     this.password = ''; // 清空密码
+                    // 登录成功后获取学生和教练数据
+                    this.fetchStudents();
+                    this.fetchCoaches();
                 }
             } catch (err) {
                 this.error = err.response?.data?.error || '登录失败，请检查用户名和密码';

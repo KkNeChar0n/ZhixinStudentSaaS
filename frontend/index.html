@@ -30,11 +30,82 @@
         </div>
 
         <!-- 登录成功页面 -->
-        <div class="container" v-else>
-            <h1>登录成功</h1>
-            <div class="success-message">
-                <p>欢迎回来，<strong>{{ username }}</strong>！</p>
+        <div class="app-container" v-else>
+            <!-- 顶部导航栏 -->
+            <header class="top-header">
+                <div class="username-display">欢迎，<strong>{{ username }}</strong></div>
                 <button class="logout-btn" @click="logout">登出</button>
+            </header>
+            
+            <!-- 主内容区域 -->
+            <div class="main-content">
+                <!-- 左侧菜单栏 -->
+                <aside class="sidebar">
+                    <h2>菜单管理</h2>
+                    <ul class="menu-list">
+                        <li class="menu-item" :class="{ active: activeMenu === 'students' }" @click="setActiveMenu('students')">
+                            学生管理
+                        </li>
+                        <li class="menu-item" :class="{ active: activeMenu === 'coaches' }" @click="setActiveMenu('coaches')">
+                            教练管理
+                        </li>
+                    </ul>
+                </aside>
+                
+                <!-- 右侧内容区域 -->
+                <div class="content-area">
+                    <!-- 学生管理页面 -->
+                    <div v-if="activeMenu === 'students'">
+                        <h1>学生管理</h1>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>学生姓名</th>
+                                    <th>性别</th>
+                                    <th>年级</th>
+                                    <th>电话</th>
+                                    <th>教练姓名</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="student in students" :key="student.id">
+                                    <td>{{ student.id }}</td>
+                                    <td>{{ student.student_name }}</td>
+                                    <td>{{ student.sex }}</td>
+                                    <td>{{ student.grade }}</td>
+                                    <td>{{ student.phone }}</td>
+                                    <td>{{ student.coach_names }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- 教练管理页面 -->
+                    <div v-if="activeMenu === 'coaches'">
+                        <h1>教练管理</h1>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>教练姓名</th>
+                                    <th>性别</th>
+                                    <th>学科</th>
+                                    <th>电话</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="coach in coaches" :key="coach.id">
+                                    <td>{{ coach.id }}</td>
+                                    <td>{{ coach.coach_name }}</td>
+                                    <td>{{ coach.sex }}</td>
+                                    <td>{{ coach.subject }}</td>
+                                    <td>{{ coach.phone }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
