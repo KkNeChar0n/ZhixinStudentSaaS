@@ -57,6 +57,37 @@
                     <!-- 学生管理页面 -->
                     <div v-if="activeMenu === 'students'">
                         <h1>学生管理</h1>
+                        
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="studentIdFilter">ID</label>
+                                    <input type="number" id="studentIdFilter" v-model="studentFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="studentNameFilter">姓名</label>
+                                    <input type="text" id="studentNameFilter" v-model="studentFilters.name" placeholder="请输入姓名">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="studentGradeFilter">年级</label>
+                                    <select id="studentGradeFilter" v-model="studentFilters.grade">
+                                        <option value="">全部</option>
+                                        <option value="一年级">一年级</option>
+                                        <option value="二年级">二年级</option>
+                                        <option value="三年级">三年级</option>
+                                        <option value="四年级">四年级</option>
+                                        <option value="五年级">五年级</option>
+                                        <option value="六年级">六年级</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchStudents">搜索</button>
+                                <button class="reset-btn" @click="resetStudentFilters">重置</button>
+                            </div>
+                        </div>
+                        
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -66,16 +97,21 @@
                                     <th>年级</th>
                                     <th>电话</th>
                                     <th>教练姓名</th>
+                                    <th>操作</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="student in students" :key="student.id">
+                                <tr v-for="student in filteredStudents" :key="student.id">
                                     <td>{{ student.id }}</td>
                                     <td>{{ student.student_name }}</td>
                                     <td>{{ student.sex }}</td>
                                     <td>{{ student.grade }}</td>
                                     <td>{{ student.phone }}</td>
                                     <td>{{ student.coach_names }}</td>
+                                    <td class="action-column">
+                                        <button class="edit-btn" @click="openEditStudentModal(student)">编辑</button>
+                                        <button class="delete-btn" @click="openDeleteConfirm(student.id, 'student')">删除</button>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
@@ -84,6 +120,48 @@
                     <!-- 教练管理页面 -->
                     <div v-if="activeMenu === 'coaches'">
                         <h1>教练管理</h1>
+                        
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="coachIdFilter">ID</label>
+                                    <input type="number" id="coachIdFilter" v-model="coachFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="coachNameFilter">姓名</label>
+                                    <input type="text" id="coachNameFilter" v-model="coachFilters.name" placeholder="请输入姓名">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="coachSexFilter">性别</label>
+                                    <select id="coachSexFilter" v-model="coachFilters.sex">
+                                        <option value="">全部</option>
+                                        <option value="男">男</option>
+                                        <option value="女">女</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="coachSubjectFilter">学科</label>
+                                    <select id="coachSubjectFilter" v-model="coachFilters.subject">
+                                        <option value="">全部</option>
+                                        <option value="语文">语文</option>
+                                        <option value="数学">数学</option>
+                                        <option value="英语">英语</option>
+                                        <option value="物理">物理</option>
+                                        <option value="化学">化学</option>
+                                        <option value="生物">生物</option>
+                                        <option value="历史">历史</option>
+                                        <option value="地理">地理</option>
+                                        <option value="政治">政治</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchCoaches">搜索</button>
+                                <button class="reset-btn" @click="resetCoachFilters">重置</button>
+                            </div>
+                        </div>
+                        
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -92,19 +170,128 @@
                                     <th>性别</th>
                                     <th>学科</th>
                                     <th>电话</th>
+                                    <th>操作</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="coach in coaches" :key="coach.id">
+                                <tr v-for="coach in filteredCoaches" :key="coach.id">
                                     <td>{{ coach.id }}</td>
                                     <td>{{ coach.coach_name }}</td>
                                     <td>{{ coach.sex }}</td>
                                     <td>{{ coach.subject }}</td>
                                     <td>{{ coach.phone }}</td>
+                                    <td class="action-column">
+                                        <button class="edit-btn" @click="openEditCoachModal(coach)">编辑</button>
+                                        <button class="delete-btn" @click="openDeleteConfirm(coach.id, 'coach')">删除</button>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 学生编辑弹窗 -->
+        <div class="modal-overlay" v-if="showEditStudentModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>编辑学生信息</h3>
+                    <button class="close-btn" @click="closeEditStudentModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editStudentName">姓名</label>
+                        <input type="text" id="editStudentName" v-model="editStudentData.name" placeholder="请输入姓名">
+                    </div>
+                    <div class="form-group">
+                        <label for="editStudentSex">性别</label>
+                        <select id="editStudentSex" v-model="editStudentData.sex">
+                            <option value="男">男</option>
+                            <option value="女">女</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editStudentPhone">手机号</label>
+                        <input type="text" id="editStudentPhone" v-model="editStudentData.phone" placeholder="请输入手机号">
+                    </div>
+                    <div class="form-group">
+                        <label for="editStudentGrade">年级</label>
+                        <select id="editStudentGrade" v-model="editStudentData.grade">
+                            <option value="一年级">一年级</option>
+                            <option value="二年级">二年级</option>
+                            <option value="三年级">三年级</option>
+                            <option value="四年级">四年级</option>
+                            <option value="五年级">五年级</option>
+                            <option value="六年级">六年级</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEditStudentModal">取消</button>
+                    <button class="save-btn" @click="saveEditStudent">保存</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 教练编辑弹窗 -->
+        <div class="modal-overlay" v-if="showEditCoachModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>编辑教练信息</h3>
+                    <button class="close-btn" @click="closeEditCoachModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editCoachName">姓名</label>
+                        <input type="text" id="editCoachName" v-model="editCoachData.name" placeholder="请输入姓名">
+                    </div>
+                    <div class="form-group">
+                        <label for="editCoachSex">性别</label>
+                        <select id="editCoachSex" v-model="editCoachData.sex">
+                            <option value="男">男</option>
+                            <option value="女">女</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editCoachPhone">手机号</label>
+                        <input type="text" id="editCoachPhone" v-model="editCoachData.phone" placeholder="请输入手机号">
+                    </div>
+                    <div class="form-group">
+                        <label for="editCoachSubject">学科</label>
+                        <select id="editCoachSubject" v-model="editCoachData.subject">
+                            <option value="语文">语文</option>
+                            <option value="数学">数学</option>
+                            <option value="英语">英语</option>
+                            <option value="物理">物理</option>
+                            <option value="化学">化学</option>
+                            <option value="生物">生物</option>
+                            <option value="历史">历史</option>
+                            <option value="地理">地理</option>
+                            <option value="政治">政治</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEditCoachModal">取消</button>
+                    <button class="save-btn" @click="saveEditCoach">保存</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 删除确认弹窗 -->
+        <div class="modal-overlay" v-if="showDeleteConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认删除</h3>
+                    <button class="close-btn" @click="closeDeleteConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认删除该条数据？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeDeleteConfirm">取消</button>
+                    <button class="delete-btn" @click="confirmDelete">确认删除</button>
                 </div>
             </div>
         </div>

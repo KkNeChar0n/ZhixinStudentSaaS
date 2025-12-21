@@ -148,5 +148,173 @@ def get_coaches():
         if connection:
             connection.close()
 
+# API接口：更新学生信息
+@app.route('/api/students/<int:id>', methods=['PUT'])
+def update_student(id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        student_name = data.get('student_name')
+        sex = data.get('sex')
+        phone = data.get('phone')
+        grade = data.get('grade')
+        
+        if not student_name or not sex or not phone or not grade:
+            return jsonify({'error': '所有字段不能为空'}), 400
+            
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # 获取性别ID和年级ID
+        cursor.execute("SELECT id FROM sex WHERE sex = %s", (sex,))
+        sex_result = cursor.fetchone()
+        if not sex_result:
+            return jsonify({'error': '性别不存在'}), 400
+        sex_id = sex_result[0]
+        
+        cursor.execute("SELECT id FROM grade WHERE grade = %s", (grade,))
+        grade_result = cursor.fetchone()
+        if not grade_result:
+            return jsonify({'error': '年级不存在'}), 400
+        grade_id = grade_result[0]
+        
+        # 更新学生信息
+        cursor.execute("""
+            UPDATE student 
+            SET name = %s, sex_id = %s, phone = %s, grade_id = %s 
+            WHERE id = %s
+        """, (student_name, sex_id, phone, grade_id, id))
+        
+        connection.commit()
+        
+        if cursor.rowcount == 0:
+            return jsonify({'error': '学生不存在'}), 404
+            
+        return jsonify({'message': '学生信息更新成功'}), 200
+        
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：删除学生
+@app.route('/api/students/<int:id>', methods=['DELETE'])
+def delete_student(id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # 删除学生与教练的关联
+        cursor.execute("DELETE FROM student_coach WHERE student_id = %s", (id,))
+        
+        # 删除学生
+        cursor.execute("DELETE FROM student WHERE id = %s", (id,))
+        
+        connection.commit()
+        
+        if cursor.rowcount == 0:
+            return jsonify({'error': '学生不存在'}), 404
+            
+        return jsonify({'message': '学生删除成功'}), 200
+        
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新教练信息
+@app.route('/api/coaches/<int:id>', methods=['PUT'])
+def update_coach(id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        coach_name = data.get('coach_name')
+        sex = data.get('sex')
+        phone = data.get('phone')
+        subject = data.get('subject')
+        
+        if not coach_name or not sex or not phone or not subject:
+            return jsonify({'error': '所有字段不能为空'}), 400
+            
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # 获取性别ID
+        cursor.execute("SELECT id FROM sex WHERE sex = %s", (sex,))
+        sex_result = cursor.fetchone()
+        if not sex_result:
+            return jsonify({'error': '性别不存在'}), 400
+        sex_id = sex_result[0]
+        
+        # 更新教练信息
+        cursor.execute("""
+            UPDATE coach 
+            SET name = %s, sex_id = %s, phone = %s, subject = %s 
+            WHERE id = %s
+        """, (coach_name, sex_id, phone, subject, id))
+        
+        connection.commit()
+        
+        if cursor.rowcount == 0:
+            return jsonify({'error': '教练不存在'}), 404
+            
+        return jsonify({'message': '教练信息更新成功'}), 200
+        
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：删除教练
+@app.route('/api/coaches/<int:id>', methods=['DELETE'])
+def delete_coach(id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # 删除教练与学生的关联
+        cursor.execute("DELETE FROM student_coach WHERE coach_id = %s", (id,))
+        
+        # 删除教练
+        cursor.execute("DELETE FROM coach WHERE id = %s", (id,))
+        
+        connection.commit()
+        
+        if cursor.rowcount == 0:
+            return jsonify({'error': '教练不存在'}), 404
+            
+        return jsonify({'message': '教练删除成功'}), 200
+        
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)
