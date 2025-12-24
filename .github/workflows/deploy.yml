@@ -35,7 +35,17 @@ jobs:
             # 如果项目已存在，拉取最新代码
             if [ -d "${PROJECT_PATH}/.git" ]; then
               cd "${PROJECT_PATH}"
-              git pull origin main
+              echo "=== 更新代码 ==="
+              echo "当前分支："
+              git branch
+              echo "拉取最新代码..."
+              git fetch origin
+              # 自动检测并拉取当前分支
+              CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+              git pull origin $CURRENT_BRANCH || git pull origin main || git pull origin master
+              echo "代码更新完成"
+              echo "最新提交："
+              git log -1 --oneline
             else
               git clone https://github.com/KkNeChar0n/ZhixinStudentSaaS.git "${PROJECT_PATH}"
             fi
@@ -43,12 +53,24 @@ jobs:
             # 安装后端依赖
             cd "${BACKEND_PATH}"
             pip3 install -r requirements.txt
-            
-            # 初始化数据库
-            mysql -u root -p"qweasd123Q!" < "${BACKEND_PATH}/init_db.sql"
+
+            # 初始化数据库（只在首次部署时执行，如果数据库已有数据则跳过）
+            echo "=== 检查数据库 ==="
+            DB_EXISTS=$(mysql -u root -p"qweasd123Q!" -e "SHOW DATABASES LIKE 'ZhixinStudentSaas';" | grep ZhixinStudentSaas)
+            if [ -z "$DB_EXISTS" ]; then
+              echo "数据库不存在，执行初始化..."
+              if [ -f "${PROJECT_PATH}/init_database.sql" ]; then
+                mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/init_database.sql"
+                echo "数据库初始化完成"
+              else
+                echo "警告: init_database.sql 文件不存在"
+              fi
+            else
+              echo "数据库已存在，跳过初始化"
+            fi
             
             # 创建systemd服务文件 - 使用安全的方式
-            SYSTEMD_CONTENT="[Unit]\nDescription=CharonSpace Backend Service\nAfter=network.target\n\n[Service]\nUser=charon\nWorkingDirectory=${BACKEND_PATH}\nEnvironment=\"DB_USER=root\"\nEnvironment=\"DB_PASSWORD=qweasd123Q!\"\nEnvironment=\"DB_HOST=localhost\"\nExecStart=/usr/bin/python3 ${BACKEND_PATH}/app.py\nRestart=always\n\n[Install]\nWantedBy=multi-user.target"
+            SYSTEMD_CONTENT="[Unit]\nDescription=CharonSpace Backend Service\nAfter=network.target\n\n[Service]\nUser=charon\nWorkingDirectory=${BACKEND_PATH}\nEnvironment=\"DB_USER=root\"\nEnvironment=\"DB_PASSWORD=qweasd123Q!\"\nEnvironment=\"DB_HOST=localhost\"\nEnvironment=\"DB_NAME=ZhixinStudentSaas\"\nExecStart=/usr/bin/python3 ${BACKEND_PATH}/app.py\nRestart=always\n\n[Install]\nWantedBy=multi-user.target"
             # 使用echo -e启用转义字符解析
             echo -e "$SYSTEMD_CONTENT" > /tmp/charonspace-backend.service
             
