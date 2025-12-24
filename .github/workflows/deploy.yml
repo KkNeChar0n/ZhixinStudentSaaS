@@ -61,7 +61,7 @@ jobs:
             cd "${BACKEND_PATH}"
             pip3 install -r requirements.txt
 
-            # 初始化数据库（只在首次部署时执行，如果数据库已有数据则跳过）
+            # 数据库初始化和迁移
             echo "=== 检查数据库 ==="
             DB_EXISTS=$(mysql -u root -p"qweasd123Q!" -e "SHOW DATABASES LIKE 'ZhixinStudentSaas';" | grep ZhixinStudentSaas)
             if [ -z "$DB_EXISTS" ]; then
@@ -73,7 +73,12 @@ jobs:
                 echo "警告: init_database.sql 文件不存在"
               fi
             else
-              echo "数据库已存在，跳过初始化"
+              echo "数据库已存在，执行迁移脚本..."
+              # 执行账号状态字段迁移
+              if [ -f "${PROJECT_PATH}/add_account_status.sql" ]; then
+                echo "执行账号管理字段迁移..."
+                mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/add_account_status.sql" 2>&1 || true
+              fi
             fi
             
             # 创建systemd服务文件 - 使用安全的方式
