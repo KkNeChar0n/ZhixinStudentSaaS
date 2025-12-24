@@ -122,24 +122,26 @@ def get_coaches():
     try:
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
-        
-        # 查询教练列表，包括关联的性别信息
+
+        # 查询教练列表，包括关联的性别和学科信息
         cursor.execute("""
-            SELECT 
-                c.id, 
-                c.name AS coach_name, 
-                sx.sex, 
-                c.subject, 
+            SELECT
+                c.id,
+                c.name AS coach_name,
+                sx.sex,
+                sub.subject,
                 c.phone
-            FROM 
+            FROM
                 coach c
-            JOIN 
+            JOIN
                 sex sx ON c.sex_id = sx.id
+            JOIN
+                subject sub ON c.subject_id = sub.id
         """)
-        
+
         coaches = cursor.fetchall()
         return jsonify({'coaches': coaches}), 200
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
@@ -246,34 +248,41 @@ def update_coach(id):
         sex = data.get('sex')
         phone = data.get('phone')
         subject = data.get('subject')
-        
+
         if not coach_name or not sex or not phone or not subject:
             return jsonify({'error': '所有字段不能为空'}), 400
-            
+
         connection = get_db_connection()
         cursor = connection.cursor()
-        
+
         # 获取性别ID
         cursor.execute("SELECT id FROM sex WHERE sex = %s", (sex,))
         sex_result = cursor.fetchone()
         if not sex_result:
             return jsonify({'error': '性别不存在'}), 400
         sex_id = sex_result[0]
-        
+
+        # 获取学科ID
+        cursor.execute("SELECT id FROM subject WHERE subject = %s", (subject,))
+        subject_result = cursor.fetchone()
+        if not subject_result:
+            return jsonify({'error': '学科不存在'}), 400
+        subject_id = subject_result[0]
+
         # 更新教练信息
         cursor.execute("""
-            UPDATE coach 
-            SET name = %s, sex_id = %s, phone = %s, subject = %s 
+            UPDATE coach
+            SET name = %s, sex_id = %s, phone = %s, subject_id = %s
             WHERE id = %s
-        """, (coach_name, sex_id, phone, subject, id))
-        
+        """, (coach_name, sex_id, phone, subject_id, id))
+
         connection.commit()
-        
+
         if cursor.rowcount == 0:
             return jsonify({'error': '教练不存在'}), 404
-            
+
         return jsonify({'message': '教练信息更新成功'}), 200
-        
+
     except Exception as e:
         if connection:
             connection.rollback()
@@ -292,20 +301,210 @@ def delete_coach(id):
     try:
         connection = get_db_connection()
         cursor = connection.cursor()
-        
+
         # 删除教练与学生的关联
         cursor.execute("DELETE FROM student_coach WHERE coach_id = %s", (id,))
-        
+
         # 删除教练
         cursor.execute("DELETE FROM coach WHERE id = %s", (id,))
-        
+
         connection.commit()
-        
+
         if cursor.rowcount == 0:
             return jsonify({'error': '教练不存在'}), 404
-            
+
         return jsonify({'message': '教练删除成功'}), 200
-        
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取启用状态的教练列表
+@app.route('/api/coaches/active', methods=['GET'])
+def get_active_coaches():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询启用状态的教练列表
+        cursor.execute("""
+            SELECT
+                c.id,
+                c.name AS coach_name
+            FROM
+                coach c
+            WHERE
+                c.status = '启用'
+        """)
+
+        coaches = cursor.fetchall()
+        return jsonify({'coaches': coaches}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取启用状态的学生列表
+@app.route('/api/students/active', methods=['GET'])
+def get_active_students():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询启用状态的学生列表
+        cursor.execute("""
+            SELECT
+                s.id,
+                s.name AS student_name
+            FROM
+                student s
+            WHERE
+                s.status = '启用'
+        """)
+
+        students = cursor.fetchall()
+        return jsonify({'students': students}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：新增教练
+@app.route('/api/coaches', methods=['POST'])
+def add_coach():
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        coach_name = data.get('coach_name')
+        sex = data.get('sex')
+        phone = data.get('phone')
+        subject = data.get('subject')
+        student_ids = data.get('student_ids', [])  # 学生ID列表，非必填
+
+        # 验证必填字段
+        if not coach_name or not sex or not phone or not subject:
+            return jsonify({'error': '姓名、性别、电话和学科不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 获取性别ID
+        cursor.execute("SELECT id FROM sex WHERE sex = %s", (sex,))
+        sex_result = cursor.fetchone()
+        if not sex_result:
+            return jsonify({'error': '性别不存在'}), 400
+        sex_id = sex_result[0]
+
+        # 获取学科ID
+        cursor.execute("SELECT id FROM subject WHERE subject = %s", (subject,))
+        subject_result = cursor.fetchone()
+        if not subject_result:
+            return jsonify({'error': '学科不存在'}), 400
+        subject_id = subject_result[0]
+
+        # 插入教练信息
+        cursor.execute("""
+            INSERT INTO coach (name, sex_id, subject_id, phone, status)
+            VALUES (%s, %s, %s, %s, '启用')
+        """, (coach_name, sex_id, subject_id, phone))
+
+        coach_id = cursor.lastrowid
+
+        # 如果有选择学生，插入学生与教练的关联
+        if student_ids:
+            for student_id in student_ids:
+                cursor.execute("""
+                    INSERT INTO student_coach (student_id, coach_id)
+                    VALUES (%s, %s)
+                """, (student_id, coach_id))
+
+        connection.commit()
+
+        return jsonify({'message': '教练添加成功', 'coach_id': coach_id}), 201
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：新增学生
+@app.route('/api/students', methods=['POST'])
+def add_student():
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        student_name = data.get('student_name')
+        sex = data.get('sex')
+        phone = data.get('phone')
+        grade = data.get('grade')
+        coach_ids = data.get('coach_ids', [])  # 教练ID列表，非必填
+
+        # 验证必填字段
+        if not student_name or not sex or not phone or not grade:
+            return jsonify({'error': '姓名、性别、电话和年级不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 获取性别ID
+        cursor.execute("SELECT id FROM sex WHERE sex = %s", (sex,))
+        sex_result = cursor.fetchone()
+        if not sex_result:
+            return jsonify({'error': '性别不存在'}), 400
+        sex_id = sex_result[0]
+
+        # 获取年级ID
+        cursor.execute("SELECT id FROM grade WHERE grade = %s", (grade,))
+        grade_result = cursor.fetchone()
+        if not grade_result:
+            return jsonify({'error': '年级不存在'}), 400
+        grade_id = grade_result[0]
+
+        # 插入学生信息
+        cursor.execute("""
+            INSERT INTO student (name, sex_id, grade_id, phone)
+            VALUES (%s, %s, %s, %s)
+        """, (student_name, sex_id, grade_id, phone))
+
+        student_id = cursor.lastrowid
+
+        # 如果有选择教练，插入学生与教练的关联
+        if coach_ids:
+            for coach_id in coach_ids:
+                cursor.execute("""
+                    INSERT INTO student_coach (student_id, coach_id)
+                    VALUES (%s, %s)
+                """, (student_id, coach_id))
+
+        connection.commit()
+
+        return jsonify({'message': '学生添加成功', 'student_id': student_id}), 201
+
     except Exception as e:
         if connection:
             connection.rollback()

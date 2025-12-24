@@ -56,8 +56,11 @@
                 <div class="content-area">
                     <!-- 学生管理页面 -->
                     <div v-if="activeMenu === 'students'">
-                        <h1>学生管理</h1>
-                        
+                        <div class="page-header">
+                            <h1>学生管理</h1>
+                            <button class="add-btn" @click="openAddStudentModal">新增学生</button>
+                        </div>
+
                         <!-- 筛选表单 -->
                         <div class="filter-form">
                             <div class="filter-row">
@@ -119,8 +122,11 @@
                     
                     <!-- 教练管理页面 -->
                     <div v-if="activeMenu === 'coaches'">
-                        <h1>教练管理</h1>
-                        
+                        <div class="page-header">
+                            <h1>教练管理</h1>
+                            <button class="add-btn" @click="openAddCoachModal">新增教练</button>
+                        </div>
+
                         <!-- 筛选表单 -->
                         <div class="filter-form">
                             <div class="filter-row">
@@ -192,6 +198,62 @@
             </div>
         </div>
         
+        <!-- 新增学生弹窗 -->
+        <div class="modal-overlay" v-if="showAddStudentModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>新增学生</h3>
+                    <button class="close-btn" @click="closeAddStudentModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="addStudentName">姓名 <span class="required">*</span></label>
+                        <input type="text" id="addStudentName" v-model="addStudentData.name" placeholder="请输入姓名" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addStudentSex">性别 <span class="required">*</span></label>
+                        <select id="addStudentSex" v-model="addStudentData.sex" required>
+                            <option value="">请选择性别</option>
+                            <option v-for="sex in sexOptions" :key="sex" :value="sex">{{ sex }}</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="addStudentPhone">电话 <span class="required">*</span></label>
+                        <input type="text" id="addStudentPhone" v-model="addStudentData.phone" placeholder="请输入电话" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addStudentGrade">年级 <span class="required">*</span></label>
+                        <select id="addStudentGrade" v-model="addStudentData.grade" required>
+                            <option value="">请选择年级</option>
+                            <option value="一年级">一年级</option>
+                            <option value="二年级">二年级</option>
+                            <option value="三年级">三年级</option>
+                            <option value="四年级">四年级</option>
+                            <option value="五年级">五年级</option>
+                            <option value="六年级">六年级</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="addStudentCoaches">教练</label>
+                        <div class="multi-select">
+                            <div v-for="coach in activeCoaches" :key="coach.id" class="checkbox-item">
+                                <input
+                                    type="checkbox"
+                                    :id="'coach-' + coach.id"
+                                    :value="coach.id"
+                                    v-model="addStudentData.coach_ids">
+                                <label :for="'coach-' + coach.id">{{ coach.coach_name }}</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAddStudentModal">取消</button>
+                    <button class="save-btn" @click="saveAddStudent">保存</button>
+                </div>
+            </div>
+        </div>
+
         <!-- 学生编辑弹窗 -->
         <div class="modal-overlay" v-if="showEditStudentModal">
             <div class="modal">
@@ -278,7 +340,67 @@
                 </div>
             </div>
         </div>
-        
+
+        <!-- 新增教练弹窗 -->
+        <div class="modal-overlay" v-if="showAddCoachModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>新增教练</h3>
+                    <button class="close-btn" @click="closeAddCoachModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="addCoachName">姓名 <span class="required">*</span></label>
+                        <input type="text" id="addCoachName" v-model="addCoachData.name" placeholder="请输入姓名" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addCoachSex">性别 <span class="required">*</span></label>
+                        <select id="addCoachSex" v-model="addCoachData.sex" required>
+                            <option value="">请选择性别</option>
+                            <option v-for="sex in sexOptions" :key="sex" :value="sex">{{ sex }}</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="addCoachPhone">电话 <span class="required">*</span></label>
+                        <input type="text" id="addCoachPhone" v-model="addCoachData.phone" placeholder="请输入电话" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addCoachSubject">学科 <span class="required">*</span></label>
+                        <select id="addCoachSubject" v-model="addCoachData.subject" required>
+                            <option value="">请选择学科</option>
+                            <option value="语文">语文</option>
+                            <option value="数学">数学</option>
+                            <option value="英语">英语</option>
+                            <option value="物理">物理</option>
+                            <option value="化学">化学</option>
+                            <option value="生物">生物</option>
+                            <option value="历史">历史</option>
+                            <option value="地理">地理</option>
+                            <option value="政治">政治</option>
+                            <option value="科学">科学</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="addCoachStudents">学生</label>
+                        <div class="multi-select">
+                            <div v-for="student in activeStudents" :key="student.id" class="checkbox-item">
+                                <input
+                                    type="checkbox"
+                                    :id="'student-' + student.id"
+                                    :value="student.id"
+                                    v-model="addCoachData.student_ids">
+                                <label :for="'student-' + student.id">{{ student.student_name }}</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAddCoachModal">取消</button>
+                    <button class="save-btn" @click="saveAddCoach">保存</button>
+                </div>
+            </div>
+        </div>
+
         <!-- 删除确认弹窗 -->
         <div class="modal-overlay" v-if="showDeleteConfirm">
             <div class="modal">

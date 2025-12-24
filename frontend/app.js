@@ -28,9 +28,27 @@ createApp({
             filteredStudents: [],
             filteredCoaches: [],
             // 弹窗状态
+            showAddStudentModal: false,
+            showAddCoachModal: false,
             showEditStudentModal: false,
             showEditCoachModal: false,
             showDeleteConfirm: false,
+            // 新增学生数据
+            addStudentData: {
+                name: '',
+                sex: '',
+                phone: '',
+                grade: '',
+                coach_ids: []
+            },
+            // 新增教练数据
+            addCoachData: {
+                name: '',
+                sex: '',
+                phone: '',
+                subject: '',
+                student_ids: []
+            },
             // 编辑数据
             editStudentData: {
                 id: '',
@@ -48,7 +66,11 @@ createApp({
             },
             // 删除确认数据
             deleteId: null,
-            deleteType: ''
+            deleteType: '',
+            // 性别选项和启用的教练列表
+            sexOptions: ['男', '女'],
+            activeCoaches: [],
+            activeStudents: []
         };
     },
     mounted() {
@@ -202,6 +224,114 @@ createApp({
             }
         },
         
+        // 学生新增功能
+        async openAddStudentModal() {
+            // 获取启用的教练列表
+            try {
+                const response = await axios.get('/api/coaches/active', { withCredentials: true });
+                this.activeCoaches = response.data.coaches;
+            } catch (err) {
+                console.error('获取启用教练列表失败:', err);
+                this.error = '获取启用教练列表失败';
+            }
+            this.showAddStudentModal = true;
+        },
+
+        closeAddStudentModal() {
+            this.showAddStudentModal = false;
+            this.addStudentData = {
+                name: '',
+                sex: '',
+                phone: '',
+                grade: '',
+                coach_ids: []
+            };
+        },
+
+        async saveAddStudent() {
+            // 验证必填字段
+            if (!this.addStudentData.name || !this.addStudentData.sex ||
+                !this.addStudentData.phone || !this.addStudentData.grade) {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            try {
+                // 调用后端API来新增学生
+                const response = await axios.post('/api/students', {
+                    student_name: this.addStudentData.name,
+                    sex: this.addStudentData.sex,
+                    phone: this.addStudentData.phone,
+                    grade: this.addStudentData.grade,
+                    coach_ids: this.addStudentData.coach_ids
+                }, { withCredentials: true });
+
+                if (response.data.message === '学生添加成功') {
+                    // 添加成功后刷新学生数据
+                    await this.fetchStudents();
+                    this.closeAddStudentModal();
+                    alert('学生添加成功');
+                }
+            } catch (err) {
+                console.error('新增学生失败:', err);
+                alert(err.response?.data?.error || '新增学生失败');
+            }
+        },
+
+        // 教练新增功能
+        async openAddCoachModal() {
+            // 获取启用的学生列表
+            try {
+                const response = await axios.get('/api/students/active', { withCredentials: true });
+                this.activeStudents = response.data.students;
+            } catch (err) {
+                console.error('获取启用学生列表失败:', err);
+                this.error = '获取启用学生列表失败';
+            }
+            this.showAddCoachModal = true;
+        },
+
+        closeAddCoachModal() {
+            this.showAddCoachModal = false;
+            this.addCoachData = {
+                name: '',
+                sex: '',
+                phone: '',
+                subject: '',
+                student_ids: []
+            };
+        },
+
+        async saveAddCoach() {
+            // 验证必填字段
+            if (!this.addCoachData.name || !this.addCoachData.sex ||
+                !this.addCoachData.phone || !this.addCoachData.subject) {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            try {
+                // 调用后端API来新增教练
+                const response = await axios.post('/api/coaches', {
+                    coach_name: this.addCoachData.name,
+                    sex: this.addCoachData.sex,
+                    phone: this.addCoachData.phone,
+                    subject: this.addCoachData.subject,
+                    student_ids: this.addCoachData.student_ids
+                }, { withCredentials: true });
+
+                if (response.data.message === '教练添加成功') {
+                    // 添加成功后刷新教练数据
+                    await this.fetchCoaches();
+                    this.closeAddCoachModal();
+                    alert('教练添加成功');
+                }
+            } catch (err) {
+                console.error('新增教练失败:', err);
+                alert(err.response?.data?.error || '新增教练失败');
+            }
+        },
+
         // 学生编辑功能
         openEditStudentModal(student) {
             this.editStudentData = {
