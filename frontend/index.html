@@ -49,6 +49,9 @@
                         <li class="menu-item" :class="{ active: activeMenu === 'coaches' }" @click="setActiveMenu('coaches')">
                             教练管理
                         </li>
+                        <li class="menu-item" :class="{ active: activeMenu === 'accounts' }" @click="setActiveMenu('accounts')">
+                            账号管理
+                        </li>
                     </ul>
                 </aside>
                 
@@ -194,10 +197,37 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- 账号管理页面 -->
+                    <div v-if="activeMenu === 'accounts'">
+                        <h1>账号管理</h1>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>账号</th>
+                                    <th>密码</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="account in accounts" :key="account.username">
+                                    <td>{{ account.username }}</td>
+                                    <td>{{ account.password }}</td>
+                                    <td>{{ account.status === 0 ? '启用' : '禁用' }}</td>
+                                    <td class="action-column">
+                                        <button v-if="account.status === 1" class="enable-btn" @click="enableAccount(account.username)">启用</button>
+                                        <button v-if="account.status === 0" class="disable-btn" @click="disableAccount(account.username)">禁用</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
-        
+
         <!-- 新增学生弹窗 -->
         <div class="modal-overlay" v-if="showAddStudentModal">
             <div class="modal">

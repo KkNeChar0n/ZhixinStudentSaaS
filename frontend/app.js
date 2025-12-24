@@ -11,6 +11,7 @@ createApp({
             activeMenu: 'students',
             students: [],
             coaches: [],
+            accounts: [],
             // 学生筛选条件
             studentFilters: {
                 id: '',
@@ -99,6 +100,10 @@ createApp({
         // 设置活动菜单
         setActiveMenu(menu) {
             this.activeMenu = menu;
+            // 如果切换到账号管理，加载账号数据
+            if (menu === 'accounts') {
+                this.fetchAccounts();
+            }
         },
         
         // 获取学生数据
@@ -453,6 +458,43 @@ createApp({
                 console.error('删除数据失败:', err);
                 this.error = err.response?.data?.error || '删除数据失败';
                 this.closeDeleteConfirm();
+            }
+        },
+
+        // 账号管理功能
+        async fetchAccounts() {
+            try {
+                const response = await axios.get('/api/accounts', { withCredentials: true });
+                this.accounts = response.data.accounts;
+            } catch (err) {
+                console.error('获取账号数据失败:', err);
+                this.error = '获取账号数据失败';
+            }
+        },
+
+        async enableAccount(username) {
+            try {
+                await axios.put(`/api/accounts/${username}/status`, {
+                    status: 0
+                }, { withCredentials: true });
+                alert('账号已启用');
+                await this.fetchAccounts();
+            } catch (err) {
+                console.error('启用账号失败:', err);
+                alert(err.response?.data?.error || '启用账号失败');
+            }
+        },
+
+        async disableAccount(username) {
+            try {
+                await axios.put(`/api/accounts/${username}/status`, {
+                    status: 1
+                }, { withCredentials: true });
+                alert('账号已禁用');
+                await this.fetchAccounts();
+            } catch (err) {
+                console.error('禁用账号失败:', err);
+                alert(err.response?.data?.error || '禁用账号失败');
             }
         }
     }

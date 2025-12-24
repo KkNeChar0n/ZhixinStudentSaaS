@@ -39,10 +39,13 @@ def login():
         cursor = connection.cursor(pymysql.cursors.DictCursor)
         
         # 查询用户
-        cursor.execute("SELECT username FROM useraccount WHERE username = %s AND password = %s", (username, password))
+        cursor.execute("SELECT username, status FROM useraccount WHERE username = %s AND password = %s", (username, password))
         user = cursor.fetchone()
-        
+
         if user:
+            # 检查账号状态
+            if user['status'] == 1:
+                return jsonify({'error': '该账号已被禁用'}), 403
             # 登录成功，保存到会话
             session['username'] = user['username']
             return jsonify({'message': '登录成功', 'username': user['username']}), 200
@@ -70,6 +73,61 @@ def get_profile():
 def logout():
     session.pop('username', None)
     return jsonify({'message': '登出成功'}), 200
+
+# API接口：获取账号列表
+@app.route('/api/accounts', methods=['GET'])
+def get_accounts():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询所有账号
+        cursor.execute("SELECT username, password, status FROM useraccount ORDER BY username")
+        accounts = cursor.fetchall()
+
+        return jsonify({'accounts': accounts}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新账号状态
+@app.route('/api/accounts/<username>/status', methods=['PUT'])
+def update_account_status(username):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        status = data.get('status')
+
+        if status not in [0, 1]:
+            return jsonify({'error': '状态值必须为0或1'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 更新账号状态
+        cursor.execute("UPDATE useraccount SET status = %s WHERE username = %s", (status, username))
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '账号不存在'}), 404
+
+        return jsonify({'message': '状态更新成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
 
 # API接口：获取学生列表
 @app.route('/api/students', methods=['GET'])

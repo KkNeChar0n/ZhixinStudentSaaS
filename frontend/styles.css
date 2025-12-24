@@ -364,6 +364,28 @@ h1 {
     background-color: #c0392b;
 }
 
+.enable-btn {
+    background-color: #27ae60;
+    color: #fff;
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.enable-btn:hover {
+    background-color: #229954;
+}
+
+.disable-btn {
+    background-color: #e67e22;
+    color: #fff;
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.disable-btn:hover {
+    background-color: #d35400;
+}
+
 /* 弹窗样式 */
 .modal-overlay {
     position: fixed;
