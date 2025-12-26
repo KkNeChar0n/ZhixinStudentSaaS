@@ -79,6 +79,11 @@ jobs:
                 echo "执行账号管理字段迁移..."
                 mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/add_account_status.sql" 2>&1 || true
               fi
+              # 执行status字段类型迁移
+              if [ -f "${PROJECT_PATH}/migrate_status_fields.sql" ]; then
+                echo "执行status字段类型迁移..."
+                mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/migrate_status_fields.sql" 2>&1 || true
+              fi
             fi
             
             # 创建systemd服务文件 - 使用安全的方式

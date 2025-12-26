@@ -71,7 +71,9 @@ createApp({
             // 性别选项和启用的教练列表
             sexOptions: ['男', '女'],
             activeCoaches: [],
-            activeStudents: []
+            activeStudents: [],
+            activeGrades: [],
+            activeSubjects: []
         };
     },
     mounted() {
@@ -239,6 +241,16 @@ createApp({
                 console.error('获取启用教练列表失败:', err);
                 this.error = '获取启用教练列表失败';
             }
+
+            // 获取启用的年级列表
+            try {
+                const response = await axios.get('/api/grades/active', { withCredentials: true });
+                this.activeGrades = response.data.grades;
+            } catch (err) {
+                console.error('获取启用年级列表失败:', err);
+                this.error = '获取启用年级列表失败';
+            }
+
             this.showAddStudentModal = true;
         },
 
@@ -293,6 +305,16 @@ createApp({
                 console.error('获取启用学生列表失败:', err);
                 this.error = '获取启用学生列表失败';
             }
+
+            // 获取启用的学科列表
+            try {
+                const response = await axios.get('/api/subjects/active', { withCredentials: true });
+                this.activeSubjects = response.data.subjects;
+            } catch (err) {
+                console.error('获取启用学科列表失败:', err);
+                this.error = '获取启用学科列表失败';
+            }
+
             this.showAddCoachModal = true;
         },
 
@@ -338,7 +360,16 @@ createApp({
         },
 
         // 学生编辑功能
-        openEditStudentModal(student) {
+        async openEditStudentModal(student) {
+            // 获取启用的年级列表
+            try {
+                const response = await axios.get('/api/grades/active', { withCredentials: true });
+                this.activeGrades = response.data.grades;
+            } catch (err) {
+                console.error('获取启用年级列表失败:', err);
+                this.error = '获取启用年级列表失败';
+            }
+
             this.editStudentData = {
                 id: student.id,
                 name: student.student_name,
@@ -382,7 +413,16 @@ createApp({
         },
         
         // 教练编辑功能
-        openEditCoachModal(coach) {
+        async openEditCoachModal(coach) {
+            // 获取启用的学科列表
+            try {
+                const response = await axios.get('/api/subjects/active', { withCredentials: true });
+                this.activeSubjects = response.data.subjects;
+            } catch (err) {
+                console.error('获取启用学科列表失败:', err);
+                this.error = '获取启用学科列表失败';
+            }
+
             this.editCoachData = {
                 id: coach.id,
                 name: coach.coach_name,

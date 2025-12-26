@@ -255,12 +255,7 @@
                         <label for="addStudentGrade">年级 <span class="required">*</span></label>
                         <select id="addStudentGrade" v-model="addStudentData.grade" required>
                             <option value="">请选择年级</option>
-                            <option value="一年级">一年级</option>
-                            <option value="二年级">二年级</option>
-                            <option value="三年级">三年级</option>
-                            <option value="四年级">四年级</option>
-                            <option value="五年级">五年级</option>
-                            <option value="六年级">六年级</option>
+                            <option v-for="grade in activeGrades" :key="grade.id" :value="grade.grade">{{ grade.grade }}</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -310,12 +305,7 @@
                     <div class="form-group">
                         <label for="editStudentGrade">年级</label>
                         <select id="editStudentGrade" v-model="editStudentData.grade">
-                            <option value="一年级">一年级</option>
-                            <option value="二年级">二年级</option>
-                            <option value="三年级">三年级</option>
-                            <option value="四年级">四年级</option>
-                            <option value="五年级">五年级</option>
-                            <option value="六年级">六年级</option>
+                            <option v-for="grade in activeGrades" :key="grade.id" :value="grade.grade">{{ grade.grade }}</option>
                         </select>
                     </div>
                 </div>
@@ -352,15 +342,7 @@
                     <div class="form-group">
                         <label for="editCoachSubject">学科</label>
                         <select id="editCoachSubject" v-model="editCoachData.subject">
-                            <option value="语文">语文</option>
-                            <option value="数学">数学</option>
-                            <option value="英语">英语</option>
-                            <option value="物理">物理</option>
-                            <option value="化学">化学</option>
-                            <option value="生物">生物</option>
-                            <option value="历史">历史</option>
-                            <option value="地理">地理</option>
-                            <option value="政治">政治</option>
+                            <option v-for="subject in activeSubjects" :key="subject.id" :value="subject.subject">{{ subject.subject }}</option>
                         </select>
                     </div>
                 </div>
@@ -398,16 +380,7 @@
                         <label for="addCoachSubject">学科 <span class="required">*</span></label>
                         <select id="addCoachSubject" v-model="addCoachData.subject" required>
                             <option value="">请选择学科</option>
-                            <option value="语文">语文</option>
-                            <option value="数学">数学</option>
-                            <option value="英语">英语</option>
-                            <option value="物理">物理</option>
-                            <option value="化学">化学</option>
-                            <option value="生物">生物</option>
-                            <option value="历史">历史</option>
-                            <option value="地理">地理</option>
-                            <option value="政治">政治</option>
-                            <option value="科学">科学</option>
+                            <option v-for="subject in activeSubjects" :key="subject.id" :value="subject.subject">{{ subject.subject }}</option>
                         </select>
                     </div>
                     <div class="form-group">

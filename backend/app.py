@@ -172,6 +172,50 @@ def get_students():
         if connection:
             connection.close()
 
+# API接口：获取启用的年级列表
+@app.route('/api/grades/active', methods=['GET'])
+def get_active_grades():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询状态为启用(0)的年级
+        cursor.execute("SELECT id, grade FROM grade WHERE status = 0 ORDER BY id")
+        grades = cursor.fetchall()
+
+        return jsonify({'grades': grades}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取启用的学科列表
+@app.route('/api/subjects/active', methods=['GET'])
+def get_active_subjects():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询状态为启用(0)的学科
+        cursor.execute("SELECT id, subject FROM subject WHERE status = 0 ORDER BY id")
+        subjects = cursor.fetchall()
+
+        return jsonify({'subjects': subjects}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 # API接口：获取教练列表
 @app.route('/api/coaches', methods=['GET'])
 def get_coaches():
