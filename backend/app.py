@@ -140,25 +140,26 @@ def get_students():
         
         # 查询学生列表，包括关联的性别、年级和教练信息
         cursor.execute("""
-            SELECT 
-                s.id, 
-                s.name AS student_name, 
-                sx.sex, 
-                g.grade, 
-                s.phone, 
+            SELECT
+                s.id,
+                s.name AS student_name,
+                sx.sex,
+                g.grade,
+                s.phone,
+                s.status,
                 GROUP_CONCAT(c.name SEPARATOR ', ') AS coach_names
-            FROM 
+            FROM
                 student s
-            JOIN 
+            JOIN
                 sex sx ON s.sex_id = sx.id
-            JOIN 
+            JOIN
                 grade g ON s.grade_id = g.id
-            LEFT JOIN 
+            LEFT JOIN
                 student_coach sc ON s.id = sc.student_id
-            LEFT JOIN 
+            LEFT JOIN
                 coach c ON sc.coach_id = c.id
-            GROUP BY 
-                s.id, s.name, sx.sex, g.grade, s.phone
+            GROUP BY
+                s.id, s.name, sx.sex, g.grade, s.phone, s.status
         """)
         
         students = cursor.fetchall()
@@ -232,7 +233,8 @@ def get_coaches():
                 c.name AS coach_name,
                 sx.sex,
                 sub.subject,
-                c.phone
+                c.phone,
+                c.status
             FROM
                 coach c
             JOIN

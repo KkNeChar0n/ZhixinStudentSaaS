@@ -16,14 +16,16 @@ createApp({
             studentFilters: {
                 id: '',
                 name: '',
-                grade: ''
+                grade: '',
+                status: ''
             },
             // 教练筛选条件
             coachFilters: {
                 id: '',
                 name: '',
                 sex: '',
-                subject: ''
+                subject: '',
+                status: ''
             },
             // 筛选后的学生和教练数据
             filteredStudents: [],
@@ -143,7 +145,9 @@ createApp({
                 const nameMatch = !this.studentFilters.name || student.student_name.toLowerCase().includes(this.studentFilters.name.toLowerCase());
                 // 年级精确匹配
                 const gradeMatch = !this.studentFilters.grade || student.grade === this.studentFilters.grade;
-                return idMatch && nameMatch && gradeMatch;
+                // 状态精确匹配
+                const statusMatch = this.studentFilters.status === '' || student.status === parseInt(this.studentFilters.status);
+                return idMatch && nameMatch && gradeMatch && statusMatch;
             });
         },
         
@@ -152,7 +156,8 @@ createApp({
             this.studentFilters = {
                 id: '',
                 name: '',
-                grade: ''
+                grade: '',
+                status: ''
             };
             this.filteredStudents = this.students;
         },
@@ -168,7 +173,9 @@ createApp({
                 const sexMatch = !this.coachFilters.sex || coach.sex === this.coachFilters.sex;
                 // 学科精确匹配
                 const subjectMatch = !this.coachFilters.subject || coach.subject === this.coachFilters.subject;
-                return idMatch && nameMatch && sexMatch && subjectMatch;
+                // 状态精确匹配
+                const statusMatch = this.coachFilters.status === '' || coach.status === parseInt(this.coachFilters.status);
+                return idMatch && nameMatch && sexMatch && subjectMatch && statusMatch;
             });
         },
         
@@ -178,7 +185,8 @@ createApp({
                 id: '',
                 name: '',
                 sex: '',
-                subject: ''
+                subject: '',
+                status: ''
             };
             this.filteredCoaches = this.coaches;
         },

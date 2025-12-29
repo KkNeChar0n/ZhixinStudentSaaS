@@ -87,6 +87,14 @@
                                         <option value="六年级">六年级</option>
                                     </select>
                                 </div>
+                                <div class="filter-item">
+                                    <label for="studentStatusFilter">状态</label>
+                                    <select id="studentStatusFilter" v-model="studentFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">启用</option>
+                                        <option value="1">禁用</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="filter-actions">
                                 <button class="search-btn" @click="searchStudents">搜索</button>
@@ -103,6 +111,7 @@
                                     <th>年级</th>
                                     <th>电话</th>
                                     <th>教练姓名</th>
+                                    <th>状态</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
@@ -114,6 +123,7 @@
                                     <td>{{ student.grade }}</td>
                                     <td>{{ student.phone }}</td>
                                     <td>{{ student.coach_names }}</td>
+                                    <td>{{ student.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
                                         <button class="edit-btn" @click="openEditStudentModal(student)">编辑</button>
                                         <button class="delete-btn" @click="openDeleteConfirm(student.id, 'student')">删除</button>
@@ -164,6 +174,14 @@
                                         <option value="政治">政治</option>
                                     </select>
                                 </div>
+                                <div class="filter-item">
+                                    <label for="coachStatusFilter">状态</label>
+                                    <select id="coachStatusFilter" v-model="coachFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">启用</option>
+                                        <option value="1">禁用</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="filter-actions">
                                 <button class="search-btn" @click="searchCoaches">搜索</button>
@@ -179,6 +197,7 @@
                                     <th>性别</th>
                                     <th>学科</th>
                                     <th>电话</th>
+                                    <th>状态</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
@@ -189,6 +208,7 @@
                                     <td>{{ coach.sex }}</td>
                                     <td>{{ coach.subject }}</td>
                                     <td>{{ coach.phone }}</td>
+                                    <td>{{ coach.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
                                         <button class="edit-btn" @click="openEditCoachModal(coach)">编辑</button>
                                         <button class="delete-btn" @click="openDeleteConfirm(coach.id, 'coach')">删除</button>
