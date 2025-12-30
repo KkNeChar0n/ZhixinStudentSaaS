@@ -28,9 +28,61 @@ jobs:
             PROJECT_PATH="/home/charonspace"
             FRONTEND_PATH="${PROJECT_PATH}/frontend"
             BACKEND_PATH="${PROJECT_PATH}/backend"
-            
+
             # 确保项目目录存在 - 使用引号避免空格问题
             mkdir -p "${PROJECT_PATH}"
+
+            # 配置GitHub SSH密钥（用于服务器访问GitHub）
+            echo "=== 配置GitHub SSH密钥 ==="
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+
+            # 检查是否已存在GitHub deploy key
+            if [ ! -f ~/.ssh/github_deploy_key ]; then
+              echo "生成GitHub SSH密钥..."
+              ssh-keygen -t ed25519 -C "github-deploy-key" -f ~/.ssh/github_deploy_key -N ""
+
+              echo "=========================================="
+              echo "⚠️ 请将以下公钥添加到GitHub Deploy Keys:"
+              echo "=========================================="
+              cat ~/.ssh/github_deploy_key.pub
+              echo "=========================================="
+              echo "访问: https://github.com/KkNeChar0n/ZhixinStudentSaaS/settings/keys"
+              echo "点击 'Add deploy key' 并粘贴上面的公钥"
+              echo "=========================================="
+            else
+              echo "GitHub SSH密钥已存在"
+            fi
+
+            # 配置SSH config
+            if ! grep -q "Host github.com" ~/.ssh/config 2>/dev/null; then
+              echo "配置SSH config..."
+              cat >> ~/.ssh/config << 'SSHCONFIG'
+
+# GitHub 配置
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/github_deploy_key
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+SSHCONFIG
+              chmod 600 ~/.ssh/config
+              echo "SSH config 配置完成"
+            fi
+
+            # 设置密钥权限
+            chmod 600 ~/.ssh/github_deploy_key 2>/dev/null || true
+            chmod 644 ~/.ssh/github_deploy_key.pub 2>/dev/null || true
+
+            # 测试GitHub连接
+            echo "测试GitHub SSH连接..."
+            if ssh -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+              echo "✅ GitHub SSH连接正常"
+            else
+              echo "⚠️ GitHub SSH连接测试:"
+              ssh -T git@github.com 2>&1 || true
+            fi
             
             # 如果项目已存在，拉取最新代码
             if [ -d "${PROJECT_PATH}/.git" ]; then
