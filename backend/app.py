@@ -641,7 +641,7 @@ def get_orders():
                 o.create_time,
                 o.status
             FROM
-                `order` o
+                `orders` o
             JOIN
                 student s ON o.student_id = s.id
             ORDER BY
@@ -677,7 +677,7 @@ def create_order():
 
         # 插入订单数据，状态默认为10（草稿）
         cursor.execute("""
-            INSERT INTO `order` (student_id, amount_receivable, status)
+            INSERT INTO `orders` (student_id, amount_receivable, status)
             VALUES (%s, %s, 10)
         """, (student_id, amount_receivable))
 
@@ -713,7 +713,7 @@ def update_order(order_id):
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
         # 检查订单状态是否为草稿
-        cursor.execute("SELECT status FROM `order` WHERE id = %s", (order_id,))
+        cursor.execute("SELECT status FROM `orders` WHERE id = %s", (order_id,))
         order = cursor.fetchone()
 
         if not order:
@@ -724,7 +724,7 @@ def update_order(order_id):
 
         # 更新订单
         cursor.execute("""
-            UPDATE `order`
+            UPDATE `orders`
             SET student_id = %s, amount_receivable = %s
             WHERE id = %s
         """, (student_id, amount_receivable, order_id))
@@ -753,7 +753,7 @@ def cancel_order(order_id):
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
         # 检查订单状态是否为草稿
-        cursor.execute("SELECT status FROM `order` WHERE id = %s", (order_id,))
+        cursor.execute("SELECT status FROM `orders` WHERE id = %s", (order_id,))
         order = cursor.fetchone()
 
         if not order:
@@ -764,7 +764,7 @@ def cancel_order(order_id):
 
         # 将订单状态更新为99（已作废）
         cursor.execute("""
-            UPDATE `order`
+            UPDATE `orders`
             SET status = 99
             WHERE id = %s
         """, (order_id,))
