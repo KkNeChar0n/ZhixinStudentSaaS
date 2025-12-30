@@ -12,6 +12,7 @@ createApp({
             students: [],
             coaches: [],
             accounts: [],
+            orders: [],
             // 学生筛选条件
             studentFilters: {
                 id: '',
@@ -27,15 +28,25 @@ createApp({
                 subject: '',
                 status: ''
             },
+            // 订单筛选条件
+            orderFilters: {
+                id: '',
+                uid: '',
+                status: ''
+            },
             // 筛选后的学生和教练数据
             filteredStudents: [],
             filteredCoaches: [],
+            filteredOrders: [],
             // 弹窗状态
             showAddStudentModal: false,
             showAddCoachModal: false,
             showEditStudentModal: false,
             showEditCoachModal: false,
             showDeleteConfirm: false,
+            showAddOrderModal: false,
+            showEditOrderModal: false,
+            showCancelOrderConfirm: false,
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -67,15 +78,30 @@ createApp({
                 phone: '',
                 subject: ''
             },
+            // 新增订单数据
+            addOrderData: {
+                student_id: '',
+                student_name: '',
+                amount_receivable: ''
+            },
+            // 编辑订单数据
+            editOrderData: {
+                id: '',
+                student_id: '',
+                student_name: '',
+                amount_receivable: ''
+            },
             // 删除确认数据
             deleteId: null,
             deleteType: '',
+            cancelOrderId: null,
             // 性别选项和启用的教练列表
             sexOptions: ['男', '女'],
             activeCoaches: [],
             activeStudents: [],
             activeGrades: [],
-            activeSubjects: []
+            activeSubjects: [],
+            activeStudentsForOrder: []
         };
     },
     mounted() {
@@ -109,6 +135,8 @@ createApp({
                 this.fetchStudents();
             } else if (menu === 'coaches') {
                 this.fetchCoaches();
+            } else if (menu === 'orders') {
+                this.fetchOrders();
             } else if (menu === 'accounts') {
                 this.fetchAccounts();
             }
@@ -547,6 +575,202 @@ createApp({
             } catch (err) {
                 console.error('禁用账号失败:', err);
                 alert(err.response?.data?.error || '禁用账号失败');
+            }
+        },
+
+        // ==================== 订单管理功能 ====================
+
+        // 获取订单数据
+        async fetchOrders() {
+            try {
+                const response = await axios.get('/api/orders', { withCredentials: true });
+                this.orders = response.data.orders;
+                this.filteredOrders = this.orders;
+            } catch (err) {
+                console.error('获取订单失败:', err);
+                this.error = '获取订单失败';
+            }
+        },
+
+        // 订单筛选功能
+        searchOrders() {
+            this.filteredOrders = this.orders.filter(order => {
+                const idMatch = !this.orderFilters.id || order.id === parseInt(this.orderFilters.id);
+                const uidMatch = !this.orderFilters.uid || order.uid === parseInt(this.orderFilters.uid);
+                const statusMatch = this.orderFilters.status === '' || order.status === parseInt(this.orderFilters.status);
+                return idMatch && uidMatch && statusMatch;
+            });
+        },
+
+        // 重置订单筛选
+        resetOrderFilters() {
+            this.orderFilters = {
+                id: '',
+                uid: '',
+                status: ''
+            };
+            this.filteredOrders = this.orders;
+        },
+
+        // 获取订单状态文本
+        getOrderStatusText(status) {
+            const statusMap = {
+                10: '草稿',
+                20: '审核中',
+                30: '已通过',
+                40: '已驳回',
+                99: '已作废'
+            };
+            return statusMap[status] || '未知';
+        },
+
+        // 打开新增订单弹窗
+        async openAddOrderModal() {
+            // 获取启用的学生列表
+            try {
+                const response = await axios.get('/api/students/active', { withCredentials: true });
+                this.activeStudentsForOrder = response.data.students;
+            } catch (err) {
+                console.error('获取启用学生列表失败:', err);
+                this.error = '获取启用学生列表失败';
+            }
+            this.showAddOrderModal = true;
+        },
+
+        // 关闭新增订单弹窗
+        closeAddOrderModal() {
+            this.showAddOrderModal = false;
+            this.addOrderData = {
+                student_id: '',
+                student_name: '',
+                amount_receivable: ''
+            };
+        },
+
+        // 学生选择变化时更新学生姓名
+        onStudentChange() {
+            const student = this.activeStudentsForOrder.find(s => s.id === parseInt(this.addOrderData.student_id));
+            if (student) {
+                this.addOrderData.student_name = student.student_name;
+            } else {
+                this.addOrderData.student_name = '';
+            }
+        },
+
+        // 保存新增订单
+        async saveAddOrder() {
+            if (!this.addOrderData.student_id || !this.addOrderData.amount_receivable) {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            try {
+                const response = await axios.post('/api/orders', {
+                    student_id: this.addOrderData.student_id,
+                    amount_receivable: this.addOrderData.amount_receivable
+                }, { withCredentials: true });
+
+                if (response.data.message === '订单创建成功') {
+                    await this.fetchOrders();
+                    this.closeAddOrderModal();
+                    alert('订单创建成功');
+                }
+            } catch (err) {
+                console.error('创建订单失败:', err);
+                alert(err.response?.data?.error || '创建订单失败');
+            }
+        },
+
+        // 打开编辑订单弹窗
+        async openEditOrderModal(order) {
+            // 获取启用的学生列表
+            try {
+                const response = await axios.get('/api/students/active', { withCredentials: true });
+                this.activeStudentsForOrder = response.data.students;
+            } catch (err) {
+                console.error('获取启用学生列表失败:', err);
+                this.error = '获取启用学生列表失败';
+            }
+
+            this.editOrderData = {
+                id: order.id,
+                student_id: order.uid,
+                student_name: order.student_name,
+                amount_receivable: order.amount_receivable
+            };
+            this.showEditOrderModal = true;
+        },
+
+        // 关闭编辑订单弹窗
+        closeEditOrderModal() {
+            this.showEditOrderModal = false;
+            this.editOrderData = {
+                id: '',
+                student_id: '',
+                student_name: '',
+                amount_receivable: ''
+            };
+        },
+
+        // 编辑时学生选择变化更新学生姓名
+        onEditStudentChange() {
+            const student = this.activeStudentsForOrder.find(s => s.id === parseInt(this.editOrderData.student_id));
+            if (student) {
+                this.editOrderData.student_name = student.student_name;
+            } else {
+                this.editOrderData.student_name = '';
+            }
+        },
+
+        // 保存编辑订单
+        async saveEditOrder() {
+            if (!this.editOrderData.student_id || !this.editOrderData.amount_receivable) {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            try {
+                const response = await axios.put(`/api/orders/${this.editOrderData.id}`, {
+                    student_id: this.editOrderData.student_id,
+                    amount_receivable: this.editOrderData.amount_receivable
+                }, { withCredentials: true });
+
+                if (response.data.message === '订单更新成功') {
+                    await this.fetchOrders();
+                    this.closeEditOrderModal();
+                    alert('订单更新成功');
+                }
+            } catch (err) {
+                console.error('更新订单失败:', err);
+                alert(err.response?.data?.error || '更新订单失败');
+            }
+        },
+
+        // 打开作废订单确认弹窗
+        openCancelOrderConfirm(orderId) {
+            this.cancelOrderId = orderId;
+            this.showCancelOrderConfirm = true;
+        },
+
+        // 关闭作废订单确认弹窗
+        closeCancelOrderConfirm() {
+            this.showCancelOrderConfirm = false;
+            this.cancelOrderId = null;
+        },
+
+        // 确认作废订单
+        async confirmCancelOrder() {
+            try {
+                const response = await axios.put(`/api/orders/${this.cancelOrderId}/cancel`, {}, { withCredentials: true });
+
+                if (response.data.message === '订单已作废') {
+                    await this.fetchOrders();
+                    this.closeCancelOrderConfirm();
+                    alert('订单已作废');
+                }
+            } catch (err) {
+                console.error('作废订单失败:', err);
+                alert(err.response?.data?.error || '作废订单失败');
             }
         }
     }

@@ -619,5 +619,169 @@ def add_student():
         if connection:
             connection.close()
 
+# ==================== 订单管理API ====================
+
+# API接口：获取订单列表
+@app.route('/api/orders', methods=['GET'])
+def get_orders():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询订单列表，关联学生信息
+        cursor.execute("""
+            SELECT
+                o.id,
+                o.student_id AS uid,
+                s.name AS student_name,
+                o.amount_receivable,
+                o.amount_received,
+                o.create_time,
+                o.status
+            FROM
+                `order` o
+            JOIN
+                student s ON o.student_id = s.id
+            ORDER BY
+                o.create_time DESC
+        """)
+
+        orders = cursor.fetchall()
+        return jsonify({'orders': orders}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：新增订单
+@app.route('/api/orders', methods=['POST'])
+def create_order():
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        student_id = data.get('student_id')
+        amount_receivable = data.get('amount_receivable')
+
+        if not student_id or not amount_receivable:
+            return jsonify({'error': '学生ID和应收金额不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 插入订单数据，状态默认为10（草稿）
+        cursor.execute("""
+            INSERT INTO `order` (student_id, amount_receivable, status)
+            VALUES (%s, %s, 10)
+        """, (student_id, amount_receivable))
+
+        connection.commit()
+        order_id = cursor.lastrowid
+
+        return jsonify({'message': '订单创建成功', 'order_id': order_id}), 201
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新订单
+@app.route('/api/orders/<int:order_id>', methods=['PUT'])
+def update_order(order_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        student_id = data.get('student_id')
+        amount_receivable = data.get('amount_receivable')
+
+        if not student_id or not amount_receivable:
+            return jsonify({'error': '学生ID和应收金额不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查订单状态是否为草稿
+        cursor.execute("SELECT status FROM `order` WHERE id = %s", (order_id,))
+        order = cursor.fetchone()
+
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+
+        if order['status'] != 10:
+            return jsonify({'error': '只能编辑草稿状态的订单'}), 400
+
+        # 更新订单
+        cursor.execute("""
+            UPDATE `order`
+            SET student_id = %s, amount_receivable = %s
+            WHERE id = %s
+        """, (student_id, amount_receivable, order_id))
+
+        connection.commit()
+
+        return jsonify({'message': '订单更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：作废订单
+@app.route('/api/orders/<int:order_id>/cancel', methods=['PUT'])
+def cancel_order(order_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查订单状态是否为草稿
+        cursor.execute("SELECT status FROM `order` WHERE id = %s", (order_id,))
+        order = cursor.fetchone()
+
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+
+        if order['status'] != 10:
+            return jsonify({'error': '只能作废草稿状态的订单'}), 400
+
+        # 将订单状态更新为99（已作废）
+        cursor.execute("""
+            UPDATE `order`
+            SET status = 99
+            WHERE id = %s
+        """, (order_id,))
+
+        connection.commit()
+
+        return jsonify({'message': '订单已作废'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)

@@ -49,6 +49,9 @@
                         <li class="menu-item" :class="{ active: activeMenu === 'coaches' }" @click="setActiveMenu('coaches')">
                             教练管理
                         </li>
+                        <li class="menu-item" :class="{ active: activeMenu === 'orders' }" @click="setActiveMenu('orders')">
+                            订单管理
+                        </li>
                         <li class="menu-item" :class="{ active: activeMenu === 'accounts' }" @click="setActiveMenu('accounts')">
                             账号管理
                         </li>
@@ -212,6 +215,73 @@
                                     <td class="action-column">
                                         <button class="edit-btn" @click="openEditCoachModal(coach)">编辑</button>
                                         <button class="delete-btn" @click="openDeleteConfirm(coach.id, 'coach')">删除</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 订单管理页面 -->
+                    <div v-if="activeMenu === 'orders'">
+                        <div class="page-header">
+                            <h1>订单管理</h1>
+                            <button class="add-btn" @click="openAddOrderModal">新增订单</button>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="orderIdFilter">ID</label>
+                                    <input type="number" id="orderIdFilter" v-model="orderFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="orderUidFilter">UID</label>
+                                    <input type="number" id="orderUidFilter" v-model="orderFilters.uid" placeholder="请输入UID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="orderStatusFilter">审核状态</label>
+                                    <select id="orderStatusFilter" v-model="orderFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="10">草稿</option>
+                                        <option value="20">审核中</option>
+                                        <option value="30">已通过</option>
+                                        <option value="40">已驳回</option>
+                                        <option value="99">已作废</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchOrders">搜索</button>
+                                <button class="reset-btn" @click="resetOrderFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>UID</th>
+                                    <th>下单时间</th>
+                                    <th>姓名</th>
+                                    <th>应收金额</th>
+                                    <th>实收金额</th>
+                                    <th>审核状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="order in filteredOrders" :key="order.id">
+                                    <td>{{ order.id }}</td>
+                                    <td>{{ order.uid }}</td>
+                                    <td>{{ order.create_time }}</td>
+                                    <td>{{ order.student_name }}</td>
+                                    <td>{{ order.amount_receivable }}</td>
+                                    <td>{{ order.amount_received }}</td>
+                                    <td>{{ getOrderStatusText(order.status) }}</td>
+                                    <td class="action-column">
+                                        <button v-if="order.status === 10" class="edit-btn" @click="openEditOrderModal(order)">编辑</button>
+                                        <button v-if="order.status === 10" class="delete-btn" @click="openCancelOrderConfirm(order.id)">作废</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -437,6 +507,85 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="closeDeleteConfirm">取消</button>
                     <button class="delete-btn" @click="confirmDelete">确认删除</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增订单弹窗 -->
+        <div class="modal-overlay" v-if="showAddOrderModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>新增订单</h3>
+                    <button class="close-btn" @click="closeAddOrderModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="addOrderUid">UID <span class="required">*</span></label>
+                        <select id="addOrderUid" v-model="addOrderData.student_id" @change="onStudentChange" required>
+                            <option value="">请选择学生</option>
+                            <option v-for="student in activeStudentsForOrder" :key="student.id" :value="student.id">{{ student.id }}</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="addOrderStudentName">学生姓名</label>
+                        <input type="text" id="addOrderStudentName" v-model="addOrderData.student_name" readonly placeholder="选择UID后自动显示">
+                    </div>
+                    <div class="form-group">
+                        <label for="addOrderAmount">应收金额 <span class="required">*</span></label>
+                        <input type="number" step="0.01" id="addOrderAmount" v-model="addOrderData.amount_receivable" placeholder="请输入应收金额" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAddOrderModal">取消</button>
+                    <button class="save-btn" @click="saveAddOrder">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑订单弹窗 -->
+        <div class="modal-overlay" v-if="showEditOrderModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>编辑订单</h3>
+                    <button class="close-btn" @click="closeEditOrderModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editOrderUid">UID <span class="required">*</span></label>
+                        <select id="editOrderUid" v-model="editOrderData.student_id" @change="onEditStudentChange" required>
+                            <option value="">请选择学生</option>
+                            <option v-for="student in activeStudentsForOrder" :key="student.id" :value="student.id">{{ student.id }}</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editOrderStudentName">学生姓名</label>
+                        <input type="text" id="editOrderStudentName" v-model="editOrderData.student_name" readonly placeholder="选择UID后自动显示">
+                    </div>
+                    <div class="form-group">
+                        <label for="editOrderAmount">应收金额 <span class="required">*</span></label>
+                        <input type="number" step="0.01" id="editOrderAmount" v-model="editOrderData.amount_receivable" placeholder="请输入应收金额" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEditOrderModal">取消</button>
+                    <button class="save-btn" @click="saveEditOrder">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 作废订单确认弹窗 -->
+        <div class="modal-overlay" v-if="showCancelOrderConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认作废</h3>
+                    <button class="close-btn" @click="closeCancelOrderConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认作废该订单？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeCancelOrderConfirm">否</button>
+                    <button class="delete-btn" @click="confirmCancelOrder">是</button>
                 </div>
             </div>
         </div>
