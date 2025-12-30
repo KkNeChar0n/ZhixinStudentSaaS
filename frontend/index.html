@@ -318,6 +318,69 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- 属性管理页面 -->
+                    <div v-if="activeMenu === 'attributes'">
+                        <div class="page-header">
+                            <h1>属性管理</h1>
+                            <button class="add-btn" @click="openAddAttributeModal">新增属性</button>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="attributeIdFilter">ID</label>
+                                    <input type="number" id="attributeIdFilter" v-model="attributeFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="attributeClassifyFilter">分类</label>
+                                    <select id="attributeClassifyFilter" v-model="attributeFilters.classify">
+                                        <option value="">全部</option>
+                                        <option value="0">属性</option>
+                                        <option value="1">规格</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="attributeStatusFilter">状态</label>
+                                    <select id="attributeStatusFilter" v-model="attributeFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">启用</option>
+                                        <option value="1">禁用</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchAttributes">搜索</button>
+                                <button class="reset-btn" @click="resetAttributeFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>名字</th>
+                                    <th>分类</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="attribute in filteredAttributes" :key="attribute.id">
+                                    <td>{{ attribute.id }}</td>
+                                    <td>{{ attribute.name }}</td>
+                                    <td>{{ getClassifyText(attribute.classify) }}</td>
+                                    <td>{{ getAttributeStatusText(attribute.status) }}</td>
+                                    <td class="action-column">
+                                        <button class="edit-btn" @click="openEditAttributeModal(attribute)">编辑</button>
+                                        <button v-if="attribute.status === 1" class="enable-btn" @click="openEnableAttributeConfirm(attribute.id)">启用</button>
+                                        <button v-if="attribute.status === 0" class="disable-btn" @click="openDisableAttributeConfirm(attribute.id)">禁用</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -590,6 +653,96 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="closeCancelOrderConfirm">否</button>
                     <button class="delete-btn" @click="confirmCancelOrder">是</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增属性弹窗 -->
+        <div class="modal-overlay" v-if="showAddAttributeModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>新增属性</h3>
+                    <button class="close-btn" @click="closeAddAttributeModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="addAttributeName">名字 <span class="required">*</span></label>
+                        <input type="text" id="addAttributeName" v-model="addAttributeData.name" placeholder="请输入名字" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addAttributeClassify">分类 <span class="required">*</span></label>
+                        <select id="addAttributeClassify" v-model="addAttributeData.classify" required>
+                            <option value="">请选择分类</option>
+                            <option value="0">属性</option>
+                            <option value="1">规格</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAddAttributeModal">取消</button>
+                    <button class="save-btn" @click="saveAddAttribute">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑属性弹窗 -->
+        <div class="modal-overlay" v-if="showEditAttributeModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>编辑属性</h3>
+                    <button class="close-btn" @click="closeEditAttributeModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editAttributeName">名字 <span class="required">*</span></label>
+                        <input type="text" id="editAttributeName" v-model="editAttributeData.name" placeholder="请输入名字" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editAttributeClassify">分类 <span class="required">*</span></label>
+                        <select id="editAttributeClassify" v-model="editAttributeData.classify" required>
+                            <option value="">请选择分类</option>
+                            <option value="0">属性</option>
+                            <option value="1">规格</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEditAttributeModal">取消</button>
+                    <button class="save-btn" @click="saveEditAttribute">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 启用属性确认弹窗 -->
+        <div class="modal-overlay" v-if="showEnableAttributeConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认启用</h3>
+                    <button class="close-btn" @click="closeEnableAttributeConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否启用该属性？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEnableAttributeConfirm">否</button>
+                    <button class="save-btn" @click="confirmEnableAttribute">是</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 禁用属性确认弹窗 -->
+        <div class="modal-overlay" v-if="showDisableAttributeConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认禁用</h3>
+                    <button class="close-btn" @click="closeDisableAttributeConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否禁用该属性？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeDisableAttributeConfirm">否</button>
+                    <button class="delete-btn" @click="confirmDisableAttribute">是</button>
                 </div>
             </div>
         </div>

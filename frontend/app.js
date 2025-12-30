@@ -13,6 +13,7 @@ createApp({
             coaches: [],
             accounts: [],
             orders: [],
+            attributes: [],
             // 学生筛选条件
             studentFilters: {
                 id: '',
@@ -34,10 +35,17 @@ createApp({
                 uid: '',
                 status: ''
             },
+            // 属性筛选条件
+            attributeFilters: {
+                id: '',
+                classify: '',
+                status: ''
+            },
             // 筛选后的学生和教练数据
             filteredStudents: [],
             filteredCoaches: [],
             filteredOrders: [],
+            filteredAttributes: [],
             // 弹窗状态
             showAddStudentModal: false,
             showAddCoachModal: false,
@@ -47,6 +55,10 @@ createApp({
             showAddOrderModal: false,
             showEditOrderModal: false,
             showCancelOrderConfirm: false,
+            showAddAttributeModal: false,
+            showEditAttributeModal: false,
+            showEnableAttributeConfirm: false,
+            showDisableAttributeConfirm: false,
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -91,10 +103,22 @@ createApp({
                 student_name: '',
                 amount_receivable: ''
             },
+            // 新增属性数据
+            addAttributeData: {
+                name: '',
+                classify: ''
+            },
+            // 编辑属性数据
+            editAttributeData: {
+                id: '',
+                name: '',
+                classify: ''
+            },
             // 删除确认数据
             deleteId: null,
             deleteType: '',
             cancelOrderId: null,
+            attributeId: null,
             // 性别选项和启用的教练列表
             sexOptions: ['男', '女'],
             activeCoaches: [],
@@ -200,6 +224,8 @@ createApp({
                 this.fetchOrders();
             } else if (menu === 'accounts') {
                 this.fetchAccounts();
+            } else if (menu === 'attributes') {
+                this.fetchAttributes();
             }
         },
         
@@ -832,6 +858,192 @@ createApp({
             } catch (err) {
                 console.error('作废订单失败:', err);
                 alert(err.response?.data?.error || '作废订单失败');
+            }
+        },
+
+        // ==================== 属性管理功能 ====================
+
+        // 获取属性数据
+        async fetchAttributes() {
+            try {
+                const response = await axios.get('/api/attributes', { withCredentials: true });
+                this.attributes = response.data.attributes;
+                this.filteredAttributes = this.attributes;
+            } catch (err) {
+                console.error('获取属性失败:', err);
+                this.error = '获取属性失败';
+            }
+        },
+
+        // 属性筛选功能
+        searchAttributes() {
+            this.filteredAttributes = this.attributes.filter(attr => {
+                const idMatch = !this.attributeFilters.id || attr.id === parseInt(this.attributeFilters.id);
+                const classifyMatch = this.attributeFilters.classify === '' || attr.classify === parseInt(this.attributeFilters.classify);
+                const statusMatch = this.attributeFilters.status === '' || attr.status === parseInt(this.attributeFilters.status);
+                return idMatch && classifyMatch && statusMatch;
+            });
+        },
+
+        // 重置属性筛选
+        resetAttributeFilters() {
+            this.attributeFilters = {
+                id: '',
+                classify: '',
+                status: ''
+            };
+            this.filteredAttributes = this.attributes;
+        },
+
+        // 获取分类文本
+        getClassifyText(classify) {
+            return classify === 0 ? '属性' : '规格';
+        },
+
+        // 获取状态文本
+        getAttributeStatusText(status) {
+            return status === 0 ? '启用' : '禁用';
+        },
+
+        // 打开新增属性弹窗
+        openAddAttributeModal() {
+            this.showAddAttributeModal = true;
+        },
+
+        // 关闭新增属性弹窗
+        closeAddAttributeModal() {
+            this.showAddAttributeModal = false;
+            this.addAttributeData = {
+                name: '',
+                classify: ''
+            };
+        },
+
+        // 保存新增属性
+        async saveAddAttribute() {
+            if (!this.addAttributeData.name || this.addAttributeData.classify === '') {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            try {
+                const response = await axios.post('/api/attributes', {
+                    name: this.addAttributeData.name,
+                    classify: parseInt(this.addAttributeData.classify)
+                }, { withCredentials: true });
+
+                if (response.data.message === '属性创建成功') {
+                    await this.fetchAttributes();
+                    this.closeAddAttributeModal();
+                    alert('属性创建成功');
+                }
+            } catch (err) {
+                console.error('创建属性失败:', err);
+                alert(err.response?.data?.error || '创建属性失败');
+            }
+        },
+
+        // 打开编辑属性弹窗
+        openEditAttributeModal(attribute) {
+            this.editAttributeData = {
+                id: attribute.id,
+                name: attribute.name,
+                classify: attribute.classify
+            };
+            this.showEditAttributeModal = true;
+        },
+
+        // 关闭编辑属性弹窗
+        closeEditAttributeModal() {
+            this.showEditAttributeModal = false;
+            this.editAttributeData = {
+                id: '',
+                name: '',
+                classify: ''
+            };
+        },
+
+        // 保存编辑属性
+        async saveEditAttribute() {
+            if (!this.editAttributeData.name || this.editAttributeData.classify === '') {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            try {
+                const response = await axios.put(`/api/attributes/${this.editAttributeData.id}`, {
+                    name: this.editAttributeData.name,
+                    classify: parseInt(this.editAttributeData.classify)
+                }, { withCredentials: true });
+
+                if (response.data.message === '属性更新成功') {
+                    await this.fetchAttributes();
+                    this.closeEditAttributeModal();
+                    alert('属性更新成功');
+                }
+            } catch (err) {
+                console.error('更新属性失败:', err);
+                alert(err.response?.data?.error || '更新属性失败');
+            }
+        },
+
+        // 打开启用属性确认弹窗
+        openEnableAttributeConfirm(attributeId) {
+            this.attributeId = attributeId;
+            this.showEnableAttributeConfirm = true;
+        },
+
+        // 关闭启用属性确认弹窗
+        closeEnableAttributeConfirm() {
+            this.showEnableAttributeConfirm = false;
+            this.attributeId = null;
+        },
+
+        // 确认启用属性
+        async confirmEnableAttribute() {
+            try {
+                const response = await axios.put(`/api/attributes/${this.attributeId}/status`, {
+                    status: 0
+                }, { withCredentials: true });
+
+                if (response.data.message === '状态更新成功') {
+                    await this.fetchAttributes();
+                    this.closeEnableAttributeConfirm();
+                    alert('属性已启用');
+                }
+            } catch (err) {
+                console.error('启用属性失败:', err);
+                alert(err.response?.data?.error || '启用属性失败');
+            }
+        },
+
+        // 打开禁用属性确认弹窗
+        openDisableAttributeConfirm(attributeId) {
+            this.attributeId = attributeId;
+            this.showDisableAttributeConfirm = true;
+        },
+
+        // 关闭禁用属性确认弹窗
+        closeDisableAttributeConfirm() {
+            this.showDisableAttributeConfirm = false;
+            this.attributeId = null;
+        },
+
+        // 确认禁用属性
+        async confirmDisableAttribute() {
+            try {
+                const response = await axios.put(`/api/attributes/${this.attributeId}/status`, {
+                    status: 1
+                }, { withCredentials: true });
+
+                if (response.data.message === '状态更新成功') {
+                    await this.fetchAttributes();
+                    this.closeDisableAttributeConfirm();
+                    alert('属性已禁用');
+                }
+            } catch (err) {
+                console.error('禁用属性失败:', err);
+                alert(err.response?.data?.error || '禁用属性失败');
             }
         }
     }

@@ -784,6 +784,157 @@ def cancel_order(order_id):
         if connection:
             connection.close()
 
+# ==================== 属性管理API ====================
+
+# API接口：获取属性列表
+@app.route('/api/attributes', methods=['GET'])
+def get_attributes():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询所有属性
+        cursor.execute("""
+            SELECT id, name, classify, status, create_time, update_time
+            FROM attribute
+            ORDER BY id DESC
+        """)
+        attributes = cursor.fetchall()
+
+        return jsonify({'attributes': attributes}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：新增属性
+@app.route('/api/attributes', methods=['POST'])
+def create_attribute():
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        classify = data.get('classify')
+
+        if not name or classify is None:
+            return jsonify({'error': '名称和分类不能为空'}), 400
+
+        if classify not in [0, 1]:
+            return jsonify({'error': '分类值必须为0或1'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 插入属性数据，状态默认为0（启用）
+        cursor.execute("""
+            INSERT INTO attribute (name, classify, status)
+            VALUES (%s, %s, 0)
+        """, (name, classify))
+
+        connection.commit()
+        attribute_id = cursor.lastrowid
+
+        return jsonify({'message': '属性创建成功', 'attribute_id': attribute_id}), 201
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新属性
+@app.route('/api/attributes/<int:attribute_id>', methods=['PUT'])
+def update_attribute(attribute_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        classify = data.get('classify')
+
+        if not name or classify is None:
+            return jsonify({'error': '名称和分类不能为空'}), 400
+
+        if classify not in [0, 1]:
+            return jsonify({'error': '分类值必须为0或1'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 更新属性
+        cursor.execute("""
+            UPDATE attribute
+            SET name = %s, classify = %s
+            WHERE id = %s
+        """, (name, classify, attribute_id))
+
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '属性不存在'}), 404
+
+        return jsonify({'message': '属性更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新属性状态
+@app.route('/api/attributes/<int:attribute_id>/status', methods=['PUT'])
+def update_attribute_status(attribute_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        status = data.get('status')
+
+        if status not in [0, 1]:
+            return jsonify({'error': '状态值必须为0或1'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 更新属性状态
+        cursor.execute("""
+            UPDATE attribute
+            SET status = %s
+            WHERE id = %s
+        """, (status, attribute_id))
+
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '属性不存在'}), 404
+
+        return jsonify({'message': '状态更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 # ==================== 菜单管理API ====================
 
 @app.route('/api/menus', methods=['GET'])

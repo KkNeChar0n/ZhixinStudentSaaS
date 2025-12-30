@@ -381,13 +381,28 @@ h1 {
 .action-column {
     display: flex;
     gap: 10px;
+    align-items: center;
+    justify-content: flex-start;
+    min-width: 150px;
+}
+
+.edit-btn,
+.delete-btn,
+.enable-btn,
+.disable-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    border-radius: 3px;
+    min-width: 60px;
+    text-align: center;
+    transition: background-color 0.2s;
 }
 
 .edit-btn {
     background-color: #f39c12;
-    color: #fff;
-    padding: 6px 12px;
-    font-size: 12px;
 }
 
 .edit-btn:hover {
@@ -396,9 +411,6 @@ h1 {
 
 .delete-btn {
     background-color: #e74c3c;
-    color: #fff;
-    padding: 6px 12px;
-    font-size: 12px;
 }
 
 .delete-btn:hover {
@@ -407,9 +419,6 @@ h1 {
 
 .enable-btn {
     background-color: #27ae60;
-    color: #fff;
-    padding: 6px 12px;
-    font-size: 12px;
 }
 
 .enable-btn:hover {
@@ -417,14 +426,11 @@ h1 {
 }
 
 .disable-btn {
-    background-color: #e67e22;
-    color: #fff;
-    padding: 6px 12px;
-    font-size: 12px;
+    background-color: #95a5a6;
 }
 
 .disable-btn:hover {
-    background-color: #d35400;
+    background-color: #7f8c8d;
 }
 
 /* 弹窗样式 */
