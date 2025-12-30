@@ -13,7 +13,7 @@ db_config = {
     'host': os.environ.get('DB_HOST', 'localhost'),
     'user': os.environ.get('DB_USER', 'root'),
     'password': os.environ.get('DB_PASSWORD', 'password'),
-    'database': os.environ.get('DB_NAME', 'ZhixinStudentSaas'),
+    'database': os.environ.get('DB_NAME', 'zhixinstudentsaas'),
     'charset': 'utf8mb4'
 }
 

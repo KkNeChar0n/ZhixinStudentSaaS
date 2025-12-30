@@ -53,21 +53,61 @@ jobs:
               fi
 
               echo "拉取最新代码..."
-              git fetch origin
+              # 配置git超时和重试设置
+              git config --global http.lowSpeedLimit 1000
+              git config --global http.lowSpeedTime 600
+              git config --global http.postBuffer 524288000
+
+              # 尝试fetch，带重试机制
+              RETRY_COUNT=0
+              MAX_RETRIES=3
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                echo "尝试 fetch (尝试 $((RETRY_COUNT+1))/$MAX_RETRIES)..."
+                if timeout 300 git fetch origin; then
+                  echo "Fetch 成功"
+                  break
+                else
+                  RETRY_COUNT=$((RETRY_COUNT+1))
+                  if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                    echo "Fetch 失败，等待10秒后重试..."
+                    sleep 10
+                  fi
+                fi
+              done
+
+              if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                echo "警告: Fetch 失败，尝试继续..."
+              fi
 
               # 自动检测并拉取当前分支
               CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
               echo "当前分支: $CURRENT_BRANCH"
 
-              # 尝试拉取代码，如果失败则退出
-              if git pull origin $CURRENT_BRANCH; then
-                echo "从 $CURRENT_BRANCH 分支拉取成功"
-              elif git pull origin main; then
-                echo "从 main 分支拉取成功"
-              elif git pull origin master; then
-                echo "从 master 分支拉取成功"
-              else
-                echo "错误: 代码拉取失败"
+              # 尝试拉取代码，带重试机制
+              PULL_SUCCESS=0
+              RETRY_COUNT=0
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ $PULL_SUCCESS -eq 0 ]; do
+                echo "尝试 pull (尝试 $((RETRY_COUNT+1))/$MAX_RETRIES)..."
+                if timeout 300 git pull origin $CURRENT_BRANCH; then
+                  echo "从 $CURRENT_BRANCH 分支拉取成功"
+                  PULL_SUCCESS=1
+                elif timeout 300 git pull origin main; then
+                  echo "从 main 分支拉取成功"
+                  PULL_SUCCESS=1
+                elif timeout 300 git pull origin master; then
+                  echo "从 master 分支拉取成功"
+                  PULL_SUCCESS=1
+                else
+                  RETRY_COUNT=$((RETRY_COUNT+1))
+                  if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                    echo "Pull 失败，等待10秒后重试..."
+                    sleep 10
+                  fi
+                fi
+              done
+
+              if [ $PULL_SUCCESS -eq 0 ]; then
+                echo "错误: 代码拉取失败，已重试 $MAX_RETRIES 次"
                 exit 1
               fi
 
@@ -78,7 +118,36 @@ jobs:
               # 显示当前HEAD
               echo "当前HEAD: $(git rev-parse HEAD)"
             else
-              git clone https://github.com/KkNeChar0n/ZhixinStudentSaaS.git "${PROJECT_PATH}"
+              echo "=== 首次克隆仓库 ==="
+              # 配置git超时和重试设置
+              git config --global http.lowSpeedLimit 1000
+              git config --global http.lowSpeedTime 600
+              git config --global http.postBuffer 524288000
+
+              # 尝试克隆，带重试机制
+              RETRY_COUNT=0
+              MAX_RETRIES=3
+              CLONE_SUCCESS=0
+
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ $CLONE_SUCCESS -eq 0 ]; do
+                echo "尝试克隆仓库 (尝试 $((RETRY_COUNT+1))/$MAX_RETRIES)..."
+                if timeout 600 git clone --depth 1 https://github.com/KkNeChar0n/ZhixinStudentSaaS.git "${PROJECT_PATH}"; then
+                  echo "克隆成功"
+                  CLONE_SUCCESS=1
+                else
+                  RETRY_COUNT=$((RETRY_COUNT+1))
+                  if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                    echo "克隆失败，清理临时文件并等待15秒后重试..."
+                    rm -rf "${PROJECT_PATH}"
+                    sleep 15
+                  fi
+                fi
+              done
+
+              if [ $CLONE_SUCCESS -eq 0 ]; then
+                echo "错误: 仓库克隆失败，已重试 $MAX_RETRIES 次"
+                exit 1
+              fi
             fi
             
             # 安装后端依赖
@@ -87,7 +156,7 @@ jobs:
 
             # 数据库初始化和迁移
             echo "=== 检查数据库 ==="
-            DB_EXISTS=$(mysql -u root -p"qweasd123Q!" -e "SHOW DATABASES LIKE 'ZhixinStudentSaas';" | grep ZhixinStudentSaas)
+            DB_EXISTS=$(mysql -u root -p"qweasd123Q!" -e "SHOW DATABASES LIKE 'zhixinstudentsaas';" | grep zhixinstudentsaas)
             if [ -z "$DB_EXISTS" ]; then
               echo "数据库不存在，执行初始化..."
               if [ -f "${PROJECT_PATH}/init_database.sql" ]; then
@@ -118,10 +187,20 @@ jobs:
                 echo "执行菜单表创建..."
                 mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/create_menu_table.sql" 2>&1 || true
               fi
+              # 创建属性表
+              if [ -f "${PROJECT_PATH}/create_attribute_table.sql" ]; then
+                echo "执行属性表创建..."
+                mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/create_attribute_table.sql" 2>&1 || true
+              fi
+              # 添加商品管理菜单
+              if [ -f "${PROJECT_PATH}/add_product_menu.sql" ]; then
+                echo "执行商品管理菜单添加..."
+                mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/add_product_menu.sql" 2>&1 || true
+              fi
             fi
             
             # 创建systemd服务文件 - 使用安全的方式
-            SYSTEMD_CONTENT="[Unit]\nDescription=CharonSpace Backend Service\nAfter=network.target\n\n[Service]\nUser=charon\nWorkingDirectory=${BACKEND_PATH}\nEnvironment=\"DB_USER=root\"\nEnvironment=\"DB_PASSWORD=qweasd123Q!\"\nEnvironment=\"DB_HOST=localhost\"\nEnvironment=\"DB_NAME=ZhixinStudentSaas\"\nExecStart=/usr/bin/python3 ${BACKEND_PATH}/app.py\nRestart=always\n\n[Install]\nWantedBy=multi-user.target"
+            SYSTEMD_CONTENT="[Unit]\nDescription=CharonSpace Backend Service\nAfter=network.target\n\n[Service]\nUser=charon\nWorkingDirectory=${BACKEND_PATH}\nEnvironment=\"DB_USER=root\"\nEnvironment=\"DB_PASSWORD=qweasd123Q!\"\nEnvironment=\"DB_HOST=localhost\"\nEnvironment=\"DB_NAME=zhixinstudentsaas\"\nExecStart=/usr/bin/python3 ${BACKEND_PATH}/app.py\nRestart=always\n\n[Install]\nWantedBy=multi-user.target"
             # 使用echo -e启用转义字符解析
             echo -e "$SYSTEMD_CONTENT" > /tmp/charonspace-backend.service
             
