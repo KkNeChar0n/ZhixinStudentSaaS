@@ -104,8 +104,12 @@ createApp({
         // 设置活动菜单
         setActiveMenu(menu) {
             this.activeMenu = menu;
-            // 如果切换到账号管理，加载账号数据
-            if (menu === 'accounts') {
+            // 切换菜单时刷新对应页面的数据
+            if (menu === 'students') {
+                this.fetchStudents();
+            } else if (menu === 'coaches') {
+                this.fetchCoaches();
+            } else if (menu === 'accounts') {
                 this.fetchAccounts();
             }
         },
