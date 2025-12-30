@@ -528,7 +528,7 @@ def add_coach():
         # 插入教练信息
         cursor.execute("""
             INSERT INTO coach (name, sex_id, subject_id, phone, status)
-            VALUES (%s, %s, %s, %s, '启用')
+            VALUES (%s, %s, %s, %s, 0)
         """, (coach_name, sex_id, subject_id, phone))
 
         coach_id = cursor.lastrowid
