@@ -167,17 +167,56 @@ h1 {
 }
 
 .menu-item {
-    padding: 12px 20px;
-    cursor: pointer;
-    transition: background-color 0.3s;
     font-size: 15px;
 }
 
-.menu-item:hover {
+/* 父级菜单样式 */
+.parent-menu {
+    border-bottom: 1px solid #34495e;
+}
+
+.menu-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.menu-title:hover {
     background-color: #34495e;
 }
 
-.menu-item.active {
+/* 箭头样式 */
+.arrow {
+    font-size: 12px;
+    transition: transform 0.3s;
+    display: inline-block;
+}
+
+.arrow.expanded {
+    transform: rotate(180deg);
+}
+
+/* 子菜单样式 */
+.submenu {
+    list-style: none;
+    background-color: #1a252f;
+}
+
+.submenu-item {
+    padding: 10px 20px 10px 40px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    font-size: 14px;
+}
+
+.submenu-item:hover {
+    background-color: #34495e;
+}
+
+.submenu-item.active {
     background-color: #3498db;
     border-left: 4px solid #2980b9;
 }

@@ -43,17 +43,56 @@
                 <aside class="sidebar">
                     <h2>菜单管理</h2>
                     <ul class="menu-list">
-                        <li class="menu-item" :class="{ active: activeMenu === 'students' }" @click="setActiveMenu('students')">
-                            学生管理
+                        <!-- 学生管理 -->
+                        <li class="menu-item parent-menu">
+                            <div class="menu-title" @click="toggleMenu('students')">
+                                <span>学生管理</span>
+                                <span class="arrow" :class="{ expanded: expandedMenus.includes('students') }">▼</span>
+                            </div>
+                            <ul class="submenu" v-show="expandedMenus.includes('students')">
+                                <li class="submenu-item" :class="{ active: activeMenu === 'students' }" @click="setActiveMenu('students')">
+                                    学生管理
+                                </li>
+                            </ul>
                         </li>
-                        <li class="menu-item" :class="{ active: activeMenu === 'coaches' }" @click="setActiveMenu('coaches')">
-                            教练管理
+
+                        <!-- 教练管理 -->
+                        <li class="menu-item parent-menu">
+                            <div class="menu-title" @click="toggleMenu('coaches')">
+                                <span>教练管理</span>
+                                <span class="arrow" :class="{ expanded: expandedMenus.includes('coaches') }">▼</span>
+                            </div>
+                            <ul class="submenu" v-show="expandedMenus.includes('coaches')">
+                                <li class="submenu-item" :class="{ active: activeMenu === 'coaches' }" @click="setActiveMenu('coaches')">
+                                    教练管理
+                                </li>
+                            </ul>
                         </li>
-                        <li class="menu-item" :class="{ active: activeMenu === 'orders' }" @click="setActiveMenu('orders')">
-                            订单管理
+
+                        <!-- 订单管理 -->
+                        <li class="menu-item parent-menu">
+                            <div class="menu-title" @click="toggleMenu('orders')">
+                                <span>订单管理</span>
+                                <span class="arrow" :class="{ expanded: expandedMenus.includes('orders') }">▼</span>
+                            </div>
+                            <ul class="submenu" v-show="expandedMenus.includes('orders')">
+                                <li class="submenu-item" :class="{ active: activeMenu === 'orders' }" @click="setActiveMenu('orders')">
+                                    订单管理
+                                </li>
+                            </ul>
                         </li>
-                        <li class="menu-item" :class="{ active: activeMenu === 'accounts' }" @click="setActiveMenu('accounts')">
-                            账号管理
+
+                        <!-- 系统设置 -->
+                        <li class="menu-item parent-menu">
+                            <div class="menu-title" @click="toggleMenu('system')">
+                                <span>系统设置</span>
+                                <span class="arrow" :class="{ expanded: expandedMenus.includes('system') }">▼</span>
+                            </div>
+                            <ul class="submenu" v-show="expandedMenus.includes('system')">
+                                <li class="submenu-item" :class="{ active: activeMenu === 'accounts' }" @click="setActiveMenu('accounts')">
+                                    账号管理
+                                </li>
+                            </ul>
                         </li>
                     </ul>
                 </aside>

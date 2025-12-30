@@ -101,7 +101,9 @@ createApp({
             activeStudents: [],
             activeGrades: [],
             activeSubjects: [],
-            activeStudentsForOrder: []
+            activeStudentsForOrder: [],
+            // 展开的菜单列表
+            expandedMenus: []
         };
     },
     mounted() {
@@ -127,6 +129,18 @@ createApp({
             }
         },
         
+        // 切换菜单展开/收起
+        toggleMenu(menuKey) {
+            const index = this.expandedMenus.indexOf(menuKey);
+            if (index > -1) {
+                // 如果已展开，则收起
+                this.expandedMenus.splice(index, 1);
+            } else {
+                // 如果未展开，则展开
+                this.expandedMenus.push(menuKey);
+            }
+        },
+
         // 设置活动菜单
         setActiveMenu(menu) {
             this.activeMenu = menu;
