@@ -84,6 +84,11 @@ jobs:
                 echo "执行status字段类型迁移..."
                 mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/migrate_status_fields.sql" 2>&1 || true
               fi
+              # 创建订单表
+              if [ -f "${PROJECT_PATH}/create_order_table.sql" ]; then
+                echo "执行订单表创建..."
+                mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/create_order_table.sql" 2>&1 || true
+              fi
             fi
             
             # 创建systemd服务文件 - 使用安全的方式
