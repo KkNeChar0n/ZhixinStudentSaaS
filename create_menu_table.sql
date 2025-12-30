@@ -1,4 +1,5 @@
 -- 创建菜单表
+SET NAMES utf8mb4;
 USE ZhixinStudentSaas;
 
 CREATE TABLE IF NOT EXISTS `menu` (

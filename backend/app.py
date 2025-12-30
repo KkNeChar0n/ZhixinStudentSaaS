@@ -5,6 +5,7 @@ import os
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')  # 用于会话加密
+app.config['JSON_AS_ASCII'] = False  # 确保JSON响应不转义中文
 CORS(app, supports_credentials=True)  # 配置跨域访问，支持凭证
 
 # 数据库连接配置
