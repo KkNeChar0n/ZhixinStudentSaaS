@@ -113,6 +113,11 @@ jobs:
                 echo "执行订单表创建..."
                 mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/create_order_table.sql" 2>&1 || true
               fi
+              # 创建菜单表
+              if [ -f "${PROJECT_PATH}/create_menu_table.sql" ]; then
+                echo "执行菜单表创建..."
+                mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/create_menu_table.sql" 2>&1 || true
+              fi
             fi
             
             # 创建systemd服务文件 - 使用安全的方式

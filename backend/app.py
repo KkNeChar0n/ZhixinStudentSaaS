@@ -783,5 +783,60 @@ def cancel_order(order_id):
         if connection:
             connection.close()
 
+# ==================== 菜单管理API ====================
+
+@app.route('/api/menus', methods=['GET'])
+def get_menus():
+    """获取菜单树结构"""
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取所有菜单项，按sort_order排序
+        cursor.execute("""
+            SELECT id, name, parent_id, route, sort_order
+            FROM menu
+            ORDER BY sort_order ASC
+        """)
+        all_menus = cursor.fetchall()
+
+        # 构建树形结构
+        menu_tree = []
+        menu_map = {}
+
+        # 先创建所有菜单项的映射
+        for menu in all_menus:
+            menu_map[menu['id']] = {
+                'id': menu['id'],
+                'name': menu['name'],
+                'route': menu['route'],
+                'parent_id': menu['parent_id'],
+                'sort_order': menu['sort_order'],
+                'children': []
+            }
+
+        # 构建父子关系
+        for menu in all_menus:
+            if menu['parent_id'] is None:
+                # 一级菜单
+                menu_tree.append(menu_map[menu['id']])
+            else:
+                # 二级菜单，添加到父菜单的children中
+                if menu['parent_id'] in menu_map:
+                    menu_map[menu['parent_id']]['children'].append(menu_map[menu['id']])
+
+        return jsonify({'menus': menu_tree}), 200
+
+    except Exception as e:
+        print(f"获取菜单失败: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)

@@ -103,12 +103,16 @@ createApp({
             activeSubjects: [],
             activeStudentsForOrder: [],
             // 展开的菜单列表
-            expandedMenus: []
+            expandedMenus: [],
+            // 菜单树数据
+            menuTree: []
         };
     },
     mounted() {
         // 页面加载时检查用户是否已登录
         this.checkLoginStatus();
+        // 加载菜单数据
+        this.fetchMenus();
     },
     methods: {
         // 检查登录状态
@@ -129,6 +133,43 @@ createApp({
             }
         },
         
+        // 获取菜单数据
+        async fetchMenus() {
+            try {
+                const response = await axios.get('/api/menus');
+                this.menuTree = response.data.menus;
+            } catch (err) {
+                console.error('获取菜单失败:', err);
+                // 如果获取失败，使用默认菜单结构
+                this.menuTree = [
+                    {
+                        id: 1,
+                        name: '学生管理',
+                        route: null,
+                        children: [{ id: 5, name: '学生管理', route: 'students' }]
+                    },
+                    {
+                        id: 2,
+                        name: '教练管理',
+                        route: null,
+                        children: [{ id: 6, name: '教练管理', route: 'coaches' }]
+                    },
+                    {
+                        id: 3,
+                        name: '订单管理',
+                        route: null,
+                        children: [{ id: 7, name: '订单管理', route: 'orders' }]
+                    },
+                    {
+                        id: 4,
+                        name: '系统设置',
+                        route: null,
+                        children: [{ id: 8, name: '账号管理', route: 'accounts' }]
+                    }
+                ];
+            }
+        },
+
         // 切换菜单展开/收起
         toggleMenu(menuKey) {
             const index = this.expandedMenus.indexOf(menuKey);
@@ -139,6 +180,12 @@ createApp({
                 // 如果未展开，则展开
                 this.expandedMenus.push(menuKey);
             }
+        },
+
+        // 获取菜单的key（用于展开/收起）
+        getMenuKey(menu) {
+            // 使用route作为key，如果没有route则使用name
+            return menu.route || menu.name.toLowerCase();
         },
 
         // 设置活动菜单
