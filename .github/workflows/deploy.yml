@@ -53,17 +53,21 @@ jobs:
               fi
 
               echo "拉取最新代码..."
-              # 配置git超时和重试设置
-              git config --global http.lowSpeedLimit 1000
-              git config --global http.lowSpeedTime 600
-              git config --global http.postBuffer 524288000
+              # 确保使用SSH URL
+              CURRENT_REMOTE=$(git config --get remote.origin.url)
+              echo "当前remote URL: $CURRENT_REMOTE"
+              if [[ "$CURRENT_REMOTE" == https://* ]]; then
+                echo "检测到HTTPS URL，切换为SSH URL..."
+                git remote set-url origin git@github.com:KkNeChar0n/ZhixinStudentSaaS.git
+                echo "已切换为SSH URL: $(git config --get remote.origin.url)"
+              fi
 
               # 尝试fetch，带重试机制
               RETRY_COUNT=0
               MAX_RETRIES=3
               while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
                 echo "尝试 fetch (尝试 $((RETRY_COUNT+1))/$MAX_RETRIES)..."
-                if timeout 300 git fetch origin; then
+                if git fetch origin; then
                   echo "Fetch 成功"
                   break
                 else
@@ -88,13 +92,13 @@ jobs:
               RETRY_COUNT=0
               while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ $PULL_SUCCESS -eq 0 ]; do
                 echo "尝试 pull (尝试 $((RETRY_COUNT+1))/$MAX_RETRIES)..."
-                if timeout 300 git pull origin $CURRENT_BRANCH; then
+                if git pull origin $CURRENT_BRANCH; then
                   echo "从 $CURRENT_BRANCH 分支拉取成功"
                   PULL_SUCCESS=1
-                elif timeout 300 git pull origin main; then
+                elif git pull origin main; then
                   echo "从 main 分支拉取成功"
                   PULL_SUCCESS=1
-                elif timeout 300 git pull origin master; then
+                elif git pull origin master; then
                   echo "从 master 分支拉取成功"
                   PULL_SUCCESS=1
                 else
@@ -108,6 +112,7 @@ jobs:
 
               if [ $PULL_SUCCESS -eq 0 ]; then
                 echo "错误: 代码拉取失败，已重试 $MAX_RETRIES 次"
+                echo "提示: 请确保服务器上已正确配置GitHub SSH密钥"
                 exit 1
               fi
 
@@ -119,19 +124,14 @@ jobs:
               echo "当前HEAD: $(git rev-parse HEAD)"
             else
               echo "=== 首次克隆仓库 ==="
-              # 配置git超时和重试设置
-              git config --global http.lowSpeedLimit 1000
-              git config --global http.lowSpeedTime 600
-              git config --global http.postBuffer 524288000
-
-              # 尝试克隆，带重试机制
+              # 尝试克隆，带重试机制（使用SSH）
               RETRY_COUNT=0
               MAX_RETRIES=3
               CLONE_SUCCESS=0
 
               while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ $CLONE_SUCCESS -eq 0 ]; do
                 echo "尝试克隆仓库 (尝试 $((RETRY_COUNT+1))/$MAX_RETRIES)..."
-                if timeout 600 git clone --depth 1 https://github.com/KkNeChar0n/ZhixinStudentSaaS.git "${PROJECT_PATH}"; then
+                if git clone git@github.com:KkNeChar0n/ZhixinStudentSaaS.git "${PROJECT_PATH}"; then
                   echo "克隆成功"
                   CLONE_SUCCESS=1
                 else
@@ -146,6 +146,10 @@ jobs:
 
               if [ $CLONE_SUCCESS -eq 0 ]; then
                 echo "错误: 仓库克隆失败，已重试 $MAX_RETRIES 次"
+                echo "提示: 请确保服务器上已配置GitHub SSH密钥"
+                echo "1. 生成密钥: ssh-keygen -t ed25519 -C 'your_email@example.com' -f ~/.ssh/github_deploy_key"
+                echo "2. 添加公钥到GitHub: cat ~/.ssh/github_deploy_key.pub"
+                echo "3. 配置SSH: 在~/.ssh/config中添加GitHub配置"
                 exit 1
               fi
             fi
