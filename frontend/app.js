@@ -659,6 +659,36 @@ createApp({
             }
         },
 
+        // 学生状态更新
+        async updateStudentStatus(id, status) {
+            try {
+                await axios.put(`/api/students/${id}/status`, {
+                    status: status
+                }, { withCredentials: true });
+                const statusText = status === 0 ? '启用' : '禁用';
+                alert(`学生状态已更新为${statusText}`);
+                await this.fetchStudents();
+            } catch (err) {
+                console.error('更新学生状态失败:', err);
+                alert(err.response?.data?.error || '更新学生状态失败');
+            }
+        },
+
+        // 教练状态更新
+        async updateCoachStatus(id, status) {
+            try {
+                await axios.put(`/api/coaches/${id}/status`, {
+                    status: status
+                }, { withCredentials: true });
+                const statusText = status === 0 ? '启用' : '禁用';
+                alert(`教练状态已更新为${statusText}`);
+                await this.fetchCoaches();
+            } catch (err) {
+                console.error('更新教练状态失败:', err);
+                alert(err.response?.data?.error || '更新教练状态失败');
+            }
+        },
+
         // 账号管理功能
         async fetchAccounts() {
             try {

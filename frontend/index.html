@@ -133,6 +133,8 @@
                                     <td>{{ student.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
                                         <button class="edit-btn" @click="openEditStudentModal(student)">编辑</button>
+                                        <button v-if="student.status === 1" class="enable-btn" @click="updateStudentStatus(student.id, 0)">启用</button>
+                                        <button v-if="student.status === 0" class="disable-btn" @click="updateStudentStatus(student.id, 1)">禁用</button>
                                         <button class="delete-btn" @click="openDeleteConfirm(student.id, 'student')">删除</button>
                                     </td>
                                 </tr>
@@ -218,6 +220,8 @@
                                     <td>{{ coach.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
                                         <button class="edit-btn" @click="openEditCoachModal(coach)">编辑</button>
+                                        <button v-if="coach.status === 1" class="enable-btn" @click="updateCoachStatus(coach.id, 0)">启用</button>
+                                        <button v-if="coach.status === 0" class="disable-btn" @click="updateCoachStatus(coach.id, 1)">禁用</button>
                                         <button class="delete-btn" @click="openDeleteConfirm(coach.id, 'coach')">删除</button>
                                     </td>
                                 </tr>

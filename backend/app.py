@@ -310,6 +310,39 @@ def update_student(id):
         if connection:
             connection.close()
 
+# API接口：更新学生状态
+@app.route('/api/students/<int:id>/status', methods=['PUT'])
+def update_student_status(id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        status = data.get('status')
+
+        if status not in [0, 1]:
+            return jsonify({'error': '状态值必须为0或1'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 更新学生状态
+        cursor.execute("UPDATE student SET status = %s WHERE id = %s", (status, id))
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '学生不存在'}), 404
+
+        return jsonify({'message': '状态更新成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 # API接口：删除学生
 @app.route('/api/students/<int:id>', methods=['DELETE'])
 def delete_student(id):
@@ -388,6 +421,39 @@ def update_coach(id):
 
         return jsonify({'message': '教练信息更新成功'}), 200
 
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新教练状态
+@app.route('/api/coaches/<int:id>/status', methods=['PUT'])
+def update_coach_status(id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        status = data.get('status')
+
+        if status not in [0, 1]:
+            return jsonify({'error': '状态值必须为0或1'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 更新教练状态
+        cursor.execute("UPDATE coach SET status = %s WHERE id = %s", (status, id))
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '教练不存在'}), 404
+
+        return jsonify({'message': '状态更新成功'}), 200
     except Exception as e:
         if connection:
             connection.rollback()
