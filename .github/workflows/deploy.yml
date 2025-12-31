@@ -81,11 +81,11 @@ jobs:
             # 测试GitHub连接
             echo "测试GitHub SSH连接..."
             SSH_TEST=$(ssh -T git@github.com 2>&1 || true)
-            if echo "$SSH_TEST" | grep -q "successfully authenticated"; then
+            echo "SSH测试原始结果: $SSH_TEST"
+            if [[ "$SSH_TEST" == *"successfully authenticated"* ]]; then
               echo "✅ GitHub SSH连接正常"
             else
-              echo "⚠️ GitHub SSH连接测试结果:"
-              echo "$SSH_TEST"
+              echo "⚠️ GitHub SSH连接测试失败"
             fi
 
             # 检查项目路径
