@@ -14,6 +14,7 @@ createApp({
             accounts: [],
             orders: [],
             attributes: [],
+            classifies: [],
             // 学生筛选条件
             studentFilters: {
                 id: '',
@@ -41,11 +42,18 @@ createApp({
                 classify: '',
                 status: ''
             },
+            // 类型筛选条件
+            classifyFilters: {
+                id: '',
+                level: '',
+                status: ''
+            },
             // 筛选后的学生和教练数据
             filteredStudents: [],
             filteredCoaches: [],
             filteredOrders: [],
             filteredAttributes: [],
+            filteredClassifies: [],
             // 弹窗状态
             showAddStudentModal: false,
             showAddCoachModal: false,
@@ -59,6 +67,10 @@ createApp({
             showEditAttributeModal: false,
             showEnableAttributeConfirm: false,
             showDisableAttributeConfirm: false,
+            showAddClassifyModal: false,
+            showEditClassifyModal: false,
+            showEnableClassifyConfirm: false,
+            showDisableClassifyConfirm: false,
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -114,6 +126,23 @@ createApp({
                 name: '',
                 classify: ''
             },
+            // 新增类型数据
+            addClassifyData: {
+                name: '',
+                level: '',
+                parent_id: ''
+            },
+            // 编辑类型数据
+            editClassifyData: {
+                id: '',
+                name: '',
+                level: '',
+                parent_id: ''
+            },
+            // 父级类型列表
+            parentClassifies: [],
+            // 类型操作ID
+            classifyId: null,
             // 删除确认数据
             deleteId: null,
             deleteType: '',
@@ -226,6 +255,8 @@ createApp({
                 this.fetchAccounts();
             } else if (menu === 'attributes') {
                 this.fetchAttributes();
+            } else if (menu === 'classifies') {
+                this.fetchClassifies();
             }
         },
         
@@ -1044,6 +1075,245 @@ createApp({
             } catch (err) {
                 console.error('禁用属性失败:', err);
                 alert(err.response?.data?.error || '禁用属性失败');
+            }
+        },
+
+        // ==================== 类型管理功能 ====================
+
+        // 获取类型数据
+        async fetchClassifies() {
+            try {
+                const response = await axios.get('/api/classifies', { withCredentials: true });
+                this.classifies = response.data.classifies;
+                this.filteredClassifies = this.classifies;
+            } catch (err) {
+                console.error('获取类型失败:', err);
+                this.error = '获取类型失败';
+            }
+        },
+
+        // 获取启用的一级类型列表（父级类型）
+        async fetchParentClassifies() {
+            try {
+                const response = await axios.get('/api/classifies/parents', { withCredentials: true });
+                this.parentClassifies = response.data.parents;
+            } catch (err) {
+                console.error('获取父级类型失败:', err);
+                this.error = '获取父级类型失败';
+            }
+        },
+
+        // 类型筛选功能
+        searchClassifies() {
+            this.filteredClassifies = this.classifies.filter(classify => {
+                const idMatch = !this.classifyFilters.id || classify.id === parseInt(this.classifyFilters.id);
+                const levelMatch = this.classifyFilters.level === '' || classify.level === parseInt(this.classifyFilters.level);
+                const statusMatch = this.classifyFilters.status === '' || classify.status === parseInt(this.classifyFilters.status);
+                return idMatch && levelMatch && statusMatch;
+            });
+        },
+
+        // 重置类型筛选
+        resetClassifyFilters() {
+            this.classifyFilters = {
+                id: '',
+                level: '',
+                status: ''
+            };
+            this.filteredClassifies = this.classifies;
+        },
+
+        // 获取级别文本
+        getClassifyLevelText(level) {
+            return level === 0 ? '一级' : '二级';
+        },
+
+        // 获取类型状态文本
+        getClassifyStatusText(status) {
+            return status === 0 ? '启用' : '禁用';
+        },
+
+        // 打开新增类型弹窗
+        async openAddClassifyModal() {
+            await this.fetchParentClassifies();
+            this.showAddClassifyModal = true;
+        },
+
+        // 关闭新增类型弹窗
+        closeAddClassifyModal() {
+            this.showAddClassifyModal = false;
+            this.addClassifyData = {
+                name: '',
+                level: '',
+                parent_id: ''
+            };
+        },
+
+        // 新增类型级别变化时的处理
+        onAddClassifyLevelChange() {
+            // 如果切换到一级，清空父级选择
+            if (this.addClassifyData.level === '0') {
+                this.addClassifyData.parent_id = '';
+            }
+        },
+
+        // 保存新增类型
+        async saveAddClassify() {
+            if (!this.addClassifyData.name || this.addClassifyData.level === '') {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            // 如果是二级类型，必须选择父级
+            if (this.addClassifyData.level === '1' && !this.addClassifyData.parent_id) {
+                alert('请选择父级类型');
+                return;
+            }
+
+            try {
+                const response = await axios.post('/api/classifies', {
+                    name: this.addClassifyData.name,
+                    level: parseInt(this.addClassifyData.level),
+                    parent_id: this.addClassifyData.level === '1' ? parseInt(this.addClassifyData.parent_id) : null
+                }, { withCredentials: true });
+
+                if (response.data.message === '类型创建成功') {
+                    await this.fetchClassifies();
+                    this.closeAddClassifyModal();
+                    alert('类型创建成功');
+                }
+            } catch (err) {
+                console.error('创建类型失败:', err);
+                alert(err.response?.data?.error || '创建类型失败');
+            }
+        },
+
+        // 打开编辑类型弹窗
+        async openEditClassifyModal(classify) {
+            await this.fetchParentClassifies();
+            this.editClassifyData = {
+                id: classify.id,
+                name: classify.name,
+                level: classify.level,
+                parent_id: classify.parent_id || ''
+            };
+            this.showEditClassifyModal = true;
+        },
+
+        // 关闭编辑类型弹窗
+        closeEditClassifyModal() {
+            this.showEditClassifyModal = false;
+            this.editClassifyData = {
+                id: '',
+                name: '',
+                level: '',
+                parent_id: ''
+            };
+        },
+
+        // 编辑类型级别变化时的处理
+        onEditClassifyLevelChange() {
+            // 如果切换到一级，清空父级选择
+            const level = typeof this.editClassifyData.level === 'string'
+                ? parseInt(this.editClassifyData.level)
+                : this.editClassifyData.level;
+            if (level === 0) {
+                this.editClassifyData.parent_id = '';
+            }
+        },
+
+        // 保存编辑类型
+        async saveEditClassify() {
+            const level = typeof this.editClassifyData.level === 'string'
+                ? parseInt(this.editClassifyData.level)
+                : this.editClassifyData.level;
+
+            if (!this.editClassifyData.name || this.editClassifyData.level === '') {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            // 如果是二级类型，必须选择父级
+            if (level === 1 && !this.editClassifyData.parent_id) {
+                alert('请选择父级类型');
+                return;
+            }
+
+            try {
+                const response = await axios.put(`/api/classifies/${this.editClassifyData.id}`, {
+                    name: this.editClassifyData.name,
+                    level: level,
+                    parent_id: level === 1 ? parseInt(this.editClassifyData.parent_id) : null
+                }, { withCredentials: true });
+
+                if (response.data.message === '类型更新成功') {
+                    await this.fetchClassifies();
+                    this.closeEditClassifyModal();
+                    alert('类型更新成功');
+                }
+            } catch (err) {
+                console.error('更新类型失败:', err);
+                alert(err.response?.data?.error || '更新类型失败');
+            }
+        },
+
+        // 打开启用类型确认弹窗
+        openEnableClassifyConfirm(classifyId) {
+            this.classifyId = classifyId;
+            this.showEnableClassifyConfirm = true;
+        },
+
+        // 关闭启用类型确认弹窗
+        closeEnableClassifyConfirm() {
+            this.showEnableClassifyConfirm = false;
+            this.classifyId = null;
+        },
+
+        // 确认启用类型
+        async confirmEnableClassify() {
+            try {
+                const response = await axios.put(`/api/classifies/${this.classifyId}/status`, {
+                    status: 0
+                }, { withCredentials: true });
+
+                if (response.data.message === '状态更新成功') {
+                    await this.fetchClassifies();
+                    this.closeEnableClassifyConfirm();
+                    alert('类型已启用');
+                }
+            } catch (err) {
+                console.error('启用类型失败:', err);
+                alert(err.response?.data?.error || '启用类型失败');
+            }
+        },
+
+        // 打开禁用类型确认弹窗
+        openDisableClassifyConfirm(classifyId) {
+            this.classifyId = classifyId;
+            this.showDisableClassifyConfirm = true;
+        },
+
+        // 关闭禁用类型确认弹窗
+        closeDisableClassifyConfirm() {
+            this.showDisableClassifyConfirm = false;
+            this.classifyId = null;
+        },
+
+        // 确认禁用类型
+        async confirmDisableClassify() {
+            try {
+                const response = await axios.put(`/api/classifies/${this.classifyId}/status`, {
+                    status: 1
+                }, { withCredentials: true });
+
+                if (response.data.message === '状态更新成功') {
+                    await this.fetchClassifies();
+                    this.closeDisableClassifyConfirm();
+                    alert('类型已禁用');
+                }
+            } catch (err) {
+                console.error('禁用类型失败:', err);
+                alert(err.response?.data?.error || '禁用类型失败');
             }
         }
     }

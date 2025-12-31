@@ -935,6 +935,234 @@ def update_attribute_status(attribute_id):
         if connection:
             connection.close()
 
+# ==================== 类型管理API ====================
+
+# API接口：获取类型列表
+@app.route('/api/classifies', methods=['GET'])
+def get_classifies():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询所有类型，关联父级名称
+        cursor.execute("""
+            SELECT c.id, c.name, c.level, c.parentid AS parent_id, c.status,
+                   p.name AS parent_name
+            FROM classify c
+            LEFT JOIN classify p ON c.parentid = p.id
+            ORDER BY c.level ASC, c.id DESC
+        """)
+        classifies = cursor.fetchall()
+
+        return jsonify({'classifies': classifies}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取启用的一级类型列表（用于新增/编辑二级类型时选择父级）
+@app.route('/api/classifies/parents', methods=['GET'])
+def get_parent_classifies():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询状态为启用(0)且级别为一级(0)的类型
+        cursor.execute("""
+            SELECT id, name
+            FROM classify
+            WHERE status = 0 AND level = 0
+            ORDER BY id ASC
+        """)
+        parents = cursor.fetchall()
+
+        return jsonify({'parents': parents}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：新增类型
+@app.route('/api/classifies', methods=['POST'])
+def create_classify():
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        level = data.get('level')
+        parent_id = data.get('parent_id')
+
+        if not name or level is None:
+            return jsonify({'error': '名称和级别不能为空'}), 400
+
+        if level not in [0, 1]:
+            return jsonify({'error': '级别值必须为0或1'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 校验名称是否重复
+        if level == 0:
+            # 一级类型：检查一级类型中名称是否已存在
+            cursor.execute("""
+                SELECT id FROM classify WHERE name = %s AND level = 0
+            """, (name,))
+            existing = cursor.fetchone()
+            if existing:
+                return jsonify({'error': '该一级类型名称已存在'}), 400
+            parent_id = None  # 一级类型没有父级
+        else:
+            # 二级类型：检查同一父级下是否有同名的二级类型
+            if not parent_id:
+                return jsonify({'error': '二级类型必须选择父级类型'}), 400
+            cursor.execute("""
+                SELECT id FROM classify WHERE name = %s AND level = 1 AND parentid = %s
+            """, (name, parent_id))
+            existing = cursor.fetchone()
+            if existing:
+                return jsonify({'error': '该父级类型下已存在同名的二级类型'}), 400
+
+        # 插入类型数据
+        cursor.execute("""
+            INSERT INTO classify (name, level, parentid, status)
+            VALUES (%s, %s, %s, 0)
+        """, (name, level, parent_id))
+
+        connection.commit()
+        classify_id = cursor.lastrowid
+
+        return jsonify({'message': '类型创建成功', 'classify_id': classify_id}), 201
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新类型
+@app.route('/api/classifies/<int:classify_id>', methods=['PUT'])
+def update_classify(classify_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        level = data.get('level')
+        parent_id = data.get('parent_id')
+
+        if not name or level is None:
+            return jsonify({'error': '名称和级别不能为空'}), 400
+
+        if level not in [0, 1]:
+            return jsonify({'error': '级别值必须为0或1'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查类型是否存在
+        cursor.execute("SELECT id, level FROM classify WHERE id = %s", (classify_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            return jsonify({'error': '类型不存在'}), 404
+
+        # 校验名称是否重复（排除自身）
+        if level == 0:
+            # 一级类型：检查一级类型中名称是否已存在
+            cursor.execute("""
+                SELECT id FROM classify WHERE name = %s AND level = 0 AND id != %s
+            """, (name, classify_id))
+            duplicate = cursor.fetchone()
+            if duplicate:
+                return jsonify({'error': '该一级类型名称已存在'}), 400
+            parent_id = None  # 一级类型没有父级
+        else:
+            # 二级类型：检查同一父级下是否有同名的二级类型
+            if not parent_id:
+                return jsonify({'error': '二级类型必须选择父级类型'}), 400
+            cursor.execute("""
+                SELECT id FROM classify WHERE name = %s AND level = 1 AND parentid = %s AND id != %s
+            """, (name, parent_id, classify_id))
+            duplicate = cursor.fetchone()
+            if duplicate:
+                return jsonify({'error': '该父级类型下已存在同名的二级类型'}), 400
+
+        # 更新类型
+        cursor.execute("""
+            UPDATE classify
+            SET name = %s, level = %s, parentid = %s
+            WHERE id = %s
+        """, (name, level, parent_id, classify_id))
+
+        connection.commit()
+
+        return jsonify({'message': '类型更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新类型状态
+@app.route('/api/classifies/<int:classify_id>/status', methods=['PUT'])
+def update_classify_status(classify_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        status = data.get('status')
+
+        if status not in [0, 1]:
+            return jsonify({'error': '状态值必须为0或1'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 更新类型状态
+        cursor.execute("""
+            UPDATE classify
+            SET status = %s
+            WHERE id = %s
+        """, (status, classify_id))
+
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '类型不存在'}), 404
+
+        return jsonify({'message': '状态更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 # ==================== 菜单管理API ====================
 
 @app.route('/api/menus', methods=['GET'])

@@ -381,6 +381,69 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- 类型管理页面 -->
+                    <div v-if="activeMenu === 'classifies'">
+                        <div class="page-header">
+                            <h1>类型管理</h1>
+                            <button class="add-btn" @click="openAddClassifyModal">新增</button>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="classifyIdFilter">ID</label>
+                                    <input type="number" id="classifyIdFilter" v-model="classifyFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="classifyLevelFilter">级别</label>
+                                    <select id="classifyLevelFilter" v-model="classifyFilters.level">
+                                        <option value="">全部</option>
+                                        <option value="0">一级</option>
+                                        <option value="1">二级</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="classifyStatusFilter">状态</label>
+                                    <select id="classifyStatusFilter" v-model="classifyFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">启用</option>
+                                        <option value="1">禁用</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchClassifies">搜索</button>
+                                <button class="reset-btn" @click="resetClassifyFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>名称</th>
+                                    <th>级别</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="classify in filteredClassifies" :key="classify.id">
+                                    <td>{{ classify.id }}</td>
+                                    <td>{{ classify.name }}</td>
+                                    <td>{{ getClassifyLevelText(classify.level) }}</td>
+                                    <td>{{ getClassifyStatusText(classify.status) }}</td>
+                                    <td class="action-column">
+                                        <button class="edit-btn" @click="openEditClassifyModal(classify)">编辑</button>
+                                        <button v-if="classify.status === 1" class="enable-btn" @click="openEnableClassifyConfirm(classify.id)">启用</button>
+                                        <button v-if="classify.status === 0" class="disable-btn" @click="openDisableClassifyConfirm(classify.id)">禁用</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -743,6 +806,110 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="closeDisableAttributeConfirm">否</button>
                     <button class="delete-btn" @click="confirmDisableAttribute">是</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增类型弹窗 -->
+        <div class="modal-overlay" v-if="showAddClassifyModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>新增类型</h3>
+                    <button class="close-btn" @click="closeAddClassifyModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="addClassifyName">名称 <span class="required">*</span></label>
+                        <input type="text" id="addClassifyName" v-model="addClassifyData.name" placeholder="请输入名称" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addClassifyLevel">级别 <span class="required">*</span></label>
+                        <select id="addClassifyLevel" v-model="addClassifyData.level" @change="onAddClassifyLevelChange" required>
+                            <option value="">请选择级别</option>
+                            <option value="0">一级</option>
+                            <option value="1">二级</option>
+                        </select>
+                    </div>
+                    <div class="form-group" v-if="addClassifyData.level === '1'">
+                        <label for="addClassifyParent">父级类型 <span class="required">*</span></label>
+                        <select id="addClassifyParent" v-model="addClassifyData.parent_id" required>
+                            <option value="">请选择父级类型</option>
+                            <option v-for="parent in parentClassifies" :key="parent.id" :value="parent.id">{{ parent.name }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAddClassifyModal">取消</button>
+                    <button class="save-btn" @click="saveAddClassify">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑类型弹窗 -->
+        <div class="modal-overlay" v-if="showEditClassifyModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>编辑类型</h3>
+                    <button class="close-btn" @click="closeEditClassifyModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editClassifyName">名称 <span class="required">*</span></label>
+                        <input type="text" id="editClassifyName" v-model="editClassifyData.name" placeholder="请输入名称" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editClassifyLevel">级别 <span class="required">*</span></label>
+                        <select id="editClassifyLevel" v-model="editClassifyData.level" @change="onEditClassifyLevelChange" required>
+                            <option value="">请选择级别</option>
+                            <option value="0">一级</option>
+                            <option value="1">二级</option>
+                        </select>
+                    </div>
+                    <div class="form-group" v-if="editClassifyData.level === 1 || editClassifyData.level === '1'">
+                        <label for="editClassifyParent">父级类型 <span class="required">*</span></label>
+                        <select id="editClassifyParent" v-model="editClassifyData.parent_id" required>
+                            <option value="">请选择父级类型</option>
+                            <option v-for="parent in parentClassifies" :key="parent.id" :value="parent.id">{{ parent.name }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEditClassifyModal">取消</button>
+                    <button class="save-btn" @click="saveEditClassify">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 启用类型确认弹窗 -->
+        <div class="modal-overlay" v-if="showEnableClassifyConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认启用</h3>
+                    <button class="close-btn" @click="closeEnableClassifyConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否启用该类型？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEnableClassifyConfirm">否</button>
+                    <button class="save-btn" @click="confirmEnableClassify">是</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 禁用类型确认弹窗 -->
+        <div class="modal-overlay" v-if="showDisableClassifyConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认禁用</h3>
+                    <button class="close-btn" @click="closeDisableClassifyConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否禁用该类型？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeDisableClassifyConfirm">否</button>
+                    <button class="delete-btn" @click="confirmDisableClassify">是</button>
                 </div>
             </div>
         </div>
