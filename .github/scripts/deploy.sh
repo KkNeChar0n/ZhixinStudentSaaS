@@ -188,11 +188,13 @@ else
   echo "✅ 数据库已存在，执行迁移脚本..."
   cd "${PROJECT_PATH}"
 
-  # 执行各个迁移脚本
-  for sql_file in add_account_status.sql migrate_status_fields.sql create_order_table.sql create_menu_table.sql create_attribute_table.sql add_product_menu.sql create_classify_table.sql fix_classify_parentid.sql add_classify_menu.sql; do
+  # 执行各个迁移脚本（按顺序执行）
+  for sql_file in add_account_status.sql migrate_status_fields.sql create_order_table.sql create_menu_table.sql create_attribute_table.sql add_product_menu.sql create_classify_table.sql fix_classify_parentid.sql add_classify_menu.sql fix_duplicate_classify_menu.sql; do
     if [ -f "${sql_file}" ]; then
       echo "执行 ${sql_file}..."
       mysql -u root -p"qweasd123Q!" < "${sql_file}" 2>&1 || echo "⚠️ ${sql_file} 执行失败或已执行过"
+    else
+      echo "⚠️ ${sql_file} 文件不存在，跳过"
     fi
   done
   echo "✅ 数据库迁移完成"
