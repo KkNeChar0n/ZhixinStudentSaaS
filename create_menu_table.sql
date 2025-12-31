@@ -1,6 +1,6 @@
 -- 创建菜单表
 SET NAMES utf8mb4;
-USE ZhixinStudentSaas;
+USE zhixinstudentsaas;
 
 CREATE TABLE IF NOT EXISTS `menu` (
     `id` INT NOT NULL AUTO_INCREMENT COMMENT '菜单ID',

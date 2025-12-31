@@ -4,7 +4,7 @@
 --   1. 将student和coach表的status字段从VARCHAR改为TINYINT（0=启用，1=禁用）
 --   2. 为grade和subject表添加status字段（0=启用，1=禁用）
 
-USE ZhixinStudentSaas;
+USE zhixinstudentsaas;
 
 -- ============================================
 -- 1. 修改student表的status字段
@@ -13,7 +13,7 @@ USE ZhixinStudentSaas;
 SET @student_status_exists = (
     SELECT COUNT(*)
     FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA = 'ZhixinStudentSaas'
+    WHERE TABLE_SCHEMA = 'zhixinstudentsaas'
     AND TABLE_NAME = 'student'
     AND COLUMN_NAME = 'status'
 );
@@ -40,7 +40,7 @@ COMMENT '0:启用 1:禁用';
 SET @coach_status_exists = (
     SELECT COUNT(*)
     FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA = 'ZhixinStudentSaas'
+    WHERE TABLE_SCHEMA = 'zhixinstudentsaas'
     AND TABLE_NAME = 'coach'
     AND COLUMN_NAME = 'status'
 );
@@ -67,7 +67,7 @@ COMMENT '0:启用 1:禁用';
 SET @grade_status_exists = (
     SELECT COUNT(*)
     FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA = 'ZhixinStudentSaas'
+    WHERE TABLE_SCHEMA = 'zhixinstudentsaas'
     AND TABLE_NAME = 'grade'
     AND COLUMN_NAME = 'status'
 );
@@ -89,7 +89,7 @@ DEALLOCATE PREPARE stmt;
 SET @subject_status_exists = (
     SELECT COUNT(*)
     FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA = 'ZhixinStudentSaas'
+    WHERE TABLE_SCHEMA = 'zhixinstudentsaas'
     AND TABLE_NAME = 'subject'
     AND COLUMN_NAME = 'status'
 );

@@ -1,5 +1,5 @@
 -- 创建订单表
-USE ZhixinStudentSaas;
+USE zhixinstudentsaas;
 
 CREATE TABLE IF NOT EXISTS `orders` (
     `id` INT NOT NULL AUTO_INCREMENT COMMENT '订单ID',

@@ -2,14 +2,14 @@
 -- 执行时间：2025-12-24
 -- 用途：支持账号管理功能的启用/禁用状态
 
-USE ZhixinStudentSaas;
+USE zhixinstudentsaas;
 
 -- 检查并添加 status 字段
 -- 如果字段已存在则跳过
 SET @column_exists = (
     SELECT COUNT(*)
     FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA = 'ZhixinStudentSaas'
+    WHERE TABLE_SCHEMA = 'zhixinstudentsaas'
     AND TABLE_NAME = 'useraccount'
     AND COLUMN_NAME = 'status'
 );
