@@ -23,7 +23,10 @@ jobs:
       - name: Deploy to server
         run: |
           # 使用SSH here-doc语法确保所有命令在远程服务器执行
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+          # 添加SSH选项保持连接活跃
+          ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=10 -o ConnectTimeout=30 ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+            set -x  # 显示每一条执行的命令，方便调试
+            set -e  # 遇到错误立即退出
             # 设置项目路径 - 所有变量在远程服务器上定义和展开
             PROJECT_PATH="/home/charonspace"
             FRONTEND_PATH="${PROJECT_PATH}/frontend"
@@ -77,15 +80,19 @@ jobs:
 
             # 测试GitHub连接
             echo "测试GitHub SSH连接..."
-            if ssh -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+            set +e  # 临时关闭错误退出，因为ssh -T会返回非零
+            SSH_TEST=$(ssh -T git@github.com 2>&1)
+            set -e  # 重新启用错误退出
+            if echo "$SSH_TEST" | grep -q "successfully authenticated"; then
               echo "✅ GitHub SSH连接正常"
             else
-              echo "⚠️ GitHub SSH连接测试:"
-              ssh -T git@github.com 2>&1 || true
+              echo "⚠️ GitHub SSH连接测试结果:"
+              echo "$SSH_TEST"
             fi
 
             # 检查项目路径
             echo "=== 检查项目路径 ==="
+            echo "当前shell PID: $$"
             echo "项目路径: ${PROJECT_PATH}"
             if [ -d "${PROJECT_PATH}" ]; then
               echo "✅ 项目目录存在"
