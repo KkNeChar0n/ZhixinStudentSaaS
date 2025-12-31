@@ -253,6 +253,16 @@ jobs:
                 echo "执行商品管理菜单添加..."
                 mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/add_product_menu.sql" 2>&1 || true
               fi
+              # 创建类型表
+              if [ -f "${PROJECT_PATH}/create_classify_table.sql" ]; then
+                echo "执行类型表创建..."
+                mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/create_classify_table.sql" 2>&1 || true
+              fi
+              # 添加类型管理菜单
+              if [ -f "${PROJECT_PATH}/add_classify_menu.sql" ]; then
+                echo "执行类型管理菜单添加..."
+                mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/add_classify_menu.sql" 2>&1 || true
+              fi
             fi
             
             # 创建systemd服务文件 - 使用安全的方式
