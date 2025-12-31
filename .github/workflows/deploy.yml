@@ -83,13 +83,31 @@ jobs:
               echo "⚠️ GitHub SSH连接测试:"
               ssh -T git@github.com 2>&1 || true
             fi
-            
+
+            # 检查项目路径
+            echo "=== 检查项目路径 ==="
+            echo "项目路径: ${PROJECT_PATH}"
+            if [ -d "${PROJECT_PATH}" ]; then
+              echo "✅ 项目目录存在"
+              ls -la "${PROJECT_PATH}" || true
+            else
+              echo "❌ 项目目录不存在: ${PROJECT_PATH}"
+            fi
+
             # 如果项目已存在，拉取最新代码
+            echo "=== 检查是否为Git仓库 ==="
             if [ -d "${PROJECT_PATH}/.git" ]; then
-              cd "${PROJECT_PATH}"
+              echo "✅ 检测到Git仓库"
+              echo "尝试进入项目目录: ${PROJECT_PATH}"
+              cd "${PROJECT_PATH}" || { echo "❌ 无法进入项目目录"; exit 1; }
+              echo "✅ 成功进入目录: $(pwd)"
+
               echo "=== 更新代码 ==="
               echo "当前分支："
-              git branch
+              git branch || { echo "❌ git branch 命令失败"; exit 1; }
+
+              echo "显示当前提交："
+              git log -1 --oneline || true
 
               # 检查是否有本地修改
               if ! git diff-index --quiet HEAD --; then
@@ -163,18 +181,23 @@ jobs:
               done
 
               if [ $PULL_SUCCESS -eq 0 ]; then
-                echo "错误: 代码拉取失败，已重试 $MAX_RETRIES 次"
+                echo "❌ 错误: 代码拉取失败，已重试 $MAX_RETRIES 次"
                 echo "提示: 请确保服务器上已正确配置GitHub SSH密钥"
+                echo "当前目录: $(pwd)"
+                echo "Git remote: $(git remote -v)"
                 exit 1
               fi
 
-              echo "代码更新完成"
+              echo "✅ 代码更新完成"
               echo "最新提交："
-              git log -1 --oneline
+              git log -1 --oneline || true
 
               # 显示当前HEAD
-              echo "当前HEAD: $(git rev-parse HEAD)"
+              echo "当前HEAD: $(git rev-parse HEAD)" || true
+
+              echo "=== 代码更新阶段完成 ==="
             else
+              echo "❌ 未检测到Git仓库，准备首次克隆"
               echo "=== 首次克隆仓库 ==="
               # 尝试克隆，带重试机制（使用SSH）
               RETRY_COUNT=0
@@ -197,23 +220,39 @@ jobs:
               done
 
               if [ $CLONE_SUCCESS -eq 0 ]; then
-                echo "错误: 仓库克隆失败，已重试 $MAX_RETRIES 次"
+                echo "❌ 错误: 仓库克隆失败，已重试 $MAX_RETRIES 次"
                 echo "提示: 请确保服务器上已配置GitHub SSH密钥"
                 echo "1. 生成密钥: ssh-keygen -t ed25519 -C 'your_email@example.com' -f ~/.ssh/github_deploy_key"
                 echo "2. 添加公钥到GitHub: cat ~/.ssh/github_deploy_key.pub"
                 echo "3. 配置SSH: 在~/.ssh/config中添加GitHub配置"
                 exit 1
               fi
+
+              echo "✅ 仓库克隆完成"
+              cd "${PROJECT_PATH}" || { echo "❌ 无法进入克隆的项目目录"; exit 1; }
+              git log -1 --oneline || true
             fi
-            
+
             # 安装后端依赖
-            cd "${BACKEND_PATH}"
-            pip3 install -r requirements.txt
+            echo "=== 安装后端依赖 ==="
+            echo "后端路径: ${BACKEND_PATH}"
+            cd "${BACKEND_PATH}" || { echo "❌ 无法进入后端目录"; exit 1; }
+            echo "✅ 成功进入后端目录: $(pwd)"
+
+            if [ -f "requirements.txt" ]; then
+              echo "开始安装Python依赖..."
+              pip3 install -r requirements.txt || { echo "⚠️ 依赖安装失败"; }
+              echo "✅ Python依赖安装完成"
+            else
+              echo "⚠️ 未找到requirements.txt文件"
+            fi
 
             # 数据库初始化和迁移
             echo "=== 检查数据库 ==="
-            DB_EXISTS=$(mysql -u root -p"qweasd123Q!" -e "SHOW DATABASES LIKE 'zhixinstudentsaas';" | grep zhixinstudentsaas)
+            echo "检查数据库是否存在..."
+            DB_EXISTS=$(mysql -u root -p"qweasd123Q!" -e "SHOW DATABASES LIKE 'zhixinstudentsaas';" 2>&1 | grep zhixinstudentsaas || true)
             if [ -z "$DB_EXISTS" ]; then
+              echo "⚠️ 数据库不存在"
               echo "数据库不存在，执行初始化..."
               if [ -f "${PROJECT_PATH}/init_database.sql" ]; then
                 mysql -u root -p"qweasd123Q!" < "${PROJECT_PATH}/init_database.sql"
@@ -266,15 +305,23 @@ jobs:
             fi
             
             # 创建systemd服务文件 - 使用安全的方式
+            echo "=== 配置后端服务 ==="
             SYSTEMD_CONTENT="[Unit]\nDescription=CharonSpace Backend Service\nAfter=network.target\n\n[Service]\nUser=charon\nWorkingDirectory=${BACKEND_PATH}\nEnvironment=\"DB_USER=root\"\nEnvironment=\"DB_PASSWORD=qweasd123Q!\"\nEnvironment=\"DB_HOST=localhost\"\nEnvironment=\"DB_NAME=zhixinstudentsaas\"\nExecStart=/usr/bin/python3 ${BACKEND_PATH}/app.py\nRestart=always\n\n[Install]\nWantedBy=multi-user.target"
             # 使用echo -e启用转义字符解析
             echo -e "$SYSTEMD_CONTENT" > /tmp/charonspace-backend.service
-            
+            echo "✅ systemd服务文件已创建"
+
             # 部署服务文件
-            sudo mv /tmp/charonspace-backend.service /etc/systemd/system/
-            sudo systemctl daemon-reload
-            sudo systemctl enable charonspace-backend
-            sudo systemctl restart charonspace-backend
+            echo "部署systemd服务..."
+            sudo mv /tmp/charonspace-backend.service /etc/systemd/system/ || { echo "⚠️ 移动服务文件失败"; }
+            sudo systemctl daemon-reload || { echo "⚠️ daemon-reload失败"; }
+            sudo systemctl enable charonspace-backend || { echo "⚠️ enable服务失败"; }
+            sudo systemctl restart charonspace-backend || { echo "⚠️ 重启服务失败"; }
+            echo "✅ 后端服务配置完成"
+
+            # 检查服务状态
+            echo "后端服务状态："
+            sudo systemctl status charonspace-backend --no-pager || true
             
             # 前端部署 - 更详细的调试
             echo "=== 开始前端部署 ==="
@@ -346,8 +393,16 @@ jobs:
             sudo systemctl status nginx --no-pager
             
             # 测试访问
+            echo "=== 测试访问 ==="
             echo "测试本地访问..."
-            curl -s http://localhost | head -30
-            
-            echo "部署完成！"
+            curl -s http://localhost | head -30 || { echo "⚠️ 本地访问测试失败"; }
+
+            echo "=========================================="
+            echo "✅✅✅ 部署完成！✅✅✅"
+            echo "=========================================="
+            echo "项目路径: ${PROJECT_PATH}"
+            echo "前端路径: /var/www/html"
+            echo "后端路径: ${BACKEND_PATH}"
+            echo "当前代码版本: $(cd ${PROJECT_PATH} && git rev-parse --short HEAD)"
+            echo "=========================================="
           EOF
