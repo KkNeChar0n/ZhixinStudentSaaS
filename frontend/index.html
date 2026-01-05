@@ -303,6 +303,7 @@
                         <table class="data-table">
                             <thead>
                                 <tr>
+                                    <th>ID</th>
                                     <th>账号</th>
                                     <th>密码</th>
                                     <th>状态</th>
@@ -310,13 +311,14 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="account in accounts" :key="account.username">
+                                <tr v-for="account in accounts" :key="account.id">
+                                    <td>{{ account.id }}</td>
                                     <td>{{ account.username }}</td>
                                     <td>{{ account.password }}</td>
                                     <td>{{ account.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
-                                        <button v-if="account.status === 1" class="enable-btn" @click="enableAccount(account.username)">启用</button>
-                                        <button v-if="account.status === 0" class="disable-btn" @click="disableAccount(account.username)">禁用</button>
+                                        <button v-if="account.status === 1" class="enable-btn" @click="enableAccount(account.id)">启用</button>
+                                        <button v-if="account.status === 0" class="disable-btn" @click="disableAccount(account.id)">禁用</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -466,9 +468,9 @@
                     </div>
                     <div class="form-group">
                         <label for="addStudentSex">性别 <span class="required">*</span></label>
-                        <select id="addStudentSex" v-model="addStudentData.sex" required>
+                        <select id="addStudentSex" v-model="addStudentData.sex_id" required>
                             <option value="">请选择性别</option>
-                            <option v-for="sex in sexOptions" :key="sex" :value="sex">{{ sex }}</option>
+                            <option v-for="sex in sexes" :key="sex.id" :value="sex.id">{{ sex.name }}</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -477,9 +479,9 @@
                     </div>
                     <div class="form-group">
                         <label for="addStudentGrade">年级 <span class="required">*</span></label>
-                        <select id="addStudentGrade" v-model="addStudentData.grade" required>
+                        <select id="addStudentGrade" v-model="addStudentData.grade_id" required>
                             <option value="">请选择年级</option>
-                            <option v-for="grade in activeGrades" :key="grade.id" :value="grade.grade">{{ grade.grade }}</option>
+                            <option v-for="grade in activeGrades" :key="grade.id" :value="grade.id">{{ grade.grade }}</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -517,9 +519,8 @@
                     </div>
                     <div class="form-group">
                         <label for="editStudentSex">性别</label>
-                        <select id="editStudentSex" v-model="editStudentData.sex">
-                            <option value="男">男</option>
-                            <option value="女">女</option>
+                        <select id="editStudentSex" v-model="editStudentData.sex_id">
+                            <option v-for="sex in sexes" :key="sex.id" :value="sex.id">{{ sex.name }}</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -528,8 +529,8 @@
                     </div>
                     <div class="form-group">
                         <label for="editStudentGrade">年级</label>
-                        <select id="editStudentGrade" v-model="editStudentData.grade">
-                            <option v-for="grade in activeGrades" :key="grade.id" :value="grade.grade">{{ grade.grade }}</option>
+                        <select id="editStudentGrade" v-model="editStudentData.grade_id">
+                            <option v-for="grade in activeGrades" :key="grade.id" :value="grade.id">{{ grade.grade }}</option>
                         </select>
                     </div>
                 </div>
@@ -554,9 +555,8 @@
                     </div>
                     <div class="form-group">
                         <label for="editCoachSex">性别</label>
-                        <select id="editCoachSex" v-model="editCoachData.sex">
-                            <option value="男">男</option>
-                            <option value="女">女</option>
+                        <select id="editCoachSex" v-model="editCoachData.sex_id">
+                            <option v-for="sex in sexes" :key="sex.id" :value="sex.id">{{ sex.name }}</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -565,8 +565,8 @@
                     </div>
                     <div class="form-group">
                         <label for="editCoachSubject">学科</label>
-                        <select id="editCoachSubject" v-model="editCoachData.subject">
-                            <option v-for="subject in activeSubjects" :key="subject.id" :value="subject.subject">{{ subject.subject }}</option>
+                        <select id="editCoachSubject" v-model="editCoachData.subject_id">
+                            <option v-for="subject in activeSubjects" :key="subject.id" :value="subject.id">{{ subject.subject }}</option>
                         </select>
                     </div>
                 </div>
@@ -591,9 +591,9 @@
                     </div>
                     <div class="form-group">
                         <label for="addCoachSex">性别 <span class="required">*</span></label>
-                        <select id="addCoachSex" v-model="addCoachData.sex" required>
+                        <select id="addCoachSex" v-model="addCoachData.sex_id" required>
                             <option value="">请选择性别</option>
-                            <option v-for="sex in sexOptions" :key="sex" :value="sex">{{ sex }}</option>
+                            <option v-for="sex in sexes" :key="sex.id" :value="sex.id">{{ sex.name }}</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -602,9 +602,9 @@
                     </div>
                     <div class="form-group">
                         <label for="addCoachSubject">学科 <span class="required">*</span></label>
-                        <select id="addCoachSubject" v-model="addCoachData.subject" required>
+                        <select id="addCoachSubject" v-model="addCoachData.subject_id" required>
                             <option value="">请选择学科</option>
-                            <option v-for="subject in activeSubjects" :key="subject.id" :value="subject.subject">{{ subject.subject }}</option>
+                            <option v-for="subject in activeSubjects" :key="subject.id" :value="subject.id">{{ subject.subject }}</option>
                         </select>
                     </div>
                     <div class="form-group">

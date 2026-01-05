@@ -74,33 +74,33 @@ createApp({
             // 新增学生数据
             addStudentData: {
                 name: '',
-                sex: '',
+                sex_id: '',
                 phone: '',
-                grade: '',
+                grade_id: '',
                 coach_ids: []
             },
             // 新增教练数据
             addCoachData: {
                 name: '',
-                sex: '',
+                sex_id: '',
                 phone: '',
-                subject: '',
+                subject_id: '',
                 student_ids: []
             },
             // 编辑数据
             editStudentData: {
                 id: '',
                 name: '',
-                sex: '',
+                sex_id: '',
                 phone: '',
-                grade: ''
+                grade_id: ''
             },
             editCoachData: {
                 id: '',
                 name: '',
-                sex: '',
+                sex_id: '',
                 phone: '',
-                subject: ''
+                subject_id: ''
             },
             // 新增订单数据
             addOrderData: {
@@ -148,8 +148,8 @@ createApp({
             deleteType: '',
             cancelOrderId: null,
             attributeId: null,
-            // 性别选项和启用的教练列表
-            sexOptions: ['男', '女'],
+            // 性别列表和启用的教练列表
+            sexes: [],
             activeCoaches: [],
             activeStudents: [],
             activeGrades: [],
@@ -391,6 +391,15 @@ createApp({
         
         // 学生新增功能
         async openAddStudentModal() {
+            // 获取性别列表
+            try {
+                const response = await axios.get('/api/sexes', { withCredentials: true });
+                this.sexes = response.data.sexes;
+            } catch (err) {
+                console.error('获取性别列表失败:', err);
+                this.error = '获取性别列表失败';
+            }
+
             // 获取启用的教练列表
             try {
                 const response = await axios.get('/api/coaches/active', { withCredentials: true });
@@ -416,17 +425,17 @@ createApp({
             this.showAddStudentModal = false;
             this.addStudentData = {
                 name: '',
-                sex: '',
+                sex_id: '',
                 phone: '',
-                grade: '',
+                grade_id: '',
                 coach_ids: []
             };
         },
 
         async saveAddStudent() {
             // 验证必填字段
-            if (!this.addStudentData.name || !this.addStudentData.sex ||
-                !this.addStudentData.phone || !this.addStudentData.grade) {
+            if (!this.addStudentData.name || !this.addStudentData.sex_id ||
+                !this.addStudentData.phone || !this.addStudentData.grade_id) {
                 alert('请填写所有必填字段');
                 return;
             }
@@ -435,9 +444,9 @@ createApp({
                 // 调用后端API来新增学生
                 const response = await axios.post('/api/students', {
                     student_name: this.addStudentData.name,
-                    sex: this.addStudentData.sex,
+                    sex_id: this.addStudentData.sex_id,
                     phone: this.addStudentData.phone,
-                    grade: this.addStudentData.grade,
+                    grade_id: this.addStudentData.grade_id,
                     coach_ids: this.addStudentData.coach_ids
                 }, { withCredentials: true });
 
@@ -455,6 +464,15 @@ createApp({
 
         // 教练新增功能
         async openAddCoachModal() {
+            // 获取性别列表
+            try {
+                const response = await axios.get('/api/sexes', { withCredentials: true });
+                this.sexes = response.data.sexes;
+            } catch (err) {
+                console.error('获取性别列表失败:', err);
+                this.error = '获取性别列表失败';
+            }
+
             // 获取启用的学生列表
             try {
                 const response = await axios.get('/api/students/active', { withCredentials: true });
@@ -480,17 +498,17 @@ createApp({
             this.showAddCoachModal = false;
             this.addCoachData = {
                 name: '',
-                sex: '',
+                sex_id: '',
                 phone: '',
-                subject: '',
+                subject_id: '',
                 student_ids: []
             };
         },
 
         async saveAddCoach() {
             // 验证必填字段
-            if (!this.addCoachData.name || !this.addCoachData.sex ||
-                !this.addCoachData.phone || !this.addCoachData.subject) {
+            if (!this.addCoachData.name || !this.addCoachData.sex_id ||
+                !this.addCoachData.phone || !this.addCoachData.subject_id) {
                 alert('请填写所有必填字段');
                 return;
             }
@@ -499,9 +517,9 @@ createApp({
                 // 调用后端API来新增教练
                 const response = await axios.post('/api/coaches', {
                     coach_name: this.addCoachData.name,
-                    sex: this.addCoachData.sex,
+                    sex_id: this.addCoachData.sex_id,
                     phone: this.addCoachData.phone,
-                    subject: this.addCoachData.subject,
+                    subject_id: this.addCoachData.subject_id,
                     student_ids: this.addCoachData.student_ids
                 }, { withCredentials: true });
 
@@ -519,6 +537,15 @@ createApp({
 
         // 学生编辑功能
         async openEditStudentModal(student) {
+            // 获取性别列表
+            try {
+                const response = await axios.get('/api/sexes', { withCredentials: true });
+                this.sexes = response.data.sexes;
+            } catch (err) {
+                console.error('获取性别列表失败:', err);
+                this.error = '获取性别列表失败';
+            }
+
             // 获取启用的年级列表
             try {
                 const response = await axios.get('/api/grades/active', { withCredentials: true });
@@ -531,34 +558,34 @@ createApp({
             this.editStudentData = {
                 id: student.id,
                 name: student.student_name,
-                sex: student.sex,
+                sex_id: student.sex_id,
                 phone: student.phone,
-                grade: student.grade
+                grade_id: student.grade_id
             };
             this.showEditStudentModal = true;
         },
-        
+
         closeEditStudentModal() {
             this.showEditStudentModal = false;
             this.editStudentData = {
                 id: '',
                 name: '',
-                sex: '',
+                sex_id: '',
                 phone: '',
-                grade: ''
+                grade_id: ''
             };
         },
-        
+
         async saveEditStudent() {
             try {
                 // 调用后端API来更新学生信息
                 const response = await axios.put(`/api/students/${this.editStudentData.id}`, {
                     student_name: this.editStudentData.name,
-                    sex: this.editStudentData.sex,
+                    sex_id: this.editStudentData.sex_id,
                     phone: this.editStudentData.phone,
-                    grade: this.editStudentData.grade
+                    grade_id: this.editStudentData.grade_id
                 }, { withCredentials: true });
-                
+
                 if (response.data.message === '学生信息更新成功') {
                     // 更新成功后刷新学生数据
                     await this.fetchStudents();
@@ -572,6 +599,15 @@ createApp({
         
         // 教练编辑功能
         async openEditCoachModal(coach) {
+            // 获取性别列表
+            try {
+                const response = await axios.get('/api/sexes', { withCredentials: true });
+                this.sexes = response.data.sexes;
+            } catch (err) {
+                console.error('获取性别列表失败:', err);
+                this.error = '获取性别列表失败';
+            }
+
             // 获取启用的学科列表
             try {
                 const response = await axios.get('/api/subjects/active', { withCredentials: true });
@@ -584,34 +620,34 @@ createApp({
             this.editCoachData = {
                 id: coach.id,
                 name: coach.coach_name,
-                sex: coach.sex,
+                sex_id: coach.sex_id,
                 phone: coach.phone,
-                subject: coach.subject
+                subject_id: coach.subject_id
             };
             this.showEditCoachModal = true;
         },
-        
+
         closeEditCoachModal() {
             this.showEditCoachModal = false;
             this.editCoachData = {
                 id: '',
                 name: '',
-                sex: '',
+                sex_id: '',
                 phone: '',
-                subject: ''
+                subject_id: ''
             };
         },
-        
+
         async saveEditCoach() {
             try {
                 // 调用后端API来更新教练信息
                 const response = await axios.put(`/api/coaches/${this.editCoachData.id}`, {
                     coach_name: this.editCoachData.name,
-                    sex: this.editCoachData.sex,
+                    sex_id: this.editCoachData.sex_id,
                     phone: this.editCoachData.phone,
-                    subject: this.editCoachData.subject
+                    subject_id: this.editCoachData.subject_id
                 }, { withCredentials: true });
-                
+
                 if (response.data.message === '教练信息更新成功') {
                     // 更新成功后刷新教练数据
                     await this.fetchCoaches();
@@ -700,9 +736,9 @@ createApp({
             }
         },
 
-        async enableAccount(username) {
+        async enableAccount(id) {
             try {
-                await axios.put(`/api/accounts/${username}/status`, {
+                await axios.put(`/api/accounts/${id}/status`, {
                     status: 0
                 }, { withCredentials: true });
                 alert('账号已启用');
@@ -713,9 +749,9 @@ createApp({
             }
         },
 
-        async disableAccount(username) {
+        async disableAccount(id) {
             try {
-                await axios.put(`/api/accounts/${username}/status`, {
+                await axios.put(`/api/accounts/${id}/status`, {
                     status: 1
                 }, { withCredentials: true });
                 alert('账号已禁用');
