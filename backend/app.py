@@ -144,8 +144,8 @@ def get_students():
             SELECT
                 s.id,
                 s.name AS student_name,
-                sx.sex,
-                g.grade,
+                sx.name AS sex,
+                g.name AS grade,
                 s.phone,
                 s.status,
                 GROUP_CONCAT(c.name SEPARATOR ', ') AS coach_names
@@ -160,7 +160,7 @@ def get_students():
             LEFT JOIN
                 coach c ON sc.coach_id = c.id
             GROUP BY
-                s.id, s.name, sx.sex, g.grade, s.phone, s.status
+                s.id, s.name, sx.name, g.name, s.phone, s.status
         """)
         
         students = cursor.fetchall()
@@ -184,7 +184,7 @@ def get_active_grades():
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
         # 查询状态为启用(0)的年级
-        cursor.execute("SELECT id, grade FROM grade WHERE status = 0 ORDER BY id")
+        cursor.execute("SELECT id, name AS grade FROM grade WHERE status = 0 ORDER BY id")
         grades = cursor.fetchall()
 
         return jsonify({'grades': grades}), 200
@@ -232,7 +232,7 @@ def get_coaches():
             SELECT
                 c.id,
                 c.name AS coach_name,
-                sx.sex,
+                sx.name AS sex,
                 sub.subject,
                 c.phone,
                 c.status
@@ -274,13 +274,13 @@ def update_student(id):
         cursor = connection.cursor()
         
         # 获取性别ID和年级ID
-        cursor.execute("SELECT id FROM sex WHERE sex = %s", (sex,))
+        cursor.execute("SELECT id FROM sex WHERE name = %s", (sex,))
         sex_result = cursor.fetchone()
         if not sex_result:
             return jsonify({'error': '性别不存在'}), 400
         sex_id = sex_result[0]
         
-        cursor.execute("SELECT id FROM grade WHERE grade = %s", (grade,))
+        cursor.execute("SELECT id FROM grade WHERE name = %s", (grade,))
         grade_result = cursor.fetchone()
         if not grade_result:
             return jsonify({'error': '年级不存在'}), 400
@@ -394,7 +394,7 @@ def update_coach(id):
         cursor = connection.cursor()
 
         # 获取性别ID
-        cursor.execute("SELECT id FROM sex WHERE sex = %s", (sex,))
+        cursor.execute("SELECT id FROM sex WHERE name = %s", (sex,))
         sex_result = cursor.fetchone()
         if not sex_result:
             return jsonify({'error': '性别不存在'}), 400
@@ -579,7 +579,7 @@ def add_coach():
         cursor = connection.cursor()
 
         # 获取性别ID
-        cursor.execute("SELECT id FROM sex WHERE sex = %s", (sex,))
+        cursor.execute("SELECT id FROM sex WHERE name = %s", (sex,))
         sex_result = cursor.fetchone()
         if not sex_result:
             return jsonify({'error': '性别不存在'}), 400
@@ -643,14 +643,14 @@ def add_student():
         cursor = connection.cursor()
 
         # 获取性别ID
-        cursor.execute("SELECT id FROM sex WHERE sex = %s", (sex,))
+        cursor.execute("SELECT id FROM sex WHERE name = %s", (sex,))
         sex_result = cursor.fetchone()
         if not sex_result:
             return jsonify({'error': '性别不存在'}), 400
         sex_id = sex_result[0]
 
         # 获取年级ID
-        cursor.execute("SELECT id FROM grade WHERE grade = %s", (grade,))
+        cursor.execute("SELECT id FROM grade WHERE name = %s", (grade,))
         grade_result = cursor.fetchone()
         if not grade_result:
             return jsonify({'error': '年级不存在'}), 400
