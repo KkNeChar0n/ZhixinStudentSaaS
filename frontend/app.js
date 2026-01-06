@@ -15,6 +15,7 @@ createApp({
             orders: [],
             attributes: [],
             classifies: [],
+            brands: [],
             // 学生筛选条件
             studentFilters: {
                 id: '',
@@ -48,12 +49,19 @@ createApp({
                 level: '',
                 status: ''
             },
+            // 品牌筛选条件
+            brandFilters: {
+                id: '',
+                name: '',
+                status: ''
+            },
             // 筛选后的学生和教练数据
             filteredStudents: [],
             filteredCoaches: [],
             filteredOrders: [],
             filteredAttributes: [],
             filteredClassifies: [],
+            filteredBrands: [],
             // 分页数据
             pageSize: 10,
             studentCurrentPage: 1,
@@ -62,6 +70,7 @@ createApp({
             accountCurrentPage: 1,
             attributeCurrentPage: 1,
             classifyCurrentPage: 1,
+            brandCurrentPage: 1,
             // 弹窗状态
             showAddStudentModal: false,
             showAddCoachModal: false,
@@ -80,6 +89,10 @@ createApp({
             showEnableClassifyConfirm: false,
             showDisableClassifyConfirm: false,
             showAttributeValuesModal: false,
+            showAddBrandModal: false,
+            showEditBrandModal: false,
+            showEnableBrandConfirm: false,
+            showDisableBrandConfirm: false,
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -152,6 +165,17 @@ createApp({
             parentClassifies: [],
             // 类型操作ID
             classifyId: null,
+            // 新增品牌数据
+            addBrandData: {
+                name: ''
+            },
+            // 编辑品牌数据
+            editBrandData: {
+                id: '',
+                name: ''
+            },
+            // 品牌操作ID
+            brandId: null,
             // 属性值数据
             currentAttributeId: null,
             currentAttributeName: '',
@@ -228,6 +252,15 @@ createApp({
         },
         classifyTotalPages() {
             return Math.ceil(this.filteredClassifies.length / this.pageSize);
+        },
+        // 品牌分页数据
+        paginatedBrands() {
+            const start = (this.brandCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredBrands.slice(start, end);
+        },
+        brandTotalPages() {
+            return Math.ceil(this.filteredBrands.length / this.pageSize);
         }
     },
     mounted() {
@@ -326,6 +359,8 @@ createApp({
                 this.fetchAttributes();
             } else if (menu === 'classifies') {
                 this.fetchClassifies();
+            } else if (menu === 'brands') {
+                this.fetchBrands();
             }
         },
         
@@ -1566,6 +1601,192 @@ createApp({
         changeClassifyPage(page) {
             if (page >= 1 && page <= this.classifyTotalPages) {
                 this.classifyCurrentPage = page;
+            }
+        },
+
+        // ==================== 品牌管理功能 ====================
+
+        // 获取品牌数据
+        async fetchBrands() {
+            try {
+                const response = await axios.get('/api/brands', { withCredentials: true });
+                this.brands = response.data.brands;
+                this.filteredBrands = this.brands;
+            } catch (err) {
+                console.error('获取品牌失败:', err);
+                this.error = '获取品牌失败';
+            }
+        },
+
+        // 品牌筛选功能
+        searchBrands() {
+            this.filteredBrands = this.brands.filter(brand => {
+                const idMatch = !this.brandFilters.id || brand.id === parseInt(this.brandFilters.id);
+                const nameMatch = !this.brandFilters.name || brand.name === this.brandFilters.name;
+                const statusMatch = this.brandFilters.status === '' || brand.status === parseInt(this.brandFilters.status);
+                return idMatch && nameMatch && statusMatch;
+            });
+            // 筛选后重置到第一页
+            this.brandCurrentPage = 1;
+        },
+
+        // 重置品牌筛选
+        resetBrandFilters() {
+            this.brandFilters = {
+                id: '',
+                name: '',
+                status: ''
+            };
+            this.filteredBrands = this.brands;
+            this.brandCurrentPage = 1;
+        },
+
+        // 获取品牌状态文本
+        getBrandStatusText(status) {
+            return status === 0 ? '启用' : '禁用';
+        },
+
+        // 打开新增品牌弹窗
+        openAddBrandModal() {
+            this.showAddBrandModal = true;
+        },
+
+        // 关闭新增品牌弹窗
+        closeAddBrandModal() {
+            this.showAddBrandModal = false;
+            this.addBrandData = {
+                name: ''
+            };
+        },
+
+        // 保存新增品牌
+        async saveAddBrand() {
+            if (!this.addBrandData.name) {
+                alert('请填写品牌名称');
+                return;
+            }
+
+            try {
+                const response = await axios.post('/api/brands', {
+                    name: this.addBrandData.name
+                }, { withCredentials: true });
+
+                if (response.data.message === '品牌添加成功') {
+                    await this.fetchBrands();
+                    this.closeAddBrandModal();
+                    alert('品牌添加成功');
+                }
+            } catch (err) {
+                console.error('新增品牌失败:', err);
+                alert(err.response?.data?.error || '新增品牌失败');
+            }
+        },
+
+        // 打开编辑品牌弹窗
+        openEditBrandModal(brand) {
+            this.editBrandData = {
+                id: brand.id,
+                name: brand.name
+            };
+            this.showEditBrandModal = true;
+        },
+
+        // 关闭编辑品牌弹窗
+        closeEditBrandModal() {
+            this.showEditBrandModal = false;
+            this.editBrandData = {
+                id: '',
+                name: ''
+            };
+        },
+
+        // 保存编辑品牌
+        async saveEditBrand() {
+            if (!this.editBrandData.name) {
+                alert('请填写品牌名称');
+                return;
+            }
+
+            try {
+                const response = await axios.put(`/api/brands/${this.editBrandData.id}`, {
+                    name: this.editBrandData.name
+                }, { withCredentials: true });
+
+                if (response.data.message === '品牌信息更新成功') {
+                    await this.fetchBrands();
+                    this.closeEditBrandModal();
+                    alert('品牌信息更新成功');
+                }
+            } catch (err) {
+                console.error('更新品牌失败:', err);
+                alert(err.response?.data?.error || '更新品牌失败');
+            }
+        },
+
+        // 打开启用品牌确认弹窗
+        openEnableBrandConfirm(brandId) {
+            this.brandId = brandId;
+            this.showEnableBrandConfirm = true;
+        },
+
+        // 关闭启用品牌确认弹窗
+        closeEnableBrandConfirm() {
+            this.showEnableBrandConfirm = false;
+            this.brandId = null;
+        },
+
+        // 确认启用品牌
+        async confirmEnableBrand() {
+            try {
+                const response = await axios.put(`/api/brands/${this.brandId}/status`, {
+                    status: 0
+                }, { withCredentials: true });
+
+                if (response.data.message === '品牌状态更新成功') {
+                    await this.fetchBrands();
+                    this.closeEnableBrandConfirm();
+                    alert('品牌已启用');
+                }
+            } catch (err) {
+                console.error('启用品牌失败:', err);
+                alert(err.response?.data?.error || '启用品牌失败');
+            }
+        },
+
+        // 打开禁用品牌确认弹窗
+        openDisableBrandConfirm(brandId) {
+            this.brandId = brandId;
+            this.showDisableBrandConfirm = true;
+        },
+
+        // 关闭禁用品牌确认弹窗
+        closeDisableBrandConfirm() {
+            this.showDisableBrandConfirm = false;
+            this.brandId = null;
+        },
+
+        // 确认禁用品牌
+        async confirmDisableBrand() {
+            try {
+                const response = await axios.put(`/api/brands/${this.brandId}/status`, {
+                    status: 1
+                }, { withCredentials: true });
+
+                if (response.data.message === '品牌状态更新成功') {
+                    await this.fetchBrands();
+                    this.closeDisableBrandConfirm();
+                    alert('品牌已禁用');
+                }
+            } catch (err) {
+                console.error('禁用品牌失败:', err);
+                alert(err.response?.data?.error || '禁用品牌失败');
+            }
+        },
+
+        // 品牌分页
+        changeBrandPage(page) {
+            if (page >= 1 && page <= this.brandTotalPages) {
+                this.brandCurrentPage = page;
             }
         }
     }

@@ -507,6 +507,72 @@
                             <button class="page-btn" @click="changeClassifyPage(classifyTotalPages)" :disabled="classifyCurrentPage === classifyTotalPages">末页</button>
                         </div>
                     </div>
+
+                    <!-- 品牌管理页面 -->
+                    <div v-if="activeMenu === 'brands'">
+                        <div class="page-header">
+                            <h1>品牌管理</h1>
+                            <button class="add-btn" @click="openAddBrandModal">新增</button>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="brandIdFilter">ID</label>
+                                    <input type="number" id="brandIdFilter" v-model="brandFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="brandNameFilter">名称</label>
+                                    <input type="text" id="brandNameFilter" v-model="brandFilters.name" placeholder="请输入名称">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="brandStatusFilter">状态</label>
+                                    <select id="brandStatusFilter" v-model="brandFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">启用</option>
+                                        <option value="1">禁用</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchBrands">搜索</button>
+                                <button class="reset-btn" @click="resetBrandFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>名称</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="brand in paginatedBrands" :key="brand.id">
+                                    <td>{{ brand.id }}</td>
+                                    <td>{{ brand.name }}</td>
+                                    <td>{{ getBrandStatusText(brand.status) }}</td>
+                                    <td class="action-column">
+                                        <button class="edit-btn" @click="openEditBrandModal(brand)">编辑</button>
+                                        <button v-if="brand.status === 1" class="enable-btn" @click="openEnableBrandConfirm(brand.id)">启用</button>
+                                        <button v-if="brand.status === 0" class="disable-btn" @click="openDisableBrandConfirm(brand.id)">禁用</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- 品牌分页控件 -->
+                        <div class="pagination" v-if="brandTotalPages > 1">
+                            <button class="page-btn" @click="changeBrandPage(1)" :disabled="brandCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeBrandPage(brandCurrentPage - 1)" :disabled="brandCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ brandCurrentPage }} / {{ brandTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeBrandPage(brandCurrentPage + 1)" :disabled="brandCurrentPage === brandTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeBrandPage(brandTotalPages)" :disabled="brandCurrentPage === brandTotalPages">末页</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1013,6 +1079,80 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="closeAttributeValuesModal">取消</button>
                     <button class="save-btn" @click="saveAttributeValues">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增品牌弹窗 -->
+        <div class="modal-overlay" v-if="showAddBrandModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>新增品牌</h3>
+                    <button class="close-btn" @click="closeAddBrandModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="addBrandName">名称 <span class="required">*</span></label>
+                        <input type="text" id="addBrandName" v-model="addBrandData.name" placeholder="请输入名称" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAddBrandModal">取消</button>
+                    <button class="save-btn" @click="saveAddBrand">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑品牌弹窗 -->
+        <div class="modal-overlay" v-if="showEditBrandModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>编辑品牌</h3>
+                    <button class="close-btn" @click="closeEditBrandModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editBrandName">名称 <span class="required">*</span></label>
+                        <input type="text" id="editBrandName" v-model="editBrandData.name" placeholder="请输入名称" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEditBrandModal">取消</button>
+                    <button class="save-btn" @click="saveEditBrand">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 启用品牌确认弹窗 -->
+        <div class="modal-overlay" v-if="showEnableBrandConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认启用</h3>
+                    <button class="close-btn" @click="closeEnableBrandConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否启用该品牌？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEnableBrandConfirm">否</button>
+                    <button class="save-btn" @click="confirmEnableBrand">是</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 禁用品牌确认弹窗 -->
+        <div class="modal-overlay" v-if="showDisableBrandConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认禁用</h3>
+                    <button class="close-btn" @click="closeDisableBrandConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否禁用该品牌？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeDisableBrandConfirm">否</button>
+                    <button class="delete-btn" @click="confirmDisableBrand">是</button>
                 </div>
             </div>
         </div>

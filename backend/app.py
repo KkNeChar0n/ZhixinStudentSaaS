@@ -1332,5 +1332,143 @@ def get_menus():
         if connection:
             connection.close()
 
+# ==================== 品牌管理API ====================
+
+# API接口：获取品牌列表
+@app.route('/api/brands', methods=['GET'])
+def get_brands():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询所有品牌
+        cursor.execute("SELECT id, name, status FROM brand ORDER BY id")
+        brands = cursor.fetchall()
+
+        return jsonify({'brands': brands}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：新增品牌
+@app.route('/api/brands', methods=['POST'])
+def add_brand():
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+
+        if not name:
+            return jsonify({'error': '品牌名称不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查品牌名称是否已存在
+        cursor.execute("SELECT id FROM brand WHERE name = %s", (name,))
+        existing_brand = cursor.fetchone()
+        if existing_brand:
+            return jsonify({'error': '该品牌名称已存在'}), 400
+
+        # 插入新品牌
+        cursor.execute("INSERT INTO brand (name, status) VALUES (%s, 0)", (name,))
+        connection.commit()
+
+        return jsonify({'message': '品牌添加成功'}), 201
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新品牌信息
+@app.route('/api/brands/<int:brand_id>', methods=['PUT'])
+def update_brand(brand_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+
+        if not name:
+            return jsonify({'error': '品牌名称不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查品牌是否存在
+        cursor.execute("SELECT id FROM brand WHERE id = %s", (brand_id,))
+        brand = cursor.fetchone()
+        if not brand:
+            return jsonify({'error': '品牌不存在'}), 404
+
+        # 检查品牌名称是否已被其他品牌使用
+        cursor.execute("SELECT id FROM brand WHERE name = %s AND id != %s", (name, brand_id))
+        existing_brand = cursor.fetchone()
+        if existing_brand:
+            return jsonify({'error': '该品牌名称已存在'}), 400
+
+        # 更新品牌信息
+        cursor.execute("UPDATE brand SET name = %s WHERE id = %s", (name, brand_id))
+        connection.commit()
+
+        return jsonify({'message': '品牌信息更新成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新品牌状态
+@app.route('/api/brands/<int:brand_id>/status', methods=['PUT'])
+def update_brand_status(brand_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        status = data.get('status')
+
+        if status is None:
+            return jsonify({'error': '状态不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查品牌是否存在
+        cursor.execute("SELECT id FROM brand WHERE id = %s", (brand_id,))
+        brand = cursor.fetchone()
+        if not brand:
+            return jsonify({'error': '品牌不存在'}), 404
+
+        # 更新品牌状态
+        cursor.execute("UPDATE brand SET status = %s WHERE id = %s", (status, brand_id))
+        connection.commit()
+
+        return jsonify({'message': '品牌状态更新成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)
