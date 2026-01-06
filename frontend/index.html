@@ -123,7 +123,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="student in filteredStudents" :key="student.id">
+                                <tr v-for="student in paginatedStudents" :key="student.id">
                                     <td>{{ student.id }}</td>
                                     <td>{{ student.student_name }}</td>
                                     <td>{{ student.sex }}</td>
@@ -140,6 +140,15 @@
                                 </tr>
                             </tbody>
                         </table>
+
+                        <!-- 学生分页控件 -->
+                        <div class="pagination" v-if="studentTotalPages > 1">
+                            <button class="page-btn" @click="changeStudentPage(1)" :disabled="studentCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeStudentPage(studentCurrentPage - 1)" :disabled="studentCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ studentCurrentPage }} / {{ studentTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeStudentPage(studentCurrentPage + 1)" :disabled="studentCurrentPage === studentTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeStudentPage(studentTotalPages)" :disabled="studentCurrentPage === studentTotalPages">末页</button>
+                        </div>
                     </div>
                     
                     <!-- 教练管理页面 -->
@@ -211,7 +220,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="coach in filteredCoaches" :key="coach.id">
+                                <tr v-for="coach in paginatedCoaches" :key="coach.id">
                                     <td>{{ coach.id }}</td>
                                     <td>{{ coach.coach_name }}</td>
                                     <td>{{ coach.sex }}</td>
@@ -227,6 +236,15 @@
                                 </tr>
                             </tbody>
                         </table>
+
+                        <!-- 教练分页控件 -->
+                        <div class="pagination" v-if="coachTotalPages > 1">
+                            <button class="page-btn" @click="changeCoachPage(1)" :disabled="coachCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeCoachPage(coachCurrentPage - 1)" :disabled="coachCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ coachCurrentPage }} / {{ coachTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeCoachPage(coachCurrentPage + 1)" :disabled="coachCurrentPage === coachTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeCoachPage(coachTotalPages)" :disabled="coachCurrentPage === coachTotalPages">末页</button>
+                        </div>
                     </div>
 
                     <!-- 订单管理页面 -->
@@ -279,7 +297,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="order in filteredOrders" :key="order.id">
+                                <tr v-for="order in paginatedOrders" :key="order.id">
                                     <td>{{ order.id }}</td>
                                     <td>{{ order.uid }}</td>
                                     <td>{{ order.create_time }}</td>
@@ -294,6 +312,15 @@
                                 </tr>
                             </tbody>
                         </table>
+
+                        <!-- 订单分页控件 -->
+                        <div class="pagination" v-if="orderTotalPages > 1">
+                            <button class="page-btn" @click="changeOrderPage(1)" :disabled="orderCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeOrderPage(orderCurrentPage - 1)" :disabled="orderCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ orderCurrentPage }} / {{ orderTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeOrderPage(orderCurrentPage + 1)" :disabled="orderCurrentPage === orderTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeOrderPage(orderTotalPages)" :disabled="orderCurrentPage === orderTotalPages">末页</button>
+                        </div>
                     </div>
 
                     <!-- 账号管理页面 -->
@@ -311,7 +338,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="account in accounts" :key="account.id">
+                                <tr v-for="account in paginatedAccounts" :key="account.id">
                                     <td>{{ account.id }}</td>
                                     <td>{{ account.username }}</td>
                                     <td>{{ account.password }}</td>
@@ -323,6 +350,15 @@
                                 </tr>
                             </tbody>
                         </table>
+
+                        <!-- 账号分页控件 -->
+                        <div class="pagination" v-if="accountTotalPages > 1">
+                            <button class="page-btn" @click="changeAccountPage(1)" :disabled="accountCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeAccountPage(accountCurrentPage - 1)" :disabled="accountCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ accountCurrentPage }} / {{ accountTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeAccountPage(accountCurrentPage + 1)" :disabled="accountCurrentPage === accountTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeAccountPage(accountTotalPages)" :disabled="accountCurrentPage === accountTotalPages">末页</button>
+                        </div>
                     </div>
 
                     <!-- 属性管理页面 -->
@@ -374,7 +410,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="attribute in filteredAttributes" :key="attribute.id">
+                                <tr v-for="attribute in paginatedAttributes" :key="attribute.id">
                                     <td>{{ attribute.id }}</td>
                                     <td>{{ attribute.name }}</td>
                                     <td>{{ getClassifyText(attribute.classify) }}</td>
@@ -389,6 +425,15 @@
                                 </tr>
                             </tbody>
                         </table>
+
+                        <!-- 属性分页控件 -->
+                        <div class="pagination" v-if="attributeTotalPages > 1">
+                            <button class="page-btn" @click="changeAttributePage(1)" :disabled="attributeCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeAttributePage(attributeCurrentPage - 1)" :disabled="attributeCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ attributeCurrentPage }} / {{ attributeTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeAttributePage(attributeCurrentPage + 1)" :disabled="attributeCurrentPage === attributeTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeAttributePage(attributeTotalPages)" :disabled="attributeCurrentPage === attributeTotalPages">末页</button>
+                        </div>
                     </div>
 
                     <!-- 类型管理页面 -->
@@ -439,7 +484,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="classify in filteredClassifies" :key="classify.id">
+                                <tr v-for="classify in paginatedClassifies" :key="classify.id">
                                     <td>{{ classify.id }}</td>
                                     <td>{{ classify.name }}</td>
                                     <td>{{ getClassifyLevelText(classify.level) }}</td>
@@ -452,6 +497,15 @@
                                 </tr>
                             </tbody>
                         </table>
+
+                        <!-- 类型分页控件 -->
+                        <div class="pagination" v-if="classifyTotalPages > 1">
+                            <button class="page-btn" @click="changeClassifyPage(1)" :disabled="classifyCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeClassifyPage(classifyCurrentPage - 1)" :disabled="classifyCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ classifyCurrentPage }} / {{ classifyTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeClassifyPage(classifyCurrentPage + 1)" :disabled="classifyCurrentPage === classifyTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeClassifyPage(classifyTotalPages)" :disabled="classifyCurrentPage === classifyTotalPages">末页</button>
+                        </div>
                     </div>
                 </div>
             </div>

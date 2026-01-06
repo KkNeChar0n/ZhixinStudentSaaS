@@ -54,6 +54,14 @@ createApp({
             filteredOrders: [],
             filteredAttributes: [],
             filteredClassifies: [],
+            // 分页数据
+            pageSize: 10,
+            studentCurrentPage: 1,
+            coachCurrentPage: 1,
+            orderCurrentPage: 1,
+            accountCurrentPage: 1,
+            attributeCurrentPage: 1,
+            classifyCurrentPage: 1,
             // 弹窗状态
             showAddStudentModal: false,
             showAddCoachModal: false,
@@ -165,6 +173,62 @@ createApp({
             // 菜单树数据
             menuTree: []
         };
+    },
+    computed: {
+        // 学生分页数据
+        paginatedStudents() {
+            const start = (this.studentCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredStudents.slice(start, end);
+        },
+        studentTotalPages() {
+            return Math.ceil(this.filteredStudents.length / this.pageSize);
+        },
+        // 教练分页数据
+        paginatedCoaches() {
+            const start = (this.coachCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredCoaches.slice(start, end);
+        },
+        coachTotalPages() {
+            return Math.ceil(this.filteredCoaches.length / this.pageSize);
+        },
+        // 订单分页数据
+        paginatedOrders() {
+            const start = (this.orderCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredOrders.slice(start, end);
+        },
+        orderTotalPages() {
+            return Math.ceil(this.filteredOrders.length / this.pageSize);
+        },
+        // 账号分页数据
+        paginatedAccounts() {
+            const start = (this.accountCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.accounts.slice(start, end);
+        },
+        accountTotalPages() {
+            return Math.ceil(this.accounts.length / this.pageSize);
+        },
+        // 属性分页数据
+        paginatedAttributes() {
+            const start = (this.attributeCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredAttributes.slice(start, end);
+        },
+        attributeTotalPages() {
+            return Math.ceil(this.filteredAttributes.length / this.pageSize);
+        },
+        // 类型分页数据
+        paginatedClassifies() {
+            const start = (this.classifyCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredClassifies.slice(start, end);
+        },
+        classifyTotalPages() {
+            return Math.ceil(this.filteredClassifies.length / this.pageSize);
+        }
     },
     mounted() {
         // 页面加载时检查用户是否已登录
@@ -1463,6 +1527,45 @@ createApp({
             } catch (err) {
                 console.error('禁用类型失败:', err);
                 alert(err.response?.data?.error || '禁用类型失败');
+            }
+        },
+
+        // ==================== 分页功能 ====================
+
+        // 学生分页
+        changeStudentPage(page) {
+            if (page >= 1 && page <= this.studentTotalPages) {
+                this.studentCurrentPage = page;
+            }
+        },
+        // 教练分页
+        changeCoachPage(page) {
+            if (page >= 1 && page <= this.coachTotalPages) {
+                this.coachCurrentPage = page;
+            }
+        },
+        // 订单分页
+        changeOrderPage(page) {
+            if (page >= 1 && page <= this.orderTotalPages) {
+                this.orderCurrentPage = page;
+            }
+        },
+        // 账号分页
+        changeAccountPage(page) {
+            if (page >= 1 && page <= this.accountTotalPages) {
+                this.accountCurrentPage = page;
+            }
+        },
+        // 属性分页
+        changeAttributePage(page) {
+            if (page >= 1 && page <= this.attributeTotalPages) {
+                this.attributeCurrentPage = page;
+            }
+        },
+        // 类型分页
+        changeClassifyPage(page) {
+            if (page >= 1 && page <= this.classifyTotalPages) {
+                this.classifyCurrentPage = page;
             }
         }
     }
