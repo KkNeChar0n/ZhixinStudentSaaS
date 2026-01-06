@@ -1470,5 +1470,332 @@ def update_brand_status(brand_id):
         if connection:
             connection.close()
 
+# ==================== 商品管理API（基础功能）====================
+
+# API接口：获取商品列表
+@app.route('/api/goods', methods=['GET'])
+def get_goods():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询所有商品，包含品牌和类型名称
+        cursor.execute("""
+            SELECT
+                g.id, g.name, g.brandid, g.classifyid, g.isgroup, g.price, g.status,
+                b.name as brand_name,
+                c.name as classify_name
+            FROM goods g
+            LEFT JOIN brand b ON g.brandid = b.id
+            LEFT JOIN classify c ON g.classifyid = c.id
+            ORDER BY g.id DESC
+        """)
+        goods_list = cursor.fetchall()
+
+        # 为每个商品获取属性值信息
+        for goods in goods_list:
+            cursor.execute("""
+                SELECT
+                    av.id, av.name as value_name, av.attributeid,
+                    a.name as attr_name, a.classify
+                FROM goods_attributevalue gav
+                JOIN attribute_value av ON gav.attributevalueid = av.id
+                JOIN attribute a ON av.attributeid = a.id
+                WHERE gav.goodsid = %s
+            """, (goods['id'],))
+            attr_values = cursor.fetchall()
+
+            # 格式化属性值显示，区分属性和规格
+            if attr_values:
+                # 分别收集属性（classify=0）和规格（classify=1）
+                attributes_dict = {}  # 属性
+                specs_dict = {}  # 规格
+
+                for av in attr_values:
+                    attr_name = av['attr_name']
+                    if av['classify'] == 0:  # 属性
+                        if attr_name not in attributes_dict:
+                            attributes_dict[attr_name] = []
+                        attributes_dict[attr_name].append(av['value_name'])
+                    elif av['classify'] == 1:  # 规格
+                        if attr_name not in specs_dict:
+                            specs_dict[attr_name] = []
+                        specs_dict[attr_name].append(av['value_name'])
+
+                # 拼接成字符串：属性:属性值,规格:规格值
+                parts = []
+                for k, v in attributes_dict.items():
+                    parts.append(f"{k}:{'/'.join(v)}")
+                for k, v in specs_dict.items():
+                    parts.append(f"{k}:{'/'.join(v)}")
+
+                goods['attributes'] = ','.join(parts) if parts else ''
+
+                # 保存完整的属性列表用于悬浮显示
+                goods['attributes_full'] = parts
+            else:
+                goods['attributes'] = ''
+                goods['attributes_full'] = []
+
+        return jsonify({'goods': goods_list}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：新增商品
+@app.route('/api/goods', methods=['POST'])
+def add_goods():
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        brandid = data.get('brandid')
+        classifyid = data.get('classifyid')
+        price = data.get('price')
+        attribute_values = data.get('attributevalue_ids', [])  # 属性值ID列表
+
+        if not name or not brandid or not classifyid or not price:
+            return jsonify({'error': '商品信息不完整'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 插入商品（暂时都设置为非组合售卖）
+        cursor.execute("""
+            INSERT INTO goods (name, brandid, classifyid, isgroup, price, status)
+            VALUES (%s, %s, %s, 1, %s, 0)
+        """, (name, brandid, classifyid, price))
+
+        goods_id = cursor.lastrowid
+
+        # 插入商品属性值关系
+        if attribute_values:
+            for av_id in attribute_values:
+                cursor.execute("""
+                    INSERT INTO goods_attributevalue (goodsid, attributevalueid)
+                    VALUES (%s, %s)
+                """, (goods_id, av_id))
+
+        connection.commit()
+        return jsonify({'message': '商品添加成功', 'id': goods_id}), 201
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取单个商品详情
+@app.route('/api/goods/<int:goods_id>', methods=['GET'])
+def get_goods_detail(goods_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询商品基本信息
+        cursor.execute("""
+            SELECT
+                g.id, g.name, g.brandid, g.classifyid, g.isgroup, g.price, g.status,
+                b.name as brand_name,
+                c.name as classify_name
+            FROM goods g
+            LEFT JOIN brand b ON g.brandid = b.id
+            LEFT JOIN classify c ON g.classifyid = c.id
+            WHERE g.id = %s
+        """, (goods_id,))
+        goods = cursor.fetchone()
+
+        if not goods:
+            return jsonify({'error': '商品不存在'}), 404
+
+        # 查询商品的属性值
+        cursor.execute("""
+            SELECT attributevalueid
+            FROM goods_attributevalue
+            WHERE goodsid = %s
+        """, (goods_id,))
+        attr_values = cursor.fetchall()
+        goods['attributevalue_ids'] = [av['attributevalueid'] for av in attr_values]
+
+        return jsonify({'goods': goods}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新商品信息
+@app.route('/api/goods/<int:goods_id>', methods=['PUT'])
+def update_goods(goods_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        brandid = data.get('brandid')
+        classifyid = data.get('classifyid')
+        price = data.get('price')
+        attribute_values = data.get('attributevalue_ids', [])
+
+        if not name or not brandid or not classifyid or not price:
+            return jsonify({'error': '商品信息不完整'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查商品是否存在
+        cursor.execute("SELECT id FROM goods WHERE id = %s", (goods_id,))
+        if not cursor.fetchone():
+            return jsonify({'error': '商品不存在'}), 404
+
+        # 更新商品基本信息
+        cursor.execute("""
+            UPDATE goods
+            SET name = %s, brandid = %s, classifyid = %s, price = %s
+            WHERE id = %s
+        """, (name, brandid, classifyid, price, goods_id))
+
+        # 删除旧的属性值关系
+        cursor.execute("DELETE FROM goods_attributevalue WHERE goodsid = %s", (goods_id,))
+
+        # 插入新的属性值关系
+        if attribute_values:
+            for av_id in attribute_values:
+                cursor.execute("""
+                    INSERT INTO goods_attributevalue (goodsid, attributevalueid)
+                    VALUES (%s, %s)
+                """, (goods_id, av_id))
+
+        connection.commit()
+        return jsonify({'message': '商品信息更新成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新商品状态
+@app.route('/api/goods/<int:goods_id>/status', methods=['PUT'])
+def update_goods_status(goods_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        status = data.get('status')
+
+        if status is None:
+            return jsonify({'error': '状态不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查商品是否存在
+        cursor.execute("SELECT id FROM goods WHERE id = %s", (goods_id,))
+        if not cursor.fetchone():
+            return jsonify({'error': '商品不存在'}), 404
+
+        # 更新商品状态
+        cursor.execute("UPDATE goods SET status = %s WHERE id = %s", (status, goods_id))
+        connection.commit()
+
+        return jsonify({'message': '商品状态更新成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取启用的品牌列表（用于下拉框）
+@app.route('/api/brands/active', methods=['GET'])
+def get_active_brands():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("SELECT id, name FROM brand WHERE status = 0 ORDER BY id")
+        brands = cursor.fetchall()
+        return jsonify({'brands': brands}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取启用的类型列表（用于下拉框）
+@app.route('/api/classifies/active', methods=['GET'])
+def get_active_classifies():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("SELECT id, name FROM classify WHERE status = 0 ORDER BY id")
+        classifies = cursor.fetchall()
+        return jsonify({'classifies': classifies}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取启用的属性列表（用于下拉框）
+@app.route('/api/attributes/active', methods=['GET'])
+def get_active_attributes():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取启用的属性（包含classify字段用于区分属性和规格）
+        cursor.execute("SELECT id, name, classify FROM attribute WHERE status = 0 ORDER BY id")
+        attributes = cursor.fetchall()
+
+        # 为每个属性获取其属性值
+        for attribute in attributes:
+            cursor.execute("""
+                SELECT id, name
+                FROM attribute_value
+                WHERE attributeid = %s
+                ORDER BY id
+            """, (attribute['id'],))
+            attribute['values'] = cursor.fetchall()
+
+        return jsonify({'attributes': attributes}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)

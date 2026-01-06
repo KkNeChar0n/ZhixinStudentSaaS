@@ -573,6 +573,96 @@
                             <button class="page-btn" @click="changeBrandPage(brandTotalPages)" :disabled="brandCurrentPage === brandTotalPages">末页</button>
                         </div>
                     </div>
+
+                    <!-- 商品管理页面 -->
+                    <div v-if="activeMenu === 'goods'">
+                        <div class="page-header">
+                            <h1>商品管理</h1>
+                            <button class="add-btn" @click="openAddGoodsDrawer">新增</button>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="goodsIdFilter">ID</label>
+                                    <input type="number" id="goodsIdFilter" v-model="goodsFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="goodsNameFilter">名称</label>
+                                    <input type="text" id="goodsNameFilter" v-model="goodsFilters.name" placeholder="请输入名称">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="goodsBrandFilter">品牌</label>
+                                    <select id="goodsBrandFilter" v-model="goodsFilters.brandid">
+                                        <option value="">全部</option>
+                                        <option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }}</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="goodsClassifyFilter">类型</label>
+                                    <select id="goodsClassifyFilter" v-model="goodsFilters.classifyid">
+                                        <option value="">全部</option>
+                                        <option v-for="classify in classifies" :key="classify.id" :value="classify.id">{{ classify.name }}</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="goodsStatusFilter">状态</label>
+                                    <select id="goodsStatusFilter" v-model="goodsFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">启用</option>
+                                        <option value="1">禁用</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchGoods">搜索</button>
+                                <button class="reset-btn" @click="resetGoodsFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>名称</th>
+                                    <th>价格</th>
+                                    <th>品牌</th>
+                                    <th>类型</th>
+                                    <th>属性</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="goods in paginatedGoods" :key="goods.id">
+                                    <td>{{ goods.id }}</td>
+                                    <td>{{ goods.name }}</td>
+                                    <td>{{ goods.price }}</td>
+                                    <td>{{ goods.brand_name }}</td>
+                                    <td>{{ goods.classify_name }}</td>
+                                    <td :title="getFullAttributes(goods)" class="goods-attributes-cell">
+                                        {{ formatGoodsAttributes(goods) || '无' }}
+                                    </td>
+                                    <td>{{ goods.status === 0 ? '启用' : '禁用' }}</td>
+                                    <td class="action-column">
+                                        <button class="edit-btn" @click="openEditGoodsDrawer(goods.id)">编辑</button>
+                                        <button v-if="goods.status === 1" class="enable-btn" @click="openEnableGoodsConfirm(goods.id)">启用</button>
+                                        <button v-if="goods.status === 0" class="disable-btn" @click="openDisableGoodsConfirm(goods.id)">禁用</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- 商品分页控件 -->
+                        <div class="pagination" v-if="goodsTotalPages > 1">
+                            <button class="page-btn" @click="changeGoodsPage(1)" :disabled="goodsCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeGoodsPage(goodsCurrentPage - 1)" :disabled="goodsCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ goodsCurrentPage }} / {{ goodsTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeGoodsPage(goodsCurrentPage + 1)" :disabled="goodsCurrentPage === goodsTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeGoodsPage(goodsTotalPages)" :disabled="goodsCurrentPage === goodsTotalPages">末页</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1064,14 +1154,14 @@
                             <button
                                 v-if="attributeValues.length > 1"
                                 class="remove-btn"
-                                @click="removeAttributeValue(index)">-</button>
+                                @click="removeAttributeValueInput(index)">-</button>
                             <button
                                 v-else
                                 class="clear-btn"
-                                @click="clearAttributeValue(index)">-</button>
+                                @click="clearAttributeValueInput(index)">-</button>
                             <button
                                 class="add-btn"
-                                @click="addAttributeValue"
+                                @click="addAttributeValueInput"
                                 v-if="index === attributeValues.length - 1">+</button>
                         </div>
                     </div>
@@ -1153,6 +1243,188 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="closeDisableBrandConfirm">否</button>
                     <button class="delete-btn" @click="confirmDisableBrand">是</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增商品侧边抽屉 -->
+        <div class="drawer-overlay" v-if="showAddGoodsDrawer" @click="closeAddGoodsDrawer">
+            <div class="drawer" @click.stop>
+                <div class="drawer-header">
+                    <h3>新增商品</h3>
+                    <button class="close-btn" @click="closeAddGoodsDrawer">&times;</button>
+                </div>
+                <div class="drawer-body">
+                    <div class="form-group">
+                        <label for="addGoodsName">名称 <span class="required">*</span></label>
+                        <input type="text" id="addGoodsName" v-model="addGoodsData.name" placeholder="请输入商品名称" required>
+                    </div>
+                    <div class="form-group-row">
+                        <div class="form-group-col">
+                            <label for="addGoodsBrand">品牌 <span class="required">*</span></label>
+                            <select id="addGoodsBrand" v-model="addGoodsData.brandid" class="styled-select" required>
+                                <option value="">请选择品牌</option>
+                                <option v-for="brand in activeBrands" :key="brand.id" :value="brand.id">{{ brand.name }}</option>
+                            </select>
+                        </div>
+                        <div class="form-group-col">
+                            <label for="addGoodsClassify">类型 <span class="required">*</span></label>
+                            <select id="addGoodsClassify" v-model="addGoodsData.classifyid" class="styled-select" required>
+                                <option value="">请选择类型</option>
+                                <option v-for="classify in activeClassifies" :key="classify.id" :value="classify.id">{{ classify.name }}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="addGoodsPrice">价格 <span class="required">*</span></label>
+                        <input type="number" step="0.01" id="addGoodsPrice" v-model="addGoodsData.price" placeholder="请输入价格" required>
+                    </div>
+                    <div class="form-group">
+                        <label>属性</label>
+                        <div v-for="(row, index) in goodsAttributeRows" :key="index" class="attribute-row">
+                            <select v-model="row.attributeId" @change="onRowAttributeChange(index)" class="styled-select attr-select">
+                                <option value="">请选择属性</option>
+                                <option v-for="attr in getAvailableAttributes(index)" :key="attr.id" :value="attr.id">{{ attr.name }}</option>
+                            </select>
+                            <select v-model="row.valueId" class="styled-select value-select">
+                                <option value="">请选择属性值</option>
+                                <option v-for="value in getAttributeValues(row.attributeId)" :key="value.id" :value="value.id">{{ value.name }}</option>
+                            </select>
+                            <div class="row-buttons">
+                                <button type="button" class="row-add-btn" @click="addAttributeRow" v-if="index === goodsAttributeRows.length - 1">+</button>
+                                <button type="button" class="row-remove-btn" @click="removeAttributeRow(index)" v-if="goodsAttributeRows.length > 1">-</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>规格</label>
+                        <div v-for="(row, index) in goodsSpecRows" :key="index" class="attribute-row">
+                            <select v-model="row.attributeId" @change="onRowSpecChange(index)" class="styled-select attr-select">
+                                <option value="">请选择规格</option>
+                                <option v-for="spec in getAvailableSpecs(index)" :key="spec.id" :value="spec.id">{{ spec.name }}</option>
+                            </select>
+                            <select v-model="row.valueId" class="styled-select value-select">
+                                <option value="">请选择规格值</option>
+                                <option v-for="value in getAttributeValues(row.attributeId)" :key="value.id" :value="value.id">{{ value.name }}</option>
+                            </select>
+                            <div class="row-buttons">
+                                <button type="button" class="row-add-btn" @click="addSpecRow" v-if="index === goodsSpecRows.length - 1">+</button>
+                                <button type="button" class="row-remove-btn" @click="removeSpecRow(index)" v-if="goodsSpecRows.length > 1">-</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="drawer-footer">
+                    <button class="cancel-btn" @click="closeAddGoodsDrawer">取消</button>
+                    <button class="save-btn" @click="saveAddGoods">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑商品侧边抽屉 -->
+        <div class="drawer-overlay" v-if="showEditGoodsDrawer" @click="closeEditGoodsDrawer">
+            <div class="drawer" @click.stop>
+                <div class="drawer-header">
+                    <h3>编辑商品</h3>
+                    <button class="close-btn" @click="closeEditGoodsDrawer">&times;</button>
+                </div>
+                <div class="drawer-body">
+                    <div class="form-group">
+                        <label for="editGoodsName">名称 <span class="required">*</span></label>
+                        <input type="text" id="editGoodsName" v-model="editGoodsData.name" placeholder="请输入商品名称" required>
+                    </div>
+                    <div class="form-group-row">
+                        <div class="form-group-col">
+                            <label for="editGoodsBrand">品牌 <span class="required">*</span></label>
+                            <select id="editGoodsBrand" v-model="editGoodsData.brandid" class="styled-select" required>
+                                <option value="">请选择品牌</option>
+                                <option v-for="brand in activeBrands" :key="brand.id" :value="brand.id">{{ brand.name }}</option>
+                            </select>
+                        </div>
+                        <div class="form-group-col">
+                            <label for="editGoodsClassify">类型 <span class="required">*</span></label>
+                            <select id="editGoodsClassify" v-model="editGoodsData.classifyid" class="styled-select" required>
+                                <option value="">请选择类型</option>
+                                <option v-for="classify in activeClassifies" :key="classify.id" :value="classify.id">{{ classify.name }}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="editGoodsPrice">价格 <span class="required">*</span></label>
+                        <input type="number" step="0.01" id="editGoodsPrice" v-model="editGoodsData.price" placeholder="请输入价格" required>
+                    </div>
+                    <div class="form-group">
+                        <label>属性</label>
+                        <div v-for="(row, index) in goodsAttributeRows" :key="index" class="attribute-row">
+                            <select v-model="row.attributeId" @change="onRowAttributeChange(index)" class="styled-select attr-select">
+                                <option value="">请选择属性</option>
+                                <option v-for="attr in getAvailableAttributes(index)" :key="attr.id" :value="attr.id">{{ attr.name }}</option>
+                            </select>
+                            <select v-model="row.valueId" class="styled-select value-select">
+                                <option value="">请选择属性值</option>
+                                <option v-for="value in getAttributeValues(row.attributeId)" :key="value.id" :value="value.id">{{ value.name }}</option>
+                            </select>
+                            <div class="row-buttons">
+                                <button type="button" class="row-add-btn" @click="addAttributeRow" v-if="index === goodsAttributeRows.length - 1">+</button>
+                                <button type="button" class="row-remove-btn" @click="removeAttributeRow(index)" v-if="goodsAttributeRows.length > 1">-</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>规格</label>
+                        <div v-for="(row, index) in goodsSpecRows" :key="index" class="attribute-row">
+                            <select v-model="row.attributeId" @change="onRowSpecChange(index)" class="styled-select attr-select">
+                                <option value="">请选择规格</option>
+                                <option v-for="spec in getAvailableSpecs(index)" :key="spec.id" :value="spec.id">{{ spec.name }}</option>
+                            </select>
+                            <select v-model="row.valueId" class="styled-select value-select">
+                                <option value="">请选择规格值</option>
+                                <option v-for="value in getAttributeValues(row.attributeId)" :key="value.id" :value="value.id">{{ value.name }}</option>
+                            </select>
+                            <div class="row-buttons">
+                                <button type="button" class="row-add-btn" @click="addSpecRow" v-if="index === goodsSpecRows.length - 1">+</button>
+                                <button type="button" class="row-remove-btn" @click="removeSpecRow(index)" v-if="goodsSpecRows.length > 1">-</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="drawer-footer">
+                    <button class="cancel-btn" @click="closeEditGoodsDrawer">取消</button>
+                    <button class="save-btn" @click="saveEditGoods">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 启用商品确认弹窗 -->
+        <div class="modal-overlay" v-if="showEnableGoodsConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认启用</h3>
+                    <button class="close-btn" @click="closeEnableGoodsConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否启用该商品？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEnableGoodsConfirm">否</button>
+                    <button class="save-btn" @click="confirmEnableGoods">是</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 禁用商品确认弹窗 -->
+        <div class="modal-overlay" v-if="showDisableGoodsConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认禁用</h3>
+                    <button class="close-btn" @click="closeDisableGoodsConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否禁用该商品？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeDisableGoodsConfirm">否</button>
+                    <button class="delete-btn" @click="confirmDisableGoods">是</button>
                 </div>
             </div>
         </div>

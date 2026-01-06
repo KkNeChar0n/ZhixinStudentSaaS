@@ -16,6 +16,7 @@ createApp({
             attributes: [],
             classifies: [],
             brands: [],
+            goods: [],
             // 学生筛选条件
             studentFilters: {
                 id: '',
@@ -55,6 +56,14 @@ createApp({
                 name: '',
                 status: ''
             },
+            // 商品筛选条件
+            goodsFilters: {
+                id: '',
+                name: '',
+                brandid: '',
+                classifyid: '',
+                status: ''
+            },
             // 筛选后的学生和教练数据
             filteredStudents: [],
             filteredCoaches: [],
@@ -62,6 +71,7 @@ createApp({
             filteredAttributes: [],
             filteredClassifies: [],
             filteredBrands: [],
+            filteredGoods: [],
             // 分页数据
             pageSize: 10,
             studentCurrentPage: 1,
@@ -71,6 +81,7 @@ createApp({
             attributeCurrentPage: 1,
             classifyCurrentPage: 1,
             brandCurrentPage: 1,
+            goodsCurrentPage: 1,
             // 弹窗状态
             showAddStudentModal: false,
             showAddCoachModal: false,
@@ -93,6 +104,10 @@ createApp({
             showEditBrandModal: false,
             showEnableBrandConfirm: false,
             showDisableBrandConfirm: false,
+            showAddGoodsDrawer: false,
+            showEditGoodsDrawer: false,
+            showEnableGoodsConfirm: false,
+            showDisableGoodsConfirm: false,
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -176,6 +191,33 @@ createApp({
             },
             // 品牌操作ID
             brandId: null,
+            // 新增商品数据
+            addGoodsData: {
+                name: '',
+                brandid: '',
+                classifyid: '',
+                price: '',
+                attributevalue_ids: []
+            },
+            // 编辑商品数据
+            editGoodsData: {
+                id: '',
+                name: '',
+                brandid: '',
+                classifyid: '',
+                price: '',
+                attributevalue_ids: []
+            },
+            // 商品操作ID
+            goodsId: null,
+            // 启用的品牌、类型、属性列表
+            activeBrands: [],
+            activeClassifies: [],
+            activeAttributes: [],
+            // 商品属性选择数据（三列布局：属性 | 属性值 | +/-）
+            goodsAttributeRows: [{ attributeId: '', valueId: '' }],
+            // 商品规格选择数据（三列布局：规格 | 规格值 | +/-）
+            goodsSpecRows: [{ attributeId: '', valueId: '' }],
             // 属性值数据
             currentAttributeId: null,
             currentAttributeName: '',
@@ -199,6 +241,14 @@ createApp({
         };
     },
     computed: {
+        // 获取属性列表（classify=0）
+        attributesList() {
+            return this.activeAttributes.filter(attr => attr.classify === 0);
+        },
+        // 获取规格列表（classify=1）
+        specsList() {
+            return this.activeAttributes.filter(attr => attr.classify === 1);
+        },
         // 学生分页数据
         paginatedStudents() {
             const start = (this.studentCurrentPage - 1) * this.pageSize;
@@ -261,6 +311,15 @@ createApp({
         },
         brandTotalPages() {
             return Math.ceil(this.filteredBrands.length / this.pageSize);
+        },
+        // 商品分页数据
+        paginatedGoods() {
+            const start = (this.goodsCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredGoods.slice(start, end);
+        },
+        goodsTotalPages() {
+            return Math.ceil(this.filteredGoods.length / this.pageSize);
         }
     },
     mounted() {
@@ -361,6 +420,8 @@ createApp({
                 this.fetchClassifies();
             } else if (menu === 'brands') {
                 this.fetchBrands();
+            } else if (menu === 'goods') {
+                this.fetchGoods();
             }
         },
         
@@ -1283,19 +1344,19 @@ createApp({
         },
 
         // 添加属性值输入框
-        addAttributeValue() {
+        addAttributeValueInput() {
             this.attributeValues.push('');
         },
 
         // 删除属性值输入框
-        removeAttributeValue(index) {
+        removeAttributeValueInput(index) {
             if (this.attributeValues.length > 1) {
                 this.attributeValues.splice(index, 1);
             }
         },
 
         // 清除属性值输入框内容（当仅剩一个时）
-        clearAttributeValue(index) {
+        clearAttributeValueInput(index) {
             this.attributeValues[index] = '';
         },
 
@@ -1787,6 +1848,420 @@ createApp({
         changeBrandPage(page) {
             if (page >= 1 && page <= this.brandTotalPages) {
                 this.brandCurrentPage = page;
+            }
+        },
+
+        // ==================== 商品管理功能 ====================
+
+        // 格式化商品属性显示（只显示第一个属性和第一个规格）
+        formatGoodsAttributes(goods) {
+            if (!goods.attributes_full || goods.attributes_full.length === 0) {
+                return '';
+            }
+
+            // 如果只有1-2个，直接显示
+            if (goods.attributes_full.length <= 2) {
+                return goods.attributes_full.join(',');
+            }
+
+            // 否则只显示前2个
+            return goods.attributes_full.slice(0, 2).join(',') + '...';
+        },
+
+        // 获取完整属性列表用于悬浮显示
+        getFullAttributes(goods) {
+            if (!goods.attributes_full || goods.attributes_full.length === 0) {
+                return '';
+            }
+            return goods.attributes_full.join(',');
+        },
+
+        // 获取商品数据
+        async fetchGoods() {
+            try {
+                const response = await axios.get('/api/goods', { withCredentials: true });
+                this.goods = response.data.goods;
+                this.filteredGoods = this.goods;
+            } catch (err) {
+                console.error('获取商品失败:', err);
+                this.error = '获取商品失败';
+            }
+        },
+
+        // 商品筛选功能
+        searchGoods() {
+            this.filteredGoods = this.goods.filter(goods => {
+                const idMatch = !this.goodsFilters.id || goods.id === parseInt(this.goodsFilters.id);
+                const nameMatch = !this.goodsFilters.name || goods.name.toLowerCase().includes(this.goodsFilters.name.toLowerCase());
+                const brandMatch = this.goodsFilters.brandid === '' || goods.brandid === parseInt(this.goodsFilters.brandid);
+                const classifyMatch = this.goodsFilters.classifyid === '' || goods.classifyid === parseInt(this.goodsFilters.classifyid);
+                const statusMatch = this.goodsFilters.status === '' || goods.status === parseInt(this.goodsFilters.status);
+                return idMatch && nameMatch && brandMatch && classifyMatch && statusMatch;
+            });
+            this.goodsCurrentPage = 1;
+        },
+
+        // 重置商品筛选
+        resetGoodsFilters() {
+            this.goodsFilters = {
+                id: '',
+                name: '',
+                brandid: '',
+                classifyid: '',
+                status: ''
+            };
+            this.filteredGoods = this.goods;
+            this.goodsCurrentPage = 1;
+        },
+
+        // 打开新增商品抽屉
+        async openAddGoodsDrawer() {
+            // 获取启用的品牌列表
+            try {
+                const response = await axios.get('/api/brands/active', { withCredentials: true });
+                this.activeBrands = response.data.brands;
+            } catch (err) {
+                console.error('获取启用品牌列表失败:', err);
+                this.error = '获取启用品牌列表失败';
+            }
+
+            // 获取启用的类型列表
+            try {
+                const response = await axios.get('/api/classifies/active', { withCredentials: true });
+                this.activeClassifies = response.data.classifies;
+            } catch (err) {
+                console.error('获取启用类型列表失败:', err);
+                this.error = '获取启用类型列表失败';
+            }
+
+            // 获取启用的属性列表（包含属性值）
+            try {
+                const response = await axios.get('/api/attributes/active', { withCredentials: true });
+                this.activeAttributes = response.data.attributes;
+            } catch (err) {
+                console.error('获取启用属性列表失败:', err);
+                this.error = '获取启用属性列表失败';
+            }
+
+            this.showAddGoodsDrawer = true;
+        },
+
+        // 关闭新增商品抽屉
+        closeAddGoodsDrawer() {
+            this.showAddGoodsDrawer = false;
+            this.addGoodsData = {
+                name: '',
+                brandid: '',
+                classifyid: '',
+                price: '',
+                attributevalue_ids: []
+            };
+            this.goodsAttributeRows = [{ attributeId: '', valueId: '' }];
+            this.goodsSpecRows = [{ attributeId: '', valueId: '' }];
+        },
+
+        // 获取某行可用的属性列表（排除已选择的属性，只返回classify=0的）
+        getAvailableAttributes(currentIndex) {
+            const selectedAttrIds = this.goodsAttributeRows
+                .map((row, index) => index !== currentIndex ? String(row.attributeId) : null)
+                .filter(id => id && id !== '');
+            return this.attributesList.filter(attr => !selectedAttrIds.includes(String(attr.id)));
+        },
+
+        // 获取某行可用的规格列表（排除已选择的规格，只返回classify=1的）
+        getAvailableSpecs(currentIndex) {
+            const selectedSpecIds = this.goodsSpecRows
+                .map((row, index) => index !== currentIndex ? String(row.attributeId) : null)
+                .filter(id => id && id !== '');
+            return this.specsList.filter(spec => !selectedSpecIds.includes(String(spec.id)));
+        },
+
+        // 获取某个属性的属性值列表
+        getAttributeValues(attributeId) {
+            if (!attributeId) return [];
+            const attribute = this.activeAttributes.find(attr => attr.id === parseInt(attributeId));
+            return attribute && attribute.values ? attribute.values : [];
+        },
+
+        // 当某行的属性选择变化时，清空该行的属性值
+        onRowAttributeChange(index) {
+            this.goodsAttributeRows[index].valueId = '';
+        },
+
+        // 添加新的属性行
+        addAttributeRow() {
+            this.goodsAttributeRows.push({ attributeId: '', valueId: '' });
+        },
+
+        // 删除属性行
+        removeAttributeRow(index) {
+            if (this.goodsAttributeRows.length > 1) {
+                this.goodsAttributeRows.splice(index, 1);
+            }
+        },
+
+        // 当某行的规格选择变化时，清空该行的规格值
+        onRowSpecChange(index) {
+            this.goodsSpecRows[index].valueId = '';
+        },
+
+        // 添加新的规格行
+        addSpecRow() {
+            this.goodsSpecRows.push({ attributeId: '', valueId: '' });
+        },
+
+        // 删除规格行
+        removeSpecRow(index) {
+            if (this.goodsSpecRows.length > 1) {
+                this.goodsSpecRows.splice(index, 1);
+            }
+        },
+
+        // 保存新增商品
+        async saveAddGoods() {
+            if (!this.addGoodsData.name || !this.addGoodsData.brandid ||
+                !this.addGoodsData.classifyid || !this.addGoodsData.price) {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            // 从goodsAttributeRows和goodsSpecRows中提取属性值ID（过滤掉空值）
+            const attributeValueIds = this.goodsAttributeRows
+                .filter(row => row.attributeId && row.valueId)
+                .map(row => parseInt(row.valueId));
+
+            const specValueIds = this.goodsSpecRows
+                .filter(row => row.attributeId && row.valueId)
+                .map(row => parseInt(row.valueId));
+
+            // 合并属性值和规格值
+            const attributevalue_ids = [...attributeValueIds, ...specValueIds];
+
+            console.log('goodsAttributeRows:', this.goodsAttributeRows);
+            console.log('goodsSpecRows:', this.goodsSpecRows);
+            console.log('提取的属性值IDs:', attributevalue_ids);
+
+            try {
+                const response = await axios.post('/api/goods', {
+                    name: this.addGoodsData.name,
+                    brandid: parseInt(this.addGoodsData.brandid),
+                    classifyid: parseInt(this.addGoodsData.classifyid),
+                    price: parseFloat(this.addGoodsData.price),
+                    attributevalue_ids: attributevalue_ids
+                }, { withCredentials: true });
+
+                if (response.data.message === '商品添加成功') {
+                    await this.fetchGoods();
+                    this.closeAddGoodsDrawer();
+                    alert('商品添加成功');
+                }
+            } catch (err) {
+                console.error('新增商品失败:', err);
+                alert(err.response?.data?.error || '新增商品失败');
+            }
+        },
+
+        // 打开编辑商品抽屉
+        async openEditGoodsDrawer(goodsId) {
+            // 获取启用的品牌列表
+            try {
+                const response = await axios.get('/api/brands/active', { withCredentials: true });
+                this.activeBrands = response.data.brands;
+            } catch (err) {
+                console.error('获取启用品牌列表失败:', err);
+                this.error = '获取启用品牌列表失败';
+            }
+
+            // 获取启用的类型列表
+            try {
+                const response = await axios.get('/api/classifies/active', { withCredentials: true });
+                this.activeClassifies = response.data.classifies;
+            } catch (err) {
+                console.error('获取启用类型列表失败:', err);
+                this.error = '获取启用类型列表失败';
+            }
+
+            // 获取启用的属性列表（包含属性值）
+            try {
+                const response = await axios.get('/api/attributes/active', { withCredentials: true });
+                this.activeAttributes = response.data.attributes;
+            } catch (err) {
+                console.error('获取启用属性列表失败:', err);
+                this.error = '获取启用属性列表失败';
+            }
+
+            // 获取商品详情
+            try {
+                const response = await axios.get(`/api/goods/${goodsId}`, { withCredentials: true });
+                const goods = response.data.goods;
+                this.editGoodsData = {
+                    id: goods.id,
+                    name: goods.name,
+                    brandid: goods.brandid,
+                    classifyid: goods.classifyid,
+                    price: goods.price,
+                    attributevalue_ids: goods.attributevalue_ids || []
+                };
+
+                // 根据商品的属性值ID重建goodsAttributeRows和goodsSpecRows数组
+                this.goodsAttributeRows = [];
+                this.goodsSpecRows = [];
+                if (goods.attributevalue_ids && goods.attributevalue_ids.length > 0) {
+                    for (const valueId of goods.attributevalue_ids) {
+                        // 找到该属性值所属的属性
+                        for (const attribute of this.activeAttributes) {
+                            const value = attribute.values.find(v => v.id === valueId);
+                            if (value) {
+                                const row = {
+                                    attributeId: attribute.id.toString(),
+                                    valueId: value.id.toString()
+                                };
+                                // 根据classify区分是属性还是规格
+                                if (attribute.classify === 0) {
+                                    this.goodsAttributeRows.push(row);
+                                } else if (attribute.classify === 1) {
+                                    this.goodsSpecRows.push(row);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                // 如果没有属性值，至少保留一个空行
+                if (this.goodsAttributeRows.length === 0) {
+                    this.goodsAttributeRows = [{ attributeId: '', valueId: '' }];
+                }
+                if (this.goodsSpecRows.length === 0) {
+                    this.goodsSpecRows = [{ attributeId: '', valueId: '' }];
+                }
+            } catch (err) {
+                console.error('获取商品详情失败:', err);
+                alert('获取商品详情失败');
+                return;
+            }
+
+            this.showEditGoodsDrawer = true;
+        },
+
+        // 关闭编辑商品抽屉
+        closeEditGoodsDrawer() {
+            this.showEditGoodsDrawer = false;
+            this.editGoodsData = {
+                id: '',
+                name: '',
+                brandid: '',
+                classifyid: '',
+                price: '',
+                attributevalue_ids: []
+            };
+            this.goodsAttributeRows = [{ attributeId: '', valueId: '' }];
+            this.goodsSpecRows = [{ attributeId: '', valueId: '' }];
+        },
+
+        // 保存编辑商品
+        async saveEditGoods() {
+            if (!this.editGoodsData.name || !this.editGoodsData.brandid ||
+                !this.editGoodsData.classifyid || !this.editGoodsData.price) {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            // 从goodsAttributeRows和goodsSpecRows中提取属性值ID（过滤掉空值）
+            const attributeValueIds = this.goodsAttributeRows
+                .filter(row => row.attributeId && row.valueId)
+                .map(row => parseInt(row.valueId));
+
+            const specValueIds = this.goodsSpecRows
+                .filter(row => row.attributeId && row.valueId)
+                .map(row => parseInt(row.valueId));
+
+            // 合并属性值和规格值
+            const attributevalue_ids = [...attributeValueIds, ...specValueIds];
+
+            try {
+                const response = await axios.put(`/api/goods/${this.editGoodsData.id}`, {
+                    name: this.editGoodsData.name,
+                    brandid: parseInt(this.editGoodsData.brandid),
+                    classifyid: parseInt(this.editGoodsData.classifyid),
+                    price: parseFloat(this.editGoodsData.price),
+                    attributevalue_ids: attributevalue_ids
+                }, { withCredentials: true });
+
+                if (response.data.message === '商品信息更新成功') {
+                    await this.fetchGoods();
+                    this.closeEditGoodsDrawer();
+                    alert('商品信息更新成功');
+                }
+            } catch (err) {
+                console.error('更新商品失败:', err);
+                alert(err.response?.data?.error || '更新商品失败');
+            }
+        },
+
+        // 打开启用商品确认弹窗
+        openEnableGoodsConfirm(goodsId) {
+            this.goodsId = goodsId;
+            this.showEnableGoodsConfirm = true;
+        },
+
+        // 关闭启用商品确认弹窗
+        closeEnableGoodsConfirm() {
+            this.showEnableGoodsConfirm = false;
+            this.goodsId = null;
+        },
+
+        // 确认启用商品
+        async confirmEnableGoods() {
+            try {
+                const response = await axios.put(`/api/goods/${this.goodsId}/status`, {
+                    status: 0
+                }, { withCredentials: true });
+
+                if (response.data.message === '商品状态更新成功') {
+                    await this.fetchGoods();
+                    this.closeEnableGoodsConfirm();
+                    alert('商品已启用');
+                }
+            } catch (err) {
+                console.error('启用商品失败:', err);
+                alert(err.response?.data?.error || '启用商品失败');
+            }
+        },
+
+        // 打开禁用商品确认弹窗
+        openDisableGoodsConfirm(goodsId) {
+            this.goodsId = goodsId;
+            this.showDisableGoodsConfirm = true;
+        },
+
+        // 关闭禁用商品确认弹窗
+        closeDisableGoodsConfirm() {
+            this.showDisableGoodsConfirm = false;
+            this.goodsId = null;
+        },
+
+        // 确认禁用商品
+        async confirmDisableGoods() {
+            try {
+                const response = await axios.put(`/api/goods/${this.goodsId}/status`, {
+                    status: 1
+                }, { withCredentials: true });
+
+                if (response.data.message === '商品状态更新成功') {
+                    await this.fetchGoods();
+                    this.closeDisableGoodsConfirm();
+                    alert('商品已禁用');
+                }
+            } catch (err) {
+                console.error('禁用商品失败:', err);
+                alert(err.response?.data?.error || '禁用商品失败');
+            }
+        },
+
+        // 商品分页
+        changeGoodsPage(page) {
+            if (page >= 1 && page <= this.goodsTotalPages) {
+                this.goodsCurrentPage = page;
             }
         }
     }
