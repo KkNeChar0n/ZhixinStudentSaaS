@@ -3,3 +3,8 @@ nul
 .DS_Store
 *.sql
 !init_database.sql
+!migrate_field_names.sql
+!update_db_*.sql
+*.log
+__pycache__/
+*.pyc

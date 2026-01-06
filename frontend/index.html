@@ -368,6 +368,7 @@
                                     <th>ID</th>
                                     <th>名字</th>
                                     <th>分类</th>
+                                    <th>属性值</th>
                                     <th>状态</th>
                                     <th>操作</th>
                                 </tr>
@@ -377,9 +378,11 @@
                                     <td>{{ attribute.id }}</td>
                                     <td>{{ attribute.name }}</td>
                                     <td>{{ getClassifyText(attribute.classify) }}</td>
+                                    <td>{{ attribute.value_count || 0 }}</td>
                                     <td>{{ getAttributeStatusText(attribute.status) }}</td>
                                     <td class="action-column">
                                         <button class="edit-btn" @click="openEditAttributeModal(attribute)">编辑</button>
+                                        <button class="edit-btn" @click="openAttributeValuesModal(attribute)">属性值</button>
                                         <button v-if="attribute.status === 1" class="enable-btn" @click="openEnableAttributeConfirm(attribute.id)">启用</button>
                                         <button v-if="attribute.status === 0" class="disable-btn" @click="openDisableAttributeConfirm(attribute.id)">禁用</button>
                                     </td>
@@ -914,6 +917,48 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="closeDisableClassifyConfirm">否</button>
                     <button class="delete-btn" @click="confirmDisableClassify">是</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 属性值管理弹窗 -->
+        <div class="modal-overlay" v-if="showAttributeValuesModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>属性值管理</h3>
+                    <button class="close-btn" @click="closeAttributeValuesModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>属性名称</label>
+                        <input type="text" :value="currentAttributeName" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>属性值 <span class="required">*</span></label>
+                        <div v-for="(value, index) in attributeValues" :key="index" class="value-input-row">
+                            <input
+                                type="text"
+                                v-model="attributeValues[index]"
+                                placeholder="请输入属性值"
+                                class="value-input">
+                            <button
+                                v-if="attributeValues.length > 1"
+                                class="remove-btn"
+                                @click="removeAttributeValue(index)">-</button>
+                            <button
+                                v-else
+                                class="clear-btn"
+                                @click="clearAttributeValue(index)">-</button>
+                            <button
+                                class="add-btn"
+                                @click="addAttributeValue"
+                                v-if="index === attributeValues.length - 1">+</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAttributeValuesModal">取消</button>
+                    <button class="save-btn" @click="saveAttributeValues">保存</button>
                 </div>
             </div>
         </div>

@@ -71,6 +71,7 @@ createApp({
             showEditClassifyModal: false,
             showEnableClassifyConfirm: false,
             showDisableClassifyConfirm: false,
+            showAttributeValuesModal: false,
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -143,6 +144,10 @@ createApp({
             parentClassifies: [],
             // 类型操作ID
             classifyId: null,
+            // 属性值数据
+            currentAttributeId: null,
+            currentAttributeName: '',
+            attributeValues: [''],
             // 删除确认数据
             deleteId: null,
             deleteType: '',
@@ -1141,6 +1146,84 @@ createApp({
             } catch (err) {
                 console.error('禁用属性失败:', err);
                 alert(err.response?.data?.error || '禁用属性失败');
+            }
+        },
+
+        // ==================== 属性值管理功能 ====================
+
+        // 打开属性值管理弹窗
+        async openAttributeValuesModal(attribute) {
+            this.currentAttributeId = attribute.id;
+            this.currentAttributeName = attribute.name;
+
+            // 获取该属性的属性值列表
+            try {
+                const response = await axios.get(`/api/attributes/${attribute.id}/values`, { withCredentials: true });
+                const values = response.data.values;
+
+                // 如果有属性值，则回显；否则显示一个空输入框
+                if (values && values.length > 0) {
+                    this.attributeValues = values.map(v => v.name);
+                } else {
+                    this.attributeValues = [''];
+                }
+            } catch (err) {
+                console.error('获取属性值失败:', err);
+                this.attributeValues = [''];
+            }
+
+            this.showAttributeValuesModal = true;
+        },
+
+        // 关闭属性值管理弹窗
+        closeAttributeValuesModal() {
+            this.showAttributeValuesModal = false;
+            this.currentAttributeId = null;
+            this.currentAttributeName = '';
+            this.attributeValues = [''];
+        },
+
+        // 添加属性值输入框
+        addAttributeValue() {
+            this.attributeValues.push('');
+        },
+
+        // 删除属性值输入框
+        removeAttributeValue(index) {
+            if (this.attributeValues.length > 1) {
+                this.attributeValues.splice(index, 1);
+            }
+        },
+
+        // 清除属性值输入框内容（当仅剩一个时）
+        clearAttributeValue(index) {
+            this.attributeValues[index] = '';
+        },
+
+        // 保存属性值
+        async saveAttributeValues() {
+            // 过滤掉空的属性值
+            const validValues = this.attributeValues.filter(v => v && v.trim());
+
+            // 验证至少有一个属性值
+            if (validValues.length === 0) {
+                alert('至少需要填入一条属性值');
+                return;
+            }
+
+            try {
+                const response = await axios.post(`/api/attributes/${this.currentAttributeId}/values`, {
+                    values: validValues
+                }, { withCredentials: true });
+
+                if (response.data.message === '属性值保存成功') {
+                    alert('属性值保存成功');
+                    await this.fetchAttributes();
+                    this.closeAttributeValuesModal();
+                }
+            } catch (err) {
+                console.error('保存属性值失败:', err);
+                alert(err.response?.data?.error || '保存属性值失败');
             }
         },
 

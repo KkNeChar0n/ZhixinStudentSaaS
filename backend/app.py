@@ -831,11 +831,14 @@ def get_attributes():
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 查询所有属性
+        # 查询所有属性，包含属性值数量
         cursor.execute("""
-            SELECT id, name, classify, status, create_time, update_time
-            FROM attribute
-            ORDER BY id DESC
+            SELECT a.id, a.name, a.classify, a.status, a.create_time, a.update_time,
+                   COUNT(av.id) AS value_count
+            FROM attribute a
+            LEFT JOIN attribute_value av ON a.id = av.attributeid
+            GROUP BY a.id, a.name, a.classify, a.status, a.create_time, a.update_time
+            ORDER BY a.id DESC
         """)
         attributes = cursor.fetchall()
 
@@ -960,6 +963,81 @@ def update_attribute_status(attribute_id):
             return jsonify({'error': '属性不存在'}), 404
 
         return jsonify({'message': '状态更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# ==================== 属性值管理API ====================
+
+# API接口：获取指定属性的属性值列表
+@app.route('/api/attributes/<int:attribute_id>/values', methods=['GET'])
+def get_attribute_values(attribute_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询该属性的所有属性值
+        cursor.execute("""
+            SELECT id, name, attributeid
+            FROM attribute_value
+            WHERE attributeid = %s
+            ORDER BY id ASC
+        """, (attribute_id,))
+        values = cursor.fetchall()
+
+        return jsonify({'values': values}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：保存属性值（批量更新）
+@app.route('/api/attributes/<int:attribute_id>/values', methods=['POST'])
+def save_attribute_values(attribute_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        values = data.get('values', [])
+
+        # 验证至少有一个属性值
+        if not values or len(values) == 0:
+            return jsonify({'error': '至少需要填入一条属性值'}), 400
+
+        # 验证所有属性值不为空
+        for value in values:
+            if not value or not value.strip():
+                return jsonify({'error': '属性值不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 先删除该属性的所有旧属性值
+        cursor.execute("DELETE FROM attribute_value WHERE attributeid = %s", (attribute_id,))
+
+        # 插入新的属性值
+        for value in values:
+            cursor.execute("""
+                INSERT INTO attribute_value (name, attributeid)
+                VALUES (%s, %s)
+            """, (value.strip(), attribute_id))
+
+        connection.commit()
+
+        return jsonify({'message': '属性值保存成功'}), 200
 
     except Exception as e:
         if connection:
