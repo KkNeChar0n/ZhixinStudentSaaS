@@ -1754,7 +1754,7 @@ def get_active_classifies():
     try:
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
-        cursor.execute("SELECT id, name FROM classify WHERE status = 0 ORDER BY id")
+        cursor.execute("SELECT id, name FROM classify WHERE status = 0 AND level = 1 ORDER BY id")
         classifies = cursor.fetchall()
         return jsonify({'classifies': classifies}), 200
     except Exception as e:
