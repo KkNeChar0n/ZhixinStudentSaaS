@@ -474,7 +474,7 @@ h1 {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 3000;
 }
 
 .modal {
@@ -1017,10 +1017,19 @@ h1 {
 }
 
 /* 只读输入框 */
-.readonly-input {
+.form-group input.readonly-input,
+.form-group-col input.readonly-input {
     background-color: #f5f5f5;
     cursor: not-allowed;
     color: #666;
+}
+
+/* 禁用下拉框 */
+.disabled-select:disabled {
+    background-color: #f5f5f5;
+    cursor: not-allowed;
+    color: #666;
+    opacity: 1;
 }
 
 /* 包含商品表格 */
