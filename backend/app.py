@@ -696,7 +696,7 @@ def get_orders():
         if connection:
             connection.close()
 
-# API接口：新增订单
+# API接口：新增订单（改造版：支持商品列表）
 @app.route('/api/orders', methods=['POST'])
 def create_order():
     connection = None
@@ -704,22 +704,41 @@ def create_order():
     try:
         data = request.get_json()
         student_id = data.get('student_id')
-        amount_receivable = data.get('amount_receivable')
+        goods_list = data.get('goods_list', [])  # 商品列表 [{goods_id, total_price, price}]
 
-        if not student_id or not amount_receivable:
-            return jsonify({'error': '学生ID和应收金额不能为空'}), 400
+        if not student_id:
+            return jsonify({'error': '学生ID不能为空'}), 400
+
+        if not goods_list or len(goods_list) == 0:
+            return jsonify({'error': '必须至少选择一个商品'}), 400
 
         connection = get_db_connection()
-        cursor = connection.cursor()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 计算应收金额（所有商品的商品总价之和）和实收金额（所有商品的标准售价之和）
+        total_receivable = sum(float(g.get('total_price', 0)) for g in goods_list)
+        total_received = sum(float(g.get('price', 0)) for g in goods_list)
 
         # 插入订单数据，状态默认为10（草稿）
         cursor.execute("""
-            INSERT INTO `orders` (student_id, amount_receivable, status)
-            VALUES (%s, %s, 10)
-        """, (student_id, amount_receivable))
+            INSERT INTO `orders` (student_id, amount_receivable, amount_received, status)
+            VALUES (%s, %s, %s, 10)
+        """, (student_id, total_receivable, total_received))
+
+        order_id = cursor.lastrowid
+
+        # 创建子产品订单
+        for goods in goods_list:
+            goods_id = goods.get('goods_id')
+            goods_total_price = float(goods.get('total_price', 0))
+            goods_price = float(goods.get('price', 0))
+
+            cursor.execute("""
+                INSERT INTO childorders (parentsid, goodsid, amount_receivable, amount_received, status)
+                VALUES (%s, %s, %s, %s, 10)
+            """, (order_id, goods_id, goods_total_price, goods_price))
 
         connection.commit()
-        order_id = cursor.lastrowid
 
         return jsonify({'message': '订单创建成功', 'order_id': order_id}), 201
 
@@ -733,18 +752,72 @@ def create_order():
         if connection:
             connection.close()
 
-# API接口：更新订单
+# API接口：获取订单的商品列表
+@app.route('/api/orders/<int:order_id>/goods', methods=['GET'])
+def get_order_goods(order_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询订单的子商品列表
+        cursor.execute("""
+            SELECT
+                c.id,
+                c.goodsid,
+                g.name AS goods_name,
+                g.isgroup,
+                b.name AS brand_name,
+                cl.name AS classify_name,
+                c.amount_receivable,
+                c.amount_received
+            FROM childorders c
+            JOIN goods g ON c.goodsid = g.id
+            LEFT JOIN brand b ON g.brandid = b.id
+            LEFT JOIN classify cl ON g.classifyid = cl.id
+            WHERE c.parentsid = %s
+            ORDER BY c.id
+        """, (order_id,))
+
+        goods_list = cursor.fetchall()
+
+        # 为每个商品获取属性信息
+        for goods in goods_list:
+            cursor.execute("""
+                SELECT
+                    a.name AS attr_name,
+                    av.name AS value_name
+                FROM goods_attributevalue gav
+                JOIN attribute_value av ON gav.attributevalueid = av.id
+                JOIN attribute a ON av.attributeid = a.id
+                WHERE gav.goodsid = %s AND a.classify = 0
+            """, (goods['goodsid'],))
+            attr_values = cursor.fetchall()
+            attributes = [f"{av['attr_name']}:{av['value_name']}" for av in attr_values]
+            goods['attributes'] = ', '.join(attributes) if attributes else ''
+
+        return jsonify({'goods': goods_list}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新订单（支持商品列表更新）
 @app.route('/api/orders/<int:order_id>', methods=['PUT'])
 def update_order(order_id):
     connection = None
     cursor = None
     try:
         data = request.get_json()
-        student_id = data.get('student_id')
-        amount_receivable = data.get('amount_receivable')
+        goods_list = data.get('goods_list', [])
 
-        if not student_id or not amount_receivable:
-            return jsonify({'error': '学生ID和应收金额不能为空'}), 400
+        if not goods_list or len(goods_list) == 0:
+            return jsonify({'error': '必须至少选择一个商品'}), 400
 
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
@@ -759,12 +832,30 @@ def update_order(order_id):
         if order['status'] != 10:
             return jsonify({'error': '只能编辑草稿状态的订单'}), 400
 
-        # 更新订单
+        # 计算新的应收金额和实收金额
+        total_receivable = sum(float(g.get('total_price', 0)) for g in goods_list)
+        total_received = sum(float(g.get('price', 0)) for g in goods_list)
+
+        # 更新订单金额
         cursor.execute("""
             UPDATE `orders`
-            SET student_id = %s, amount_receivable = %s
+            SET amount_receivable = %s, amount_received = %s
             WHERE id = %s
-        """, (student_id, amount_receivable, order_id))
+        """, (total_receivable, total_received, order_id))
+
+        # 删除原有的子订单
+        cursor.execute("DELETE FROM childorders WHERE parentsid = %s", (order_id,))
+
+        # 创建新的子订单
+        for goods in goods_list:
+            goods_id = goods.get('goods_id')
+            goods_total_price = float(goods.get('total_price', 0))
+            goods_price = float(goods.get('price', 0))
+
+            cursor.execute("""
+                INSERT INTO childorders (parentsid, goodsid, amount_receivable, amount_received, status)
+                VALUES (%s, %s, %s, %s, 10)
+            """, (order_id, goods_id, goods_total_price, goods_price))
 
         connection.commit()
 
@@ -806,6 +897,13 @@ def cancel_order(order_id):
             WHERE id = %s
         """, (order_id,))
 
+        # 同时作废关联的子产品订单
+        cursor.execute("""
+            UPDATE childorders
+            SET status = 99
+            WHERE parentsid = %s
+        """, (order_id,))
+
         connection.commit()
 
         return jsonify({'message': '订单已作废'}), 200
@@ -813,6 +911,161 @@ def cancel_order(order_id):
     except Exception as e:
         if connection:
             connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取子产品订单列表
+@app.route('/api/childorders', methods=['GET'])
+def get_childorders():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询子产品订单列表，关联商品信息
+        cursor.execute("""
+            SELECT
+                c.id,
+                c.parentsid,
+                c.goodsid,
+                g.name AS goods_name,
+                c.amount_receivable,
+                c.amount_received,
+                c.status,
+                c.create_time
+            FROM
+                childorders c
+            JOIN
+                goods g ON c.goodsid = g.id
+            ORDER BY
+                c.id DESC
+        """)
+
+        childorders = cursor.fetchall()
+        return jsonify({'childorders': childorders}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取商品总价（用于订单选择商品时计算）
+@app.route('/api/goods/<int:goods_id>/total-price', methods=['GET'])
+def get_goods_total_price(goods_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取商品基本信息
+        cursor.execute("""
+            SELECT id, name, isgroup, price
+            FROM goods
+            WHERE id = %s
+        """, (goods_id,))
+
+        goods = cursor.fetchone()
+        if not goods:
+            return jsonify({'error': '商品不存在'}), 404
+
+        total_price = float(goods['price'])
+
+        # 如果是组合商品，计算子商品标准售价之和
+        if goods['isgroup'] == 0:
+            cursor.execute("""
+                SELECT SUM(g.price) AS total
+                FROM goods_goods gg
+                JOIN goods g ON gg.goodsid = g.id
+                WHERE gg.parentsid = %s
+            """, (goods_id,))
+            result = cursor.fetchone()
+            if result and result['total']:
+                total_price = float(result['total'])
+
+        return jsonify({
+            'goods_id': goods_id,
+            'price': float(goods['price']),
+            'total_price': total_price,
+            'isgroup': goods['isgroup']
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取启用状态的商品列表（用于订单选择商品）
+@app.route('/api/goods/active-for-order', methods=['GET'])
+def get_active_goods_for_order():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取所有启用状态的商品
+        cursor.execute("""
+            SELECT
+                g.id, g.name, g.brandid, g.classifyid, g.isgroup, g.price,
+                b.name AS brand_name,
+                c.name AS classify_name
+            FROM goods g
+            LEFT JOIN brand b ON g.brandid = b.id
+            LEFT JOIN classify c ON g.classifyid = c.id
+            WHERE g.status = 0
+            ORDER BY g.id DESC
+        """)
+
+        goods_list = cursor.fetchall()
+
+        # 为每个商品获取属性信息和总价
+        for goods in goods_list:
+            # 获取属性值
+            cursor.execute("""
+                SELECT
+                    av.id, av.name AS value_name, av.attributeid,
+                    a.name AS attr_name, a.classify
+                FROM goods_attributevalue gav
+                JOIN attribute_value av ON gav.attributevalueid = av.id
+                JOIN attribute a ON av.attributeid = a.id
+                WHERE gav.goodsid = %s
+            """, (goods['id'],))
+
+            attr_values = cursor.fetchall()
+            attributes = []
+            for av in attr_values:
+                if av['classify'] == 0:  # 属性
+                    attributes.append(f"{av['attr_name']}:{av['value_name']}")
+            goods['attributes'] = ', '.join(attributes) if attributes else ''
+
+            # 计算总价
+            if goods['isgroup'] == 0:  # 组合商品
+                cursor.execute("""
+                    SELECT SUM(g.price) AS total
+                    FROM goods_goods gg
+                    JOIN goods g ON gg.goodsid = g.id
+                    WHERE gg.parentsid = %s
+                """, (goods['id'],))
+                result = cursor.fetchone()
+                goods['total_price'] = float(result['total']) if result and result['total'] else float(goods['price'])
+            else:
+                goods['total_price'] = float(goods['price'])
+
+        return jsonify({'goods': goods_list}), 200
+
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
         if cursor:

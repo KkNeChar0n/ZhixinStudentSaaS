@@ -251,7 +251,7 @@
                     <div v-if="activeMenu === 'orders'">
                         <div class="page-header">
                             <h1>订单管理</h1>
-                            <button class="add-btn" @click="openAddOrderModal">新增订单</button>
+                            <button class="add-btn" @click="openAddOrderDrawer">新增订单</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -306,7 +306,7 @@
                                     <td>{{ order.amount_received }}</td>
                                     <td>{{ getOrderStatusText(order.status) }}</td>
                                     <td class="action-column">
-                                        <button v-if="order.status === 10" class="edit-btn" @click="openEditOrderModal(order)">编辑</button>
+                                        <button v-if="order.status === 10" class="edit-btn" @click="openEditOrderDrawer(order)">编辑</button>
                                         <button v-if="order.status === 10" class="delete-btn" @click="openCancelOrderConfirm(order.id)">作废</button>
                                     </td>
                                 </tr>
@@ -320,6 +320,80 @@
                             <span class="page-info">第 {{ orderCurrentPage }} / {{ orderTotalPages }} 页</span>
                             <button class="page-btn" @click="changeOrderPage(orderCurrentPage + 1)" :disabled="orderCurrentPage === orderTotalPages">下一页</button>
                             <button class="page-btn" @click="changeOrderPage(orderTotalPages)" :disabled="orderCurrentPage === orderTotalPages">末页</button>
+                        </div>
+                    </div>
+
+                    <!-- 子产品订单页面 -->
+                    <div v-if="activeMenu === 'childorders'">
+                        <div class="page-header">
+                            <h1>子产品订单</h1>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="childOrderIdFilter">ID</label>
+                                    <input type="number" id="childOrderIdFilter" v-model="childOrderFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="childOrderParentIdFilter">订单ID</label>
+                                    <input type="number" id="childOrderParentIdFilter" v-model="childOrderFilters.parentsid" placeholder="请输入订单ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="childOrderGoodsIdFilter">商品ID</label>
+                                    <input type="number" id="childOrderGoodsIdFilter" v-model="childOrderFilters.goodsid" placeholder="请输入商品ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="childOrderStatusFilter">订单状态</label>
+                                    <select id="childOrderStatusFilter" v-model="childOrderFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="10">草稿</option>
+                                        <option value="20">审核中</option>
+                                        <option value="30">已通过</option>
+                                        <option value="40">已驳回</option>
+                                        <option value="99">已作废</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchChildOrders">搜索</button>
+                                <button class="reset-btn" @click="resetChildOrderFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>订单ID</th>
+                                    <th>商品ID</th>
+                                    <th>商品名称</th>
+                                    <th>应收金额</th>
+                                    <th>实收金额</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="childOrder in paginatedChildOrders" :key="childOrder.id">
+                                    <td>{{ childOrder.id }}</td>
+                                    <td>{{ childOrder.parentsid }}</td>
+                                    <td>{{ childOrder.goodsid }}</td>
+                                    <td>{{ childOrder.goods_name }}</td>
+                                    <td>{{ childOrder.amount_receivable }}</td>
+                                    <td>{{ childOrder.amount_received }}</td>
+                                    <td>{{ getChildOrderStatusText(childOrder.status) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- 子产品订单分页控件 -->
+                        <div class="pagination" v-if="childOrderTotalPages > 1">
+                            <button class="page-btn" @click="changeChildOrderPage(1)" :disabled="childOrderCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeChildOrderPage(childOrderCurrentPage - 1)" :disabled="childOrderCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ childOrderCurrentPage }} / {{ childOrderTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeChildOrderPage(childOrderCurrentPage + 1)" :disabled="childOrderCurrentPage === childOrderTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeChildOrderPage(childOrderTotalPages)" :disabled="childOrderCurrentPage === childOrderTotalPages">末页</button>
                         </div>
                     </div>
 
@@ -858,64 +932,215 @@
             </div>
         </div>
 
-        <!-- 新增订单弹窗 -->
-        <div class="modal-overlay" v-if="showAddOrderModal">
-            <div class="modal">
-                <div class="modal-header">
+        <!-- 新增订单抽屉 -->
+        <div class="drawer-overlay" v-if="showAddOrderDrawer" @click="closeAddOrderDrawer">
+            <div class="drawer" @click.stop>
+                <div class="drawer-header">
                     <h3>新增订单</h3>
-                    <button class="close-btn" @click="closeAddOrderModal">&times;</button>
+                    <button class="close-btn" @click="closeAddOrderDrawer">&times;</button>
                 </div>
-                <div class="modal-body">
+                <div class="drawer-body">
                     <div class="form-group">
-                        <label for="addOrderUid">UID <span class="required">*</span></label>
-                        <select id="addOrderUid" v-model="addOrderData.student_id" @change="onStudentChange" required>
+                        <label for="addOrderStudentName">学生姓名 <span class="required">*</span></label>
+                        <select id="addOrderStudentName" v-model="addOrderData.student_id" @change="onOrderStudentChange" class="styled-select" required>
                             <option value="">请选择学生</option>
-                            <option v-for="student in activeStudentsForOrder" :key="student.id" :value="student.id">{{ student.id }}</option>
+                            <option v-for="student in activeStudentsForOrder" :key="student.id" :value="student.id">{{ student.student_name }}</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="addOrderStudentName">学生姓名</label>
-                        <input type="text" id="addOrderStudentName" v-model="addOrderData.student_name" readonly placeholder="选择UID后自动显示">
+                        <label>UID</label>
+                        <input type="text" :value="addOrderData.student_id || '选择学生后自动显示'" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group-row">
+                        <div class="form-group-col">
+                            <label>应收金额</label>
+                            <input type="text" :value="orderTotalReceivable.toFixed(2)" readonly class="readonly-input">
+                        </div>
+                        <div class="form-group-col">
+                            <label>实收金额</label>
+                            <input type="text" :value="orderTotalReceived.toFixed(2)" readonly class="readonly-input">
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label for="addOrderAmount">应收金额 <span class="required">*</span></label>
-                        <input type="number" step="0.01" id="addOrderAmount" v-model="addOrderData.amount_receivable" placeholder="请输入应收金额" required>
+                        <label>选择商品 <span class="required">*</span></label>
+                        <table class="included-goods-table" v-if="selectedOrderGoods.length > 0">
+                            <thead>
+                                <tr>
+                                    <th>商品ID</th>
+                                    <th>商品名称</th>
+                                    <th>标准售价</th>
+                                    <th>商品总价</th>
+                                    <th>组合售卖</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(goods, index) in selectedOrderGoods" :key="goods.goods_id">
+                                    <td>{{ goods.goods_id }}</td>
+                                    <td>{{ goods.name }}</td>
+                                    <td>{{ goods.price }}</td>
+                                    <td>{{ goods.total_price }}</td>
+                                    <td>{{ goods.isgroup == 0 ? '是' : '否' }}</td>
+                                    <td>
+                                        <button type="button" class="delete-btn" @click="removeOrderGoods(index)">删除</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <button type="button" class="add-included-btn" @click="openAddOrderGoodsModal">+ 新增商品</button>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button class="cancel-btn" @click="closeAddOrderModal">取消</button>
-                    <button class="save-btn" @click="saveAddOrder">确认</button>
+                <div class="drawer-footer">
+                    <button class="cancel-btn" @click="closeAddOrderDrawer">取消</button>
+                    <button class="save-btn" @click="saveAddOrder">保存</button>
                 </div>
             </div>
         </div>
 
-        <!-- 编辑订单弹窗 -->
-        <div class="modal-overlay" v-if="showEditOrderModal">
+        <!-- 新增订单商品子弹窗 -->
+        <div class="modal-overlay" v-if="showAddOrderGoodsModal">
             <div class="modal">
                 <div class="modal-header">
-                    <h3>编辑订单</h3>
-                    <button class="close-btn" @click="closeEditOrderModal">&times;</button>
+                    <h3>新增商品</h3>
+                    <button class="close-btn" @click="closeAddOrderGoodsModal">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div class="form-group">
-                        <label for="editOrderUid">UID <span class="required">*</span></label>
-                        <select id="editOrderUid" v-model="editOrderData.student_id" @change="onEditStudentChange" required>
-                            <option value="">请选择学生</option>
-                            <option v-for="student in activeStudentsForOrder" :key="student.id" :value="student.id">{{ student.id }}</option>
+                        <label for="orderGoodsName">商品名称 <span class="required">*</span></label>
+                        <select id="orderGoodsName" v-model="addOrderGoodsData.goods_id" @change="onOrderGoodsChange" class="styled-select" required>
+                            <option value="">请选择商品</option>
+                            <option v-for="goods in availableGoodsForOrderSelection" :key="goods.id" :value="goods.id">{{ goods.name }}</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="editOrderStudentName">学生姓名</label>
-                        <input type="text" id="editOrderStudentName" v-model="editOrderData.student_name" readonly placeholder="选择UID后自动显示">
+                        <label>品牌</label>
+                        <input type="text" v-model="addOrderGoodsData.brand_name" readonly class="readonly-input">
                     </div>
                     <div class="form-group">
-                        <label for="editOrderAmount">应收金额 <span class="required">*</span></label>
-                        <input type="number" step="0.01" id="editOrderAmount" v-model="editOrderData.amount_receivable" placeholder="请输入应收金额" required>
+                        <label>类型</label>
+                        <input type="text" v-model="addOrderGoodsData.classify_name" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>属性+属性值</label>
+                        <input type="text" v-model="addOrderGoodsData.attributes" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>标准售价</label>
+                        <input type="text" v-model="addOrderGoodsData.price" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>商品总价</label>
+                        <input type="text" v-model="addOrderGoodsData.total_price" readonly class="readonly-input">
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="cancel-btn" @click="closeEditOrderModal">取消</button>
-                    <button class="save-btn" @click="saveEditOrder">确认</button>
+                    <button class="cancel-btn" @click="closeAddOrderGoodsModal">取消</button>
+                    <button class="save-btn" @click="saveOrderGoods">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑订单抽屉 -->
+        <div class="drawer-overlay" v-if="showEditOrderDrawer" @click="closeEditOrderDrawer">
+            <div class="drawer" @click.stop>
+                <div class="drawer-header">
+                    <h3>编辑订单</h3>
+                    <button class="close-btn" @click="closeEditOrderDrawer">&times;</button>
+                </div>
+                <div class="drawer-body">
+                    <div class="form-group">
+                        <label>学生姓名</label>
+                        <input type="text" :value="editOrderData.student_name" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>UID</label>
+                        <input type="text" :value="editOrderData.student_id" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group-row">
+                        <div class="form-group-col">
+                            <label>应收金额</label>
+                            <input type="text" :value="editOrderTotalReceivable.toFixed(2)" readonly class="readonly-input">
+                        </div>
+                        <div class="form-group-col">
+                            <label>实收金额</label>
+                            <input type="text" :value="editOrderTotalReceived.toFixed(2)" readonly class="readonly-input">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>选择商品 <span class="required">*</span></label>
+                        <table class="included-goods-table" v-if="editSelectedOrderGoods.length > 0">
+                            <thead>
+                                <tr>
+                                    <th>商品ID</th>
+                                    <th>商品名称</th>
+                                    <th>标准售价</th>
+                                    <th>商品总价</th>
+                                    <th>组合售卖</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(goods, index) in editSelectedOrderGoods" :key="goods.goods_id">
+                                    <td>{{ goods.goods_id }}</td>
+                                    <td>{{ goods.name }}</td>
+                                    <td>{{ goods.price }}</td>
+                                    <td>{{ goods.total_price }}</td>
+                                    <td>{{ goods.isgroup == 0 ? '是' : '否' }}</td>
+                                    <td>
+                                        <button type="button" class="delete-btn" @click="removeEditOrderGoods(index)">删除</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <button type="button" class="add-included-btn" @click="openEditOrderGoodsModal">+ 新增商品</button>
+                    </div>
+                </div>
+                <div class="drawer-footer">
+                    <button class="cancel-btn" @click="closeEditOrderDrawer">取消</button>
+                    <button class="save-btn" @click="saveEditOrder">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑订单商品子弹窗 -->
+        <div class="modal-overlay" v-if="showEditOrderGoodsModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>新增商品</h3>
+                    <button class="close-btn" @click="closeEditOrderGoodsModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editOrderGoodsName">商品名称 <span class="required">*</span></label>
+                        <select id="editOrderGoodsName" v-model="editOrderGoodsData.goods_id" @change="onEditOrderGoodsChange" class="styled-select" required>
+                            <option value="">请选择商品</option>
+                            <option v-for="goods in availableGoodsForEditOrderSelection" :key="goods.id" :value="goods.id">{{ goods.name }}</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>品牌</label>
+                        <input type="text" v-model="editOrderGoodsData.brand_name" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>类型</label>
+                        <input type="text" v-model="editOrderGoodsData.classify_name" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>属性+属性值</label>
+                        <input type="text" v-model="editOrderGoodsData.attributes" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>标准售价</label>
+                        <input type="text" v-model="editOrderGoodsData.price" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>商品总价</label>
+                        <input type="text" v-model="editOrderGoodsData.total_price" readonly class="readonly-input">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEditOrderGoodsModal">取消</button>
+                    <button class="save-btn" @click="saveEditOrderGoods">保存</button>
                 </div>
             </div>
         </div>

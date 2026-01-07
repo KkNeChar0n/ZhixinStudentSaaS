@@ -38,6 +38,13 @@ createApp({
                 uid: '',
                 status: ''
             },
+            // 子产品订单筛选条件
+            childOrderFilters: {
+                id: '',
+                parentsid: '',
+                goodsid: '',
+                status: ''
+            },
             // 属性筛选条件
             attributeFilters: {
                 id: '',
@@ -68,15 +75,19 @@ createApp({
             filteredStudents: [],
             filteredCoaches: [],
             filteredOrders: [],
+            filteredChildOrders: [],
             filteredAttributes: [],
             filteredClassifies: [],
             filteredBrands: [],
             filteredGoods: [],
+            // 子产品订单原始数据
+            childOrders: [],
             // 分页数据
             pageSize: 10,
             studentCurrentPage: 1,
             coachCurrentPage: 1,
             orderCurrentPage: 1,
+            childOrderCurrentPage: 1,
             accountCurrentPage: 1,
             attributeCurrentPage: 1,
             classifyCurrentPage: 1,
@@ -88,8 +99,10 @@ createApp({
             showEditStudentModal: false,
             showEditCoachModal: false,
             showDeleteConfirm: false,
-            showAddOrderModal: false,
-            showEditOrderModal: false,
+            showAddOrderDrawer: false,
+            showAddOrderGoodsModal: false,
+            showEditOrderDrawer: false,
+            showEditOrderGoodsModal: false,
             showCancelOrderConfirm: false,
             showAddAttributeModal: false,
             showEditAttributeModal: false,
@@ -142,15 +155,41 @@ createApp({
             // 新增订单数据
             addOrderData: {
                 student_id: '',
-                student_name: '',
-                amount_receivable: ''
+                student_name: ''
+            },
+            // 选择的订单商品列表
+            selectedOrderGoods: [],
+            // 可选商品列表（用于订单选择商品）
+            availableGoodsForOrder: [],
+            // 新增订单商品子弹窗数据
+            addOrderGoodsData: {
+                goods_id: '',
+                name: '',
+                brand_name: '',
+                classify_name: '',
+                attributes: '',
+                price: 0,
+                total_price: 0,
+                isgroup: 1
             },
             // 编辑订单数据
             editOrderData: {
                 id: '',
                 student_id: '',
-                student_name: '',
-                amount_receivable: ''
+                student_name: ''
+            },
+            // 编辑订单选择的商品列表
+            editSelectedOrderGoods: [],
+            // 编辑订单商品子弹窗数据
+            editOrderGoodsData: {
+                goods_id: '',
+                name: '',
+                brand_name: '',
+                classify_name: '',
+                attributes: '',
+                price: 0,
+                total_price: 0,
+                isgroup: 1
             },
             // 新增属性数据
             addAttributeData: {
@@ -292,6 +331,61 @@ createApp({
         },
         orderTotalPages() {
             return Math.ceil(this.filteredOrders.length / this.pageSize);
+        },
+        // 子产品订单分页数据
+        paginatedChildOrders() {
+            const start = (this.childOrderCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredChildOrders.slice(start, end);
+        },
+        childOrderTotalPages() {
+            return Math.ceil(this.filteredChildOrders.length / this.pageSize);
+        },
+        // 订单应收金额（所有商品的商品总价之和）
+        orderTotalReceivable() {
+            if (!this.selectedOrderGoods || this.selectedOrderGoods.length === 0) {
+                return 0;
+            }
+            return this.selectedOrderGoods.reduce((sum, goods) => {
+                return sum + parseFloat(goods.total_price || 0);
+            }, 0);
+        },
+        // 订单实收金额（所有商品的标准售价之和）
+        orderTotalReceived() {
+            if (!this.selectedOrderGoods || this.selectedOrderGoods.length === 0) {
+                return 0;
+            }
+            return this.selectedOrderGoods.reduce((sum, goods) => {
+                return sum + parseFloat(goods.price || 0);
+            }, 0);
+        },
+        // 过滤掉已选择的商品（用于订单选择商品子弹窗）
+        availableGoodsForOrderSelection() {
+            const selectedIds = this.selectedOrderGoods.map(g => g.goods_id);
+            return this.availableGoodsForOrder.filter(g => !selectedIds.includes(g.id));
+        },
+        // 编辑订单应收金额
+        editOrderTotalReceivable() {
+            if (!this.editSelectedOrderGoods || this.editSelectedOrderGoods.length === 0) {
+                return 0;
+            }
+            return this.editSelectedOrderGoods.reduce((sum, goods) => {
+                return sum + parseFloat(goods.total_price || 0);
+            }, 0);
+        },
+        // 编辑订单实收金额
+        editOrderTotalReceived() {
+            if (!this.editSelectedOrderGoods || this.editSelectedOrderGoods.length === 0) {
+                return 0;
+            }
+            return this.editSelectedOrderGoods.reduce((sum, goods) => {
+                return sum + parseFloat(goods.price || 0);
+            }, 0);
+        },
+        // 过滤掉已选择的商品（用于编辑订单选择商品子弹窗）
+        availableGoodsForEditOrderSelection() {
+            const selectedIds = this.editSelectedOrderGoods.map(g => g.goods_id);
+            return this.availableGoodsForOrder.filter(g => !selectedIds.includes(g.id));
         },
         // 账号分页数据
         paginatedAccounts() {
@@ -443,6 +537,8 @@ createApp({
                 this.fetchCoaches();
             } else if (menu === 'orders') {
                 this.fetchOrders();
+            } else if (menu === 'childorders') {
+                this.fetchChildOrders();
             } else if (menu === 'accounts') {
                 this.fetchAccounts();
             } else if (menu === 'attributes') {
@@ -1004,8 +1100,8 @@ createApp({
             return statusMap[status] || '未知';
         },
 
-        // 打开新增订单弹窗
-        async openAddOrderModal() {
+        // 打开新增订单抽屉
+        async openAddOrderDrawer() {
             // 获取启用的学生列表
             try {
                 const response = await axios.get('/api/students/active', { withCredentials: true });
@@ -1014,21 +1110,29 @@ createApp({
                 console.error('获取启用学生列表失败:', err);
                 this.error = '获取启用学生列表失败';
             }
-            this.showAddOrderModal = true;
+            // 获取启用的商品列表
+            try {
+                const response = await axios.get('/api/goods/active-for-order', { withCredentials: true });
+                this.availableGoodsForOrder = response.data.goods;
+            } catch (err) {
+                console.error('获取启用商品列表失败:', err);
+                this.error = '获取启用商品列表失败';
+            }
+            this.showAddOrderDrawer = true;
         },
 
-        // 关闭新增订单弹窗
-        closeAddOrderModal() {
-            this.showAddOrderModal = false;
+        // 关闭新增订单抽屉
+        closeAddOrderDrawer() {
+            this.showAddOrderDrawer = false;
             this.addOrderData = {
                 student_id: '',
-                student_name: '',
-                amount_receivable: ''
+                student_name: ''
             };
+            this.selectedOrderGoods = [];
         },
 
-        // 学生选择变化时更新学生姓名
-        onStudentChange() {
+        // 学生选择变化时（用于新增订单）
+        onOrderStudentChange() {
             const student = this.activeStudentsForOrder.find(s => s.id === parseInt(this.addOrderData.student_id));
             if (student) {
                 this.addOrderData.student_name = student.student_name;
@@ -1037,23 +1141,111 @@ createApp({
             }
         },
 
+        // 打开新增订单商品子弹窗
+        openAddOrderGoodsModal() {
+            this.addOrderGoodsData = {
+                goods_id: '',
+                name: '',
+                brand_name: '',
+                classify_name: '',
+                attributes: '',
+                price: 0,
+                total_price: 0,
+                isgroup: 1
+            };
+            this.showAddOrderGoodsModal = true;
+        },
+
+        // 关闭新增订单商品子弹窗
+        closeAddOrderGoodsModal() {
+            this.showAddOrderGoodsModal = false;
+            this.addOrderGoodsData = {
+                goods_id: '',
+                name: '',
+                brand_name: '',
+                classify_name: '',
+                attributes: '',
+                price: 0,
+                total_price: 0,
+                isgroup: 1
+            };
+        },
+
+        // 订单商品选择变化时联动其他字段
+        onOrderGoodsChange() {
+            const goods = this.availableGoodsForOrder.find(g => g.id === parseInt(this.addOrderGoodsData.goods_id));
+            if (goods) {
+                this.addOrderGoodsData.name = goods.name;
+                this.addOrderGoodsData.brand_name = goods.brand_name || '';
+                this.addOrderGoodsData.classify_name = goods.classify_name || '';
+                this.addOrderGoodsData.attributes = goods.attributes || '';
+                this.addOrderGoodsData.price = goods.price;
+                this.addOrderGoodsData.total_price = goods.total_price;
+                this.addOrderGoodsData.isgroup = goods.isgroup;
+            } else {
+                this.addOrderGoodsData.name = '';
+                this.addOrderGoodsData.brand_name = '';
+                this.addOrderGoodsData.classify_name = '';
+                this.addOrderGoodsData.attributes = '';
+                this.addOrderGoodsData.price = 0;
+                this.addOrderGoodsData.total_price = 0;
+                this.addOrderGoodsData.isgroup = 1;
+            }
+        },
+
+        // 保存选择的商品到订单列表
+        saveOrderGoods() {
+            if (!this.addOrderGoodsData.goods_id) {
+                alert('请选择商品');
+                return;
+            }
+            // 添加到已选商品列表
+            this.selectedOrderGoods.push({
+                goods_id: parseInt(this.addOrderGoodsData.goods_id),
+                name: this.addOrderGoodsData.name,
+                brand_name: this.addOrderGoodsData.brand_name,
+                classify_name: this.addOrderGoodsData.classify_name,
+                attributes: this.addOrderGoodsData.attributes,
+                price: parseFloat(this.addOrderGoodsData.price),
+                total_price: parseFloat(this.addOrderGoodsData.total_price),
+                isgroup: this.addOrderGoodsData.isgroup
+            });
+            this.closeAddOrderGoodsModal();
+        },
+
+        // 从订单列表中删除商品
+        removeOrderGoods(index) {
+            this.selectedOrderGoods.splice(index, 1);
+        },
+
         // 保存新增订单
         async saveAddOrder() {
-            if (!this.addOrderData.student_id || !this.addOrderData.amount_receivable) {
-                alert('请填写所有必填字段');
+            if (!this.addOrderData.student_id) {
+                alert('请选择学生');
+                return;
+            }
+
+            if (this.selectedOrderGoods.length === 0) {
+                alert('必须至少选择一个商品');
                 return;
             }
 
             try {
+                const goods_list = this.selectedOrderGoods.map(g => ({
+                    goods_id: g.goods_id,
+                    price: g.price,
+                    total_price: g.total_price
+                }));
+
                 const response = await axios.post('/api/orders', {
                     student_id: this.addOrderData.student_id,
-                    amount_receivable: this.addOrderData.amount_receivable
+                    goods_list: goods_list
                 }, { withCredentials: true });
 
                 if (response.data.message === '订单创建成功') {
                     await this.fetchOrders();
-                    this.closeAddOrderModal();
-                    alert('订单创建成功');
+                    this.closeAddOrderDrawer();
+                    alert('保存成功！');
                 }
             } catch (err) {
                 console.error('创建订单失败:', err);
@@ -1061,64 +1253,152 @@ createApp({
             }
         },
 
-        // 打开编辑订单弹窗
-        async openEditOrderModal(order) {
-            // 获取启用的学生列表
+        // 打开编辑订单抽屉
+        async openEditOrderDrawer(order) {
+            // 获取启用的商品列表
             try {
-                const response = await axios.get('/api/students/active', { withCredentials: true });
-                this.activeStudentsForOrder = response.data.students;
+                const response = await axios.get('/api/goods/active-for-order', { withCredentials: true });
+                this.availableGoodsForOrder = response.data.goods;
             } catch (err) {
-                console.error('获取启用学生列表失败:', err);
-                this.error = '获取启用学生列表失败';
+                console.error('获取启用商品列表失败:', err);
+                this.error = '获取启用商品列表失败';
+            }
+
+            // 获取订单的商品列表
+            try {
+                const response = await axios.get(`/api/orders/${order.id}/goods`, { withCredentials: true });
+                this.editSelectedOrderGoods = response.data.goods.map(g => ({
+                    goods_id: g.goodsid,
+                    name: g.goods_name,
+                    brand_name: g.brand_name || '',
+                    classify_name: g.classify_name || '',
+                    attributes: g.attributes || '',
+                    price: parseFloat(g.amount_received),
+                    total_price: parseFloat(g.amount_receivable),
+                    isgroup: g.isgroup
+                }));
+            } catch (err) {
+                console.error('获取订单商品列表失败:', err);
+                this.editSelectedOrderGoods = [];
             }
 
             this.editOrderData = {
                 id: order.id,
                 student_id: order.uid,
-                student_name: order.student_name,
-                amount_receivable: order.amount_receivable
+                student_name: order.student_name
             };
-            this.showEditOrderModal = true;
+            this.showEditOrderDrawer = true;
         },
 
-        // 关闭编辑订单弹窗
-        closeEditOrderModal() {
-            this.showEditOrderModal = false;
+        // 关闭编辑订单抽屉
+        closeEditOrderDrawer() {
+            this.showEditOrderDrawer = false;
             this.editOrderData = {
                 id: '',
                 student_id: '',
-                student_name: '',
-                amount_receivable: ''
+                student_name: ''
+            };
+            this.editSelectedOrderGoods = [];
+        },
+
+        // 打开编辑订单商品子弹窗
+        openEditOrderGoodsModal() {
+            this.editOrderGoodsData = {
+                goods_id: '',
+                name: '',
+                brand_name: '',
+                classify_name: '',
+                attributes: '',
+                price: 0,
+                total_price: 0,
+                isgroup: 1
+            };
+            this.showEditOrderGoodsModal = true;
+        },
+
+        // 关闭编辑订单商品子弹窗
+        closeEditOrderGoodsModal() {
+            this.showEditOrderGoodsModal = false;
+            this.editOrderGoodsData = {
+                goods_id: '',
+                name: '',
+                brand_name: '',
+                classify_name: '',
+                attributes: '',
+                price: 0,
+                total_price: 0,
+                isgroup: 1
             };
         },
 
-        // 编辑时学生选择变化更新学生姓名
-        onEditStudentChange() {
-            const student = this.activeStudentsForOrder.find(s => s.id === parseInt(this.editOrderData.student_id));
-            if (student) {
-                this.editOrderData.student_name = student.student_name;
+        // 编辑订单商品选择变化时联动其他字段
+        onEditOrderGoodsChange() {
+            const goods = this.availableGoodsForOrder.find(g => g.id === parseInt(this.editOrderGoodsData.goods_id));
+            if (goods) {
+                this.editOrderGoodsData.name = goods.name;
+                this.editOrderGoodsData.brand_name = goods.brand_name || '';
+                this.editOrderGoodsData.classify_name = goods.classify_name || '';
+                this.editOrderGoodsData.attributes = goods.attributes || '';
+                this.editOrderGoodsData.price = goods.price;
+                this.editOrderGoodsData.total_price = goods.total_price;
+                this.editOrderGoodsData.isgroup = goods.isgroup;
             } else {
-                this.editOrderData.student_name = '';
+                this.editOrderGoodsData.name = '';
+                this.editOrderGoodsData.brand_name = '';
+                this.editOrderGoodsData.classify_name = '';
+                this.editOrderGoodsData.attributes = '';
+                this.editOrderGoodsData.price = 0;
+                this.editOrderGoodsData.total_price = 0;
+                this.editOrderGoodsData.isgroup = 1;
             }
+        },
+
+        // 保存选择的商品到编辑订单列表
+        saveEditOrderGoods() {
+            if (!this.editOrderGoodsData.goods_id) {
+                alert('请选择商品');
+                return;
+            }
+            this.editSelectedOrderGoods.push({
+                goods_id: parseInt(this.editOrderGoodsData.goods_id),
+                name: this.editOrderGoodsData.name,
+                brand_name: this.editOrderGoodsData.brand_name,
+                classify_name: this.editOrderGoodsData.classify_name,
+                attributes: this.editOrderGoodsData.attributes,
+                price: parseFloat(this.editOrderGoodsData.price),
+                total_price: parseFloat(this.editOrderGoodsData.total_price),
+                isgroup: this.editOrderGoodsData.isgroup
+            });
+            this.closeEditOrderGoodsModal();
+        },
+
+        // 从编辑订单列表中删除商品
+        removeEditOrderGoods(index) {
+            this.editSelectedOrderGoods.splice(index, 1);
         },
 
         // 保存编辑订单
         async saveEditOrder() {
-            if (!this.editOrderData.student_id || !this.editOrderData.amount_receivable) {
-                alert('请填写所有必填字段');
+            if (this.editSelectedOrderGoods.length === 0) {
+                alert('必须至少选择一个商品');
                 return;
             }
 
             try {
+                const goods_list = this.editSelectedOrderGoods.map(g => ({
+                    goods_id: g.goods_id,
+                    price: g.price,
+                    total_price: g.total_price
+                }));
+
                 const response = await axios.put(`/api/orders/${this.editOrderData.id}`, {
-                    student_id: this.editOrderData.student_id,
-                    amount_receivable: this.editOrderData.amount_receivable
+                    goods_list: goods_list
                 }, { withCredentials: true });
 
                 if (response.data.message === '订单更新成功') {
                     await this.fetchOrders();
-                    this.closeEditOrderModal();
-                    alert('订单更新成功');
+                    this.closeEditOrderDrawer();
+                    alert('保存成功！');
                 }
             } catch (err) {
                 console.error('更新订单失败:', err);
@@ -1677,6 +1957,73 @@ createApp({
                 this.orderCurrentPage = page;
             }
         },
+
+        // ==================== 子产品订单管理方法 ====================
+
+        // 获取子产品订单数据
+        async fetchChildOrders() {
+            try {
+                const response = await axios.get('/api/childorders', { withCredentials: true });
+                this.childOrders = response.data.childorders;
+                this.filteredChildOrders = this.childOrders;
+            } catch (err) {
+                console.error('获取子产品订单数据失败:', err);
+                this.error = '获取子产品订单数据失败';
+            }
+        },
+
+        // 搜索子产品订单
+        searchChildOrders() {
+            this.filteredChildOrders = this.childOrders.filter(order => {
+                let match = true;
+                if (this.childOrderFilters.id && order.id !== parseInt(this.childOrderFilters.id)) {
+                    match = false;
+                }
+                if (this.childOrderFilters.parentsid && order.parentsid !== parseInt(this.childOrderFilters.parentsid)) {
+                    match = false;
+                }
+                if (this.childOrderFilters.goodsid && order.goodsid !== parseInt(this.childOrderFilters.goodsid)) {
+                    match = false;
+                }
+                if (this.childOrderFilters.status && order.status !== parseInt(this.childOrderFilters.status)) {
+                    match = false;
+                }
+                return match;
+            });
+            this.childOrderCurrentPage = 1;
+        },
+
+        // 重置子产品订单筛选
+        resetChildOrderFilters() {
+            this.childOrderFilters = {
+                id: '',
+                parentsid: '',
+                goodsid: '',
+                status: ''
+            };
+            this.filteredChildOrders = this.childOrders;
+            this.childOrderCurrentPage = 1;
+        },
+
+        // 获取子产品订单状态文本
+        getChildOrderStatusText(status) {
+            const statusMap = {
+                10: '草稿',
+                20: '审核中',
+                30: '已通过',
+                40: '已驳回',
+                99: '已作废'
+            };
+            return statusMap[status] || '未知';
+        },
+
+        // 子产品订单分页
+        changeChildOrderPage(page) {
+            if (page >= 1 && page <= this.childOrderTotalPages) {
+                this.childOrderCurrentPage = page;
+            }
+        },
+
         // 账号分页
         changeAccountPage(page) {
             if (page >= 1 && page <= this.accountTotalPages) {
