@@ -1558,20 +1558,26 @@ def add_goods():
         name = data.get('name')
         brandid = data.get('brandid')
         classifyid = data.get('classifyid')
+        isgroup = data.get('isgroup', 1)  # 0=组合售卖，1=非组合售卖，默认为非组合
         price = data.get('price')
         attribute_values = data.get('attributevalue_ids', [])  # 属性值ID列表
+        included_goods_ids = data.get('included_goods_ids', [])  # 包含商品ID列表
 
         if not name or not brandid or not classifyid or not price:
             return jsonify({'error': '商品信息不完整'}), 400
 
+        # 验证：组合售卖=是时，必须至少添加一个包含商品
+        if isgroup == 0 and (not included_goods_ids or len(included_goods_ids) == 0):
+            return jsonify({'error': '组合商品必须至少包含一个子商品'}), 400
+
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 插入商品（暂时都设置为非组合售卖）
+        # 插入商品
         cursor.execute("""
             INSERT INTO goods (name, brandid, classifyid, isgroup, price, status)
-            VALUES (%s, %s, %s, 1, %s, 0)
-        """, (name, brandid, classifyid, price))
+            VALUES (%s, %s, %s, %s, %s, 0)
+        """, (name, brandid, classifyid, isgroup, price))
 
         goods_id = cursor.lastrowid
 
@@ -1582,6 +1588,14 @@ def add_goods():
                     INSERT INTO goods_attributevalue (goodsid, attributevalueid)
                     VALUES (%s, %s)
                 """, (goods_id, av_id))
+
+        # 插入商品组合关系
+        if isgroup == 0 and included_goods_ids:
+            for sub_goods_id in included_goods_ids:
+                cursor.execute("""
+                    INSERT INTO goods_goods (goodsid, parentsid)
+                    VALUES (%s, %s)
+                """, (sub_goods_id, goods_id))
 
         connection.commit()
         return jsonify({'message': '商品添加成功', 'id': goods_id}), 201
@@ -1629,6 +1643,16 @@ def get_goods_detail(goods_id):
         attr_values = cursor.fetchall()
         goods['attributevalue_ids'] = [av['attributevalueid'] for av in attr_values]
 
+        # 查询包含的子商品ID
+        cursor.execute("""
+            SELECT goodsid
+            FROM goods_goods
+            WHERE parentsid = %s
+            ORDER BY goodsid
+        """, (goods_id,))
+        included_goods = cursor.fetchall()
+        goods['included_goods_ids'] = [ig['goodsid'] for ig in included_goods]
+
         return jsonify({'goods': goods}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1650,6 +1674,7 @@ def update_goods(goods_id):
         classifyid = data.get('classifyid')
         price = data.get('price')
         attribute_values = data.get('attributevalue_ids', [])
+        included_goods_ids = data.get('included_goods_ids', [])  # 包含商品ID列表
 
         if not name or not brandid or not classifyid or not price:
             return jsonify({'error': '商品信息不完整'}), 400
@@ -1657,12 +1682,19 @@ def update_goods(goods_id):
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 检查商品是否存在
-        cursor.execute("SELECT id FROM goods WHERE id = %s", (goods_id,))
-        if not cursor.fetchone():
+        # 检查商品是否存在，并获取 isgroup
+        cursor.execute("SELECT id, isgroup FROM goods WHERE id = %s", (goods_id,))
+        existing_goods = cursor.fetchone()
+        if not existing_goods:
             return jsonify({'error': '商品不存在'}), 404
 
-        # 更新商品基本信息
+        isgroup = existing_goods['isgroup']
+
+        # 验证：组合售卖=是时，必须至少添加一个包含商品
+        if isgroup == 0 and (not included_goods_ids or len(included_goods_ids) == 0):
+            return jsonify({'error': '组合商品必须至少包含一个子商品'}), 400
+
+        # 更新商品基本信息（不更新 isgroup）
         cursor.execute("""
             UPDATE goods
             SET name = %s, brandid = %s, classifyid = %s, price = %s
@@ -1679,6 +1711,17 @@ def update_goods(goods_id):
                     INSERT INTO goods_attributevalue (goodsid, attributevalueid)
                     VALUES (%s, %s)
                 """, (goods_id, av_id))
+
+        # 删除旧的商品组合关系
+        cursor.execute("DELETE FROM goods_goods WHERE parentsid = %s", (goods_id,))
+
+        # 插入新的商品组合关系
+        if isgroup == 0 and included_goods_ids:
+            for sub_goods_id in included_goods_ids:
+                cursor.execute("""
+                    INSERT INTO goods_goods (goodsid, parentsid)
+                    VALUES (%s, %s)
+                """, (sub_goods_id, goods_id))
 
         connection.commit()
         return jsonify({'message': '商品信息更新成功'}), 200
@@ -1789,6 +1832,137 @@ def get_active_attributes():
             attribute['values'] = cursor.fetchall()
 
         return jsonify({'attributes': attributes}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取可用于组合的商品列表（用于下拉框）
+@app.route('/api/goods/available-for-combo', methods=['GET'])
+def get_available_for_combo():
+    connection = None
+    cursor = None
+    try:
+        exclude_id = request.args.get('exclude_id', type=int)
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询启用且非组合的商品
+        sql = """
+            SELECT
+                g.id, g.name, g.brandid, g.classifyid, g.price,
+                b.name as brand_name,
+                c.name as classify_name
+            FROM goods g
+            LEFT JOIN brand b ON g.brandid = b.id
+            LEFT JOIN classify c ON g.classifyid = c.id
+            WHERE g.status = 0 AND g.isgroup = 1
+        """
+
+        params = []
+        if exclude_id:
+            sql += " AND g.id != %s"
+            params.append(exclude_id)
+
+        sql += " ORDER BY g.id DESC"
+
+        cursor.execute(sql, params)
+        goods_list = cursor.fetchall()
+
+        # 为每个商品获取属性值信息（格式化为 "属性:值,属性:值"）
+        for goods in goods_list:
+            cursor.execute("""
+                SELECT
+                    a.name as attr_name,
+                    av.name as value_name
+                FROM goods_attributevalue gav
+                JOIN attribute_value av ON gav.attributevalueid = av.id
+                JOIN attribute a ON av.attributeid = a.id
+                WHERE gav.goodsid = %s
+                ORDER BY a.classify, a.id
+            """, (goods['id'],))
+            attr_values = cursor.fetchall()
+
+            # 格式化为 "颜色:黑色,内存:256GB"
+            if attr_values:
+                attrs_dict = {}
+                for av in attr_values:
+                    attr_name = av['attr_name']
+                    if attr_name not in attrs_dict:
+                        attrs_dict[attr_name] = []
+                    attrs_dict[attr_name].append(av['value_name'])
+
+                attrs_parts = [f"{k}:{'/'.join(v)}" for k, v in attrs_dict.items()]
+                goods['attributes'] = ','.join(attrs_parts)
+            else:
+                goods['attributes'] = ''
+
+        return jsonify({'goods': goods_list}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取组合商品包含的子商品列表
+@app.route('/api/goods/<int:goods_id>/included-goods', methods=['GET'])
+def get_included_goods(goods_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询包含的商品列表
+        cursor.execute("""
+            SELECT
+                g.id, g.name, g.price,
+                b.name as brand_name,
+                c.name as classify_name
+            FROM goods_goods gg
+            JOIN goods g ON gg.goodsid = g.id
+            LEFT JOIN brand b ON g.brandid = b.id
+            LEFT JOIN classify c ON g.classifyid = c.id
+            WHERE gg.parentsid = %s
+            ORDER BY gg.goodsid
+        """, (goods_id,))
+
+        included_goods = cursor.fetchall()
+
+        # 为每个商品获取属性值信息
+        for goods in included_goods:
+            cursor.execute("""
+                SELECT
+                    a.name as attr_name,
+                    av.name as value_name
+                FROM goods_attributevalue gav
+                JOIN attribute_value av ON gav.attributevalueid = av.id
+                JOIN attribute a ON av.attributeid = a.id
+                WHERE gav.goodsid = %s
+                ORDER BY a.classify, a.id
+            """, (goods['id'],))
+            attr_values = cursor.fetchall()
+
+            if attr_values:
+                attrs_dict = {}
+                for av in attr_values:
+                    attr_name = av['attr_name']
+                    if attr_name not in attrs_dict:
+                        attrs_dict[attr_name] = []
+                    attrs_dict[attr_name].append(av['value_name'])
+
+                attrs_parts = [f"{k}:{'/'.join(v)}" for k, v in attrs_dict.items()]
+                goods['attributes'] = ','.join(attrs_parts)
+            else:
+                goods['attributes'] = ''
+
+        return jsonify({'included_goods': included_goods}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:

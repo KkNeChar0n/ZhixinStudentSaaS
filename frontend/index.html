@@ -1274,10 +1274,45 @@
                                 <option v-for="classify in activeClassifies" :key="classify.id" :value="classify.id">{{ classify.name }}</option>
                             </select>
                         </div>
+                        <div class="form-group-col">
+                            <label for="addGoodsIsGroup">组合售卖 <span class="required">*</span></label>
+                            <select id="addGoodsIsGroup" v-model.number="addGoodsData.isgroup" class="styled-select" @change="onIsGroupChange" required>
+                                <option :value="1">否（单独售卖）</option>
+                                <option :value="0">是（套餐）</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label for="addGoodsPrice">价格 <span class="required">*</span></label>
-                        <input type="number" step="0.01" id="addGoodsPrice" v-model="addGoodsData.price" placeholder="请输入价格" required>
+                        <label for="addGoodsPrice">标准售价 <span class="required">*</span></label>
+                        <input type="number" step="0.01" id="addGoodsPrice" v-model="addGoodsData.price" placeholder="请输入标准售价" required>
+                    </div>
+                    <div class="form-group" v-if="addGoodsData.isgroup == 0">
+                        <label>商品总价（仅供参考）</label>
+                        <input type="text" :value="totalGoodsPrice" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group" v-if="addGoodsData.isgroup == 0">
+                        <label>包含商品 <span class="required">*</span></label>
+                        <table class="included-goods-table" v-if="selectedIncludedGoods.length > 0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>商品名称</th>
+                                    <th>标准售价</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(goods, index) in selectedIncludedGoods" :key="goods.id">
+                                    <td>{{ goods.id }}</td>
+                                    <td>{{ goods.name }}</td>
+                                    <td>{{ goods.price }}</td>
+                                    <td>
+                                        <button type="button" class="delete-btn" @click="removeIncludedGoods(index)">删除</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <button type="button" class="add-included-btn" @click="openAddIncludedGoodsModal">+ 新增包含商品</button>
                     </div>
                     <div class="form-group">
                         <label>属性</label>
@@ -1348,10 +1383,42 @@
                                 <option v-for="classify in activeClassifies" :key="classify.id" :value="classify.id">{{ classify.name }}</option>
                             </select>
                         </div>
+                        <div class="form-group-col">
+                            <label>组合售卖</label>
+                            <input type="text" :value="editGoodsData.isgroup == 0 ? '是（套餐）' : '否（单独售卖）'" readonly class="readonly-input">
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label for="editGoodsPrice">价格 <span class="required">*</span></label>
-                        <input type="number" step="0.01" id="editGoodsPrice" v-model="editGoodsData.price" placeholder="请输入价格" required>
+                        <label for="editGoodsPrice">标准售价 <span class="required">*</span></label>
+                        <input type="number" step="0.01" id="editGoodsPrice" v-model="editGoodsData.price" placeholder="请输入标准售价" required>
+                    </div>
+                    <div class="form-group" v-if="editGoodsData.isgroup == 0">
+                        <label>商品总价（仅供参考）</label>
+                        <input type="text" :value="totalGoodsPrice" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group" v-if="editGoodsData.isgroup == 0">
+                        <label>包含商品 <span class="required">*</span></label>
+                        <table class="included-goods-table" v-if="selectedIncludedGoods.length > 0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>商品名称</th>
+                                    <th>标准售价</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(goods, index) in selectedIncludedGoods" :key="goods.id">
+                                    <td>{{ goods.id }}</td>
+                                    <td>{{ goods.name }}</td>
+                                    <td>{{ goods.price }}</td>
+                                    <td>
+                                        <button type="button" class="delete-btn" @click="removeIncludedGoods(index)">删除</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <button type="button" class="add-included-btn" @click="openAddIncludedGoodsModal">+ 新增包含商品</button>
                     </div>
                     <div class="form-group">
                         <label>属性</label>
@@ -1391,6 +1458,47 @@
                 <div class="drawer-footer">
                     <button class="cancel-btn" @click="closeEditGoodsDrawer">取消</button>
                     <button class="save-btn" @click="saveEditGoods">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增包含商品子弹窗 -->
+        <div class="modal-overlay" v-if="showAddIncludedGoodsModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>新增包含商品</h3>
+                    <button class="close-btn" @click="closeAddIncludedGoodsModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="includedGoodsName">商品名称 <span class="required">*</span></label>
+                        <select id="includedGoodsName" v-model="addIncludedGoodsData.goods_id" @change="onIncludedGoodsChange" class="styled-select" required>
+                            <option value="">请选择商品</option>
+                            <option v-for="goods in availableGoodsForSelection" :key="goods.id" :value="goods.id">
+                                {{ goods.name }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="includedGoodsBrand">品牌</label>
+                        <input type="text" id="includedGoodsBrand" v-model="addIncludedGoodsData.brand_name" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label for="includedGoodsClassify">类型</label>
+                        <input type="text" id="includedGoodsClassify" v-model="addIncludedGoodsData.classify_name" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label for="includedGoodsAttributes">属性+属性值</label>
+                        <input type="text" id="includedGoodsAttributes" v-model="addIncludedGoodsData.attributes" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label for="includedGoodsPrice">标准售价</label>
+                        <input type="text" id="includedGoodsPrice" v-model="addIncludedGoodsData.price" readonly class="readonly-input">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAddIncludedGoodsModal">取消</button>
+                    <button class="save-btn" @click="saveIncludedGoods">保存</button>
                 </div>
             </div>
         </div>

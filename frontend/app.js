@@ -196,6 +196,7 @@ createApp({
                 name: '',
                 brandid: '',
                 classifyid: '',
+                isgroup: 1,  // 0=组合售卖，1=非组合售卖，默认为非组合
                 price: '',
                 attributevalue_ids: []
             },
@@ -205,6 +206,7 @@ createApp({
                 name: '',
                 brandid: '',
                 classifyid: '',
+                isgroup: 1,
                 price: '',
                 attributevalue_ids: []
             },
@@ -218,6 +220,21 @@ createApp({
             goodsAttributeRows: [{ attributeId: '', valueId: '' }],
             // 商品规格选择数据（三列布局：规格 | 规格值 | +/-）
             goodsSpecRows: [{ attributeId: '', valueId: '' }],
+            // 可用于组合的商品列表
+            availableGoodsForCombo: [],
+            // 已选择的包含商品列表（前端展示用）
+            selectedIncludedGoods: [],
+            // 子弹窗状态
+            showAddIncludedGoodsModal: false,
+            // 子弹窗数据
+            addIncludedGoodsData: {
+                goods_id: '',
+                goods_name: '',
+                brand_name: '',
+                classify_name: '',
+                attributes: '',
+                price: ''
+            },
             // 属性值数据
             currentAttributeId: null,
             currentAttributeName: '',
@@ -320,6 +337,20 @@ createApp({
         },
         goodsTotalPages() {
             return Math.ceil(this.filteredGoods.length / this.pageSize);
+        },
+        // 计算商品总价（仅前端显示，不保存）
+        totalGoodsPrice() {
+            if (!this.selectedIncludedGoods || this.selectedIncludedGoods.length === 0) {
+                return 0;
+            }
+            return this.selectedIncludedGoods.reduce((sum, goods) => {
+                return sum + parseFloat(goods.price || 0);
+            }, 0).toFixed(2);
+        },
+        // 过滤掉已选择的商品（用于子弹窗下拉框）
+        availableGoodsForSelection() {
+            const selectedIds = this.selectedIncludedGoods.map(g => g.id);
+            return this.availableGoodsForCombo.filter(g => !selectedIds.includes(g.id));
         }
     },
     mounted() {
@@ -1953,9 +1984,11 @@ createApp({
                 name: '',
                 brandid: '',
                 classifyid: '',
+                isgroup: 1,
                 price: '',
                 attributevalue_ids: []
             };
+            this.selectedIncludedGoods = [];
             this.goodsAttributeRows = [{ attributeId: '', valueId: '' }];
             this.goodsSpecRows = [{ attributeId: '', valueId: '' }];
         },
@@ -2017,11 +2050,118 @@ createApp({
             }
         },
 
+        // 组合售卖变化处理
+        async onIsGroupChange() {
+            // 如果切换为组合售卖，加载可用商品列表
+            if (this.addGoodsData.isgroup == 0 || this.editGoodsData.isgroup == 0) {
+                try {
+                    const excludeId = this.editGoodsData.id || null;
+                    const response = await axios.get('/api/goods/available-for-combo', {
+                        params: excludeId ? { exclude_id: excludeId } : {},
+                        withCredentials: true
+                    });
+                    this.availableGoodsForCombo = response.data.goods;
+                } catch (err) {
+                    console.error('获取可用商品列表失败:', err);
+                    alert('获取可用商品列表失败');
+                }
+            } else {
+                // 切换为非组合时，清空包含商品列表
+                this.selectedIncludedGoods = [];
+            }
+        },
+
+        // 打开新增包含商品子弹窗
+        openAddIncludedGoodsModal() {
+            this.addIncludedGoodsData = {
+                goods_id: '',
+                goods_name: '',
+                brand_name: '',
+                classify_name: '',
+                attributes: '',
+                price: ''
+            };
+            this.showAddIncludedGoodsModal = true;
+        },
+
+        // 包含商品选择变化
+        onIncludedGoodsChange() {
+            const selectedGoods = this.availableGoodsForCombo.find(
+                g => g.id === parseInt(this.addIncludedGoodsData.goods_id)
+            );
+
+            if (selectedGoods) {
+                this.addIncludedGoodsData.goods_name = selectedGoods.name;
+                this.addIncludedGoodsData.brand_name = selectedGoods.brand_name;
+                this.addIncludedGoodsData.classify_name = selectedGoods.classify_name;
+                this.addIncludedGoodsData.attributes = selectedGoods.attributes;
+                this.addIncludedGoodsData.price = selectedGoods.price;
+            }
+        },
+
+        // 保存包含商品
+        saveIncludedGoods() {
+            if (!this.addIncludedGoodsData.goods_id) {
+                alert('请选择商品');
+                return;
+            }
+
+            // 检查是否已添加
+            const exists = this.selectedIncludedGoods.find(
+                g => g.id === parseInt(this.addIncludedGoodsData.goods_id)
+            );
+            if (exists) {
+                alert('该商品已添加，请勿重复添加');
+                return;
+            }
+
+            // 添加到列表
+            const selectedGoods = this.availableGoodsForCombo.find(
+                g => g.id === parseInt(this.addIncludedGoodsData.goods_id)
+            );
+            if (selectedGoods) {
+                this.selectedIncludedGoods.push({
+                    id: selectedGoods.id,
+                    name: selectedGoods.name,
+                    brand_name: selectedGoods.brand_name,
+                    classify_name: selectedGoods.classify_name,
+                    attributes: selectedGoods.attributes,
+                    price: selectedGoods.price
+                });
+            }
+
+            this.closeAddIncludedGoodsModal();
+        },
+
+        // 关闭包含商品子弹窗
+        closeAddIncludedGoodsModal() {
+            this.showAddIncludedGoodsModal = false;
+            this.addIncludedGoodsData = {
+                goods_id: '',
+                goods_name: '',
+                brand_name: '',
+                classify_name: '',
+                attributes: '',
+                price: ''
+            };
+        },
+
+        // 删除包含商品
+        removeIncludedGoods(index) {
+            this.selectedIncludedGoods.splice(index, 1);
+        },
+
         // 保存新增商品
         async saveAddGoods() {
             if (!this.addGoodsData.name || !this.addGoodsData.brandid ||
                 !this.addGoodsData.classifyid || !this.addGoodsData.price) {
                 alert('请填写所有必填字段');
+                return;
+            }
+
+            // 组合商品验证
+            if (this.addGoodsData.isgroup == 0 && this.selectedIncludedGoods.length === 0) {
+                alert('组合商品必须至少包含一个子商品');
                 return;
             }
 
@@ -2037,17 +2177,23 @@ createApp({
             // 合并属性值和规格值
             const attributevalue_ids = [...attributeValueIds, ...specValueIds];
 
+            // 提取包含商品ID
+            const included_goods_ids = this.selectedIncludedGoods.map(g => g.id);
+
             console.log('goodsAttributeRows:', this.goodsAttributeRows);
             console.log('goodsSpecRows:', this.goodsSpecRows);
             console.log('提取的属性值IDs:', attributevalue_ids);
+            console.log('包含商品IDs:', included_goods_ids);
 
             try {
                 const response = await axios.post('/api/goods', {
                     name: this.addGoodsData.name,
                     brandid: parseInt(this.addGoodsData.brandid),
                     classifyid: parseInt(this.addGoodsData.classifyid),
+                    isgroup: parseInt(this.addGoodsData.isgroup),
                     price: parseFloat(this.addGoodsData.price),
-                    attributevalue_ids: attributevalue_ids
+                    attributevalue_ids: attributevalue_ids,
+                    included_goods_ids: included_goods_ids
                 }, { withCredentials: true });
 
                 if (response.data.message === '商品添加成功') {
@@ -2099,6 +2245,7 @@ createApp({
                     name: goods.name,
                     brandid: goods.brandid,
                     classifyid: goods.classifyid,
+                    isgroup: goods.isgroup,
                     price: goods.price,
                     attributevalue_ids: goods.attributevalue_ids || []
                 };
@@ -2134,6 +2281,32 @@ createApp({
                 if (this.goodsSpecRows.length === 0) {
                     this.goodsSpecRows = [{ attributeId: '', valueId: '' }];
                 }
+
+                // 如果是组合商品，加载包含商品数据
+                if (goods.isgroup == 0) {
+                    // 加载可用商品列表（用于子弹窗）
+                    try {
+                        const availableResponse = await axios.get('/api/goods/available-for-combo', {
+                            params: { exclude_id: goodsId },
+                            withCredentials: true
+                        });
+                        this.availableGoodsForCombo = availableResponse.data.goods;
+                    } catch (err) {
+                        console.error('获取可用商品列表失败:', err);
+                    }
+
+                    // 加载已包含的商品列表
+                    try {
+                        const includedResponse = await axios.get(`/api/goods/${goodsId}/included-goods`, {
+                            withCredentials: true
+                        });
+                        this.selectedIncludedGoods = includedResponse.data.included_goods;
+                    } catch (err) {
+                        console.error('获取包含商品列表失败:', err);
+                    }
+                } else {
+                    this.selectedIncludedGoods = [];
+                }
             } catch (err) {
                 console.error('获取商品详情失败:', err);
                 alert('获取商品详情失败');
@@ -2151,9 +2324,11 @@ createApp({
                 name: '',
                 brandid: '',
                 classifyid: '',
+                isgroup: 1,
                 price: '',
                 attributevalue_ids: []
             };
+            this.selectedIncludedGoods = [];
             this.goodsAttributeRows = [{ attributeId: '', valueId: '' }];
             this.goodsSpecRows = [{ attributeId: '', valueId: '' }];
         },
@@ -2163,6 +2338,12 @@ createApp({
             if (!this.editGoodsData.name || !this.editGoodsData.brandid ||
                 !this.editGoodsData.classifyid || !this.editGoodsData.price) {
                 alert('请填写所有必填字段');
+                return;
+            }
+
+            // 组合商品验证
+            if (this.editGoodsData.isgroup == 0 && this.selectedIncludedGoods.length === 0) {
+                alert('组合商品必须至少包含一个子商品');
                 return;
             }
 
@@ -2178,13 +2359,17 @@ createApp({
             // 合并属性值和规格值
             const attributevalue_ids = [...attributeValueIds, ...specValueIds];
 
+            // 提取包含商品ID
+            const included_goods_ids = this.selectedIncludedGoods.map(g => g.id);
+
             try {
                 const response = await axios.put(`/api/goods/${this.editGoodsData.id}`, {
                     name: this.editGoodsData.name,
                     brandid: parseInt(this.editGoodsData.brandid),
                     classifyid: parseInt(this.editGoodsData.classifyid),
                     price: parseFloat(this.editGoodsData.price),
-                    attributevalue_ids: attributevalue_ids
+                    attributevalue_ids: attributevalue_ids,
+                    included_goods_ids: included_goods_ids
                 }, { withCredentials: true });
 
                 if (response.data.message === '商品信息更新成功') {

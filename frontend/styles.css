@@ -1008,3 +1008,59 @@ h1 {
     margin-right: 6px;
     cursor: pointer;
 }
+
+/* 组合商品相关样式 */
+
+/* 三列表单布局 */
+.form-group-row .form-group-col:nth-child(3) {
+    flex: 1;
+}
+
+/* 只读输入框 */
+.readonly-input {
+    background-color: #f5f5f5;
+    cursor: not-allowed;
+    color: #666;
+}
+
+/* 包含商品表格 */
+.included-goods-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+}
+
+.included-goods-table th,
+.included-goods-table td {
+    padding: 10px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.included-goods-table th {
+    background-color: #f5f5f5;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.included-goods-table td {
+    font-size: 14px;
+}
+
+/* 新增包含商品按钮 */
+.add-included-btn {
+    width: 100%;
+    padding: 10px;
+    border: 2px dashed #4CAF50;
+    background-color: white;
+    color: #4CAF50;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+.add-included-btn:hover {
+    background-color: #f0f8f0;
+    border-color: #45a049;
+}
