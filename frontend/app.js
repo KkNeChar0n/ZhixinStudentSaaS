@@ -270,7 +270,11 @@ createApp({
             // 新增订单数据
             addOrderData: {
                 student_id: '',
-                student_name: ''
+                student_name: '',
+                expected_payment_time: '',      // 新增：预计付款时间
+                participating_activities: '',   // 新增：参加活动显示文本
+                activity_ids: [],               // 新增：活动ID数组
+                discount_amount: 0              // 新增：优惠金额
             },
             // 选择的订单商品列表
             selectedOrderGoods: [],
@@ -291,7 +295,11 @@ createApp({
             editOrderData: {
                 id: '',
                 student_id: '',
-                student_name: ''
+                student_name: '',
+                expected_payment_time: '',      // 新增：预计付款时间
+                participating_activities: '',   // 新增：参加活动显示文本
+                activity_ids: [],               // 新增：活动ID数组
+                discount_amount: 0              // 新增：优惠金额
             },
             // 编辑订单选择的商品列表
             editSelectedOrderGoods: [],
@@ -306,6 +314,10 @@ createApp({
                 total_price: 0,
                 isgroup: 1
             },
+            // 新增：订单活动相关数据
+            orderActivities: [],          // 可用活动列表
+            childDiscounts: {},           // 子订单优惠分摊 {goods_id: amount}
+            editChildDiscounts: {},       // 编辑订单的子订单优惠分摊
             // 新增属性数据
             addAttributeData: {
                 name: '',
@@ -465,14 +477,19 @@ createApp({
                 return sum + parseFloat(goods.total_price || 0);
             }, 0);
         },
-        // 订单实收金额（所有商品的标准售价之和）
+        // 订单优惠金额
+        orderDiscountAmount() {
+            return parseFloat(this.addOrderData.discount_amount || 0);
+        },
+        // 订单实收金额（所有商品的标准售价之和 - 优惠金额）
         orderTotalReceived() {
             if (!this.selectedOrderGoods || this.selectedOrderGoods.length === 0) {
                 return 0;
             }
-            return this.selectedOrderGoods.reduce((sum, goods) => {
+            const subtotal = this.selectedOrderGoods.reduce((sum, goods) => {
                 return sum + parseFloat(goods.price || 0);
             }, 0);
+            return subtotal - this.orderDiscountAmount;
         },
         // 过滤掉已选择的商品（用于订单选择商品子弹窗）
         availableGoodsForOrderSelection() {
@@ -488,14 +505,19 @@ createApp({
                 return sum + parseFloat(goods.total_price || 0);
             }, 0);
         },
-        // 编辑订单实收金额
+        // 编辑订单优惠金额
+        editOrderDiscountAmount() {
+            return parseFloat(this.editOrderData.discount_amount || 0);
+        },
+        // 编辑订单实收金额（所有商品的标准售价之和 - 优惠金额）
         editOrderTotalReceived() {
             if (!this.editSelectedOrderGoods || this.editSelectedOrderGoods.length === 0) {
                 return 0;
             }
-            return this.editSelectedOrderGoods.reduce((sum, goods) => {
+            const subtotal = this.editSelectedOrderGoods.reduce((sum, goods) => {
                 return sum + parseFloat(goods.price || 0);
             }, 0);
+            return subtotal - this.editOrderDiscountAmount;
         },
         // 过滤掉已选择的商品（用于编辑订单选择商品子弹窗）
         availableGoodsForEditOrderSelection() {
@@ -1315,9 +1337,176 @@ createApp({
             this.showAddOrderDrawer = false;
             this.addOrderData = {
                 student_id: '',
-                student_name: ''
+                student_name: '',
+                expected_payment_time: '',
+                participating_activities: '',
+                activity_ids: [],
+                discount_amount: 0
             };
             this.selectedOrderGoods = [];
+            this.childDiscounts = {};
+        },
+
+        // 预计付款时间变更处理（新增订单）
+        async onExpectedPaymentTimeChange() {
+            const paymentTime = this.addOrderData.expected_payment_time;
+
+            if (!paymentTime) {
+                // 清空活动和优惠
+                this.addOrderData.participating_activities = '';
+                this.addOrderData.activity_ids = [];
+                this.addOrderData.discount_amount = 0;
+                this.orderActivities = [];
+                this.childDiscounts = {};
+                return;
+            }
+
+            try {
+                // 查询该时间范围内的启用活动
+                const response = await axios.get('/api/activities/by-date-range', {
+                    params: { payment_time: paymentTime },
+                    withCredentials: true
+                });
+
+                const { has_duplicate, duplicate_type, type_name, activities } = response.data;
+
+                // 检测活动重复
+                if (has_duplicate) {
+                    alert(`活动信息重复，请联系运营修改！（重复类型：${type_name}）`);
+                    this.addOrderData.expected_payment_time = '';
+                    this.addOrderData.participating_activities = '';
+                    this.addOrderData.activity_ids = [];
+                    this.orderActivities = [];
+                    return;
+                }
+
+                // 设置活动信息
+                this.orderActivities = activities;
+                this.addOrderData.activity_ids = activities.map(a => a.id);
+                this.addOrderData.participating_activities = activities.map(a => a.name).join('，');
+
+                // 如果已经选择了商品，自动计算优惠
+                if (this.selectedOrderGoods.length > 0) {
+                    await this.calculateOrderDiscount();
+                }
+
+            } catch (err) {
+                console.error('获取活动失败:', err);
+                alert(err.response?.data?.error || '获取活动失败');
+            }
+        },
+
+        // 计算订单优惠金额
+        async calculateOrderDiscount() {
+            if (!this.addOrderData.activity_ids || this.addOrderData.activity_ids.length === 0) {
+                this.addOrderData.discount_amount = 0;
+                this.childDiscounts = {};
+                return;
+            }
+
+            if (this.selectedOrderGoods.length === 0) {
+                this.addOrderData.discount_amount = 0;
+                this.childDiscounts = {};
+                return;
+            }
+
+            try {
+                const goods_list = this.selectedOrderGoods.map(g => ({
+                    goods_id: g.goods_id,
+                    price: g.price,
+                    total_price: g.total_price
+                }));
+
+                const response = await axios.post('/api/orders/calculate-discount', {
+                    goods_list: goods_list,
+                    activity_ids: this.addOrderData.activity_ids
+                }, { withCredentials: true });
+
+                this.addOrderData.discount_amount = response.data.total_discount;
+                this.childDiscounts = response.data.child_discounts;
+
+            } catch (err) {
+                console.error('计算优惠失败:', err);
+                this.addOrderData.discount_amount = 0;
+                this.childDiscounts = {};
+            }
+        },
+
+        // 编辑订单预计付款时间变化处理
+        async onEditExpectedPaymentTimeChange() {
+            const paymentTime = this.editOrderData.expected_payment_time;
+
+            // 清空商品列表和活动信息
+            this.editSelectedOrderGoods = [];
+            this.editOrderData.participating_activities = '';
+            this.editOrderData.activity_ids = [];
+            this.editOrderData.discount_amount = 0;
+            this.editChildDiscounts = {};
+
+            if (!paymentTime) {
+                return;
+            }
+
+            try {
+                // 查询该时间范围内的启用活动
+                const response = await axios.get('/api/activities/by-date-range', {
+                    params: { payment_time: paymentTime },
+                    withCredentials: true
+                });
+
+                const { has_duplicate, type_name, activities } = response.data;
+
+                // 检测活动重复
+                if (has_duplicate) {
+                    alert(`活动信息重复，请联系运营修改！（重复类型：${type_name}）`);
+                    this.editOrderData.expected_payment_time = '';
+                    return;
+                }
+
+                // 设置活动信息
+                this.editOrderData.activity_ids = activities.map(a => a.id);
+                this.editOrderData.participating_activities = activities.map(a => a.name).join('，');
+
+            } catch (err) {
+                console.error('获取活动失败:', err);
+                alert(err.response?.data?.error || '获取活动失败');
+            }
+        },
+
+        // 计算编辑订单优惠金额
+        async calculateEditOrderDiscount() {
+            if (!this.editOrderData.activity_ids || this.editOrderData.activity_ids.length === 0) {
+                this.editOrderData.discount_amount = 0;
+                this.editChildDiscounts = {};
+                return;
+            }
+
+            if (this.editSelectedOrderGoods.length === 0) {
+                this.editOrderData.discount_amount = 0;
+                this.editChildDiscounts = {};
+                return;
+            }
+
+            try {
+                const goods_list = this.editSelectedOrderGoods.map(g => ({
+                    goods_id: g.goods_id,
+                    price: g.price,
+                    total_price: g.total_price
+                }));
+
+                const response = await axios.post('/api/orders/calculate-discount', {
+                    goods_list: goods_list,
+                    activity_ids: this.editOrderData.activity_ids
+                }, { withCredentials: true });
+
+                this.editOrderData.discount_amount = response.data.total_discount;
+                this.editChildDiscounts = response.data.child_discounts;
+
+            } catch (err) {
+                console.error('计算优惠失败:', err);
+                this.editOrderData.discount_amount = 0;
+                this.editChildDiscounts = {};
+            }
         },
 
         // 学生选择变化时（用于新增订单）
@@ -1383,7 +1572,7 @@ createApp({
         },
 
         // 保存选择的商品到订单列表
-        saveOrderGoods() {
+        async saveOrderGoods() {
             if (!this.addOrderGoodsData.goods_id) {
                 alert('请选择商品');
                 return;
@@ -1400,11 +1589,15 @@ createApp({
                 isgroup: this.addOrderGoodsData.isgroup
             });
             this.closeAddOrderGoodsModal();
+            // 自动重新计算优惠
+            await this.calculateOrderDiscount();
         },
 
         // 从订单列表中删除商品
-        removeOrderGoods(index) {
+        async removeOrderGoods(index) {
             this.selectedOrderGoods.splice(index, 1);
+            // 自动重新计算优惠
+            await this.calculateOrderDiscount();
         },
 
         // 保存新增订单
@@ -1428,6 +1621,10 @@ createApp({
 
                 const response = await axios.post('/api/orders', {
                     student_id: this.addOrderData.student_id,
+                    expected_payment_time: this.addOrderData.expected_payment_time,   // 新增
+                    activity_ids: this.addOrderData.activity_ids,                     // 新增
+                    discount_amount: this.addOrderData.discount_amount,               // 新增
+                    child_discounts: this.childDiscounts,                             // 新增
                     goods_list: goods_list
                 }, { withCredentials: true });
 
@@ -1471,11 +1668,46 @@ createApp({
                 this.editSelectedOrderGoods = [];
             }
 
+            // 格式化预计付款时间为datetime-local格式
+            const formatDateForInput = (dateStr) => {
+                if (!dateStr) return '';
+                const date = new Date(dateStr);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                return `${year}-${month}-${day}T${hours}:${minutes}`;
+            };
+
             this.editOrderData = {
                 id: order.id,
                 student_id: order.uid,
-                student_name: order.student_name
+                student_name: order.student_name,
+                expected_payment_time: formatDateForInput(order.expected_payment_time),
+                participating_activities: '',
+                activity_ids: [],
+                discount_amount: parseFloat(order.discount_amount) || 0
             };
+
+            // 如果有预计付款时间，加载活动信息（仅显示，不重新计算优惠）
+            if (this.editOrderData.expected_payment_time) {
+                try {
+                    const response = await axios.get('/api/activities/by-date-range', {
+                        params: { payment_time: this.editOrderData.expected_payment_time },
+                        withCredentials: true
+                    });
+                    const { activities } = response.data;
+                    this.editOrderData.activity_ids = activities.map(a => a.id);
+                    this.editOrderData.participating_activities = activities.map(a => a.name).join('，');
+                } catch (err) {
+                    console.error('获取活动失败:', err);
+                }
+            }
+
+            // 注意：打开编辑时不重新计算优惠，保持存储的值
+            // 优惠只在用户修改预计付款时间或添加/删除商品时才重新计算
+
             this.showEditOrderDrawer = true;
         },
 
@@ -1485,9 +1717,14 @@ createApp({
             this.editOrderData = {
                 id: '',
                 student_id: '',
-                student_name: ''
+                student_name: '',
+                expected_payment_time: '',
+                participating_activities: '',
+                activity_ids: [],
+                discount_amount: 0
             };
             this.editSelectedOrderGoods = [];
+            this.editChildDiscounts = {};
         },
 
         // 打开编辑订单商品子弹窗
@@ -1543,7 +1780,7 @@ createApp({
         },
 
         // 保存选择的商品到编辑订单列表
-        saveEditOrderGoods() {
+        async saveEditOrderGoods() {
             if (!this.editOrderGoodsData.goods_id) {
                 alert('请选择商品');
                 return;
@@ -1559,11 +1796,13 @@ createApp({
                 isgroup: this.editOrderGoodsData.isgroup
             });
             this.closeEditOrderGoodsModal();
+            await this.calculateEditOrderDiscount();
         },
 
         // 从编辑订单列表中删除商品
-        removeEditOrderGoods(index) {
+        async removeEditOrderGoods(index) {
             this.editSelectedOrderGoods.splice(index, 1);
+            await this.calculateEditOrderDiscount();
         },
 
         // 保存编辑订单
@@ -1581,7 +1820,11 @@ createApp({
                 }));
 
                 const response = await axios.put(`/api/orders/${this.editOrderData.id}`, {
-                    goods_list: goods_list
+                    goods_list: goods_list,
+                    expected_payment_time: this.editOrderData.expected_payment_time,
+                    activity_ids: this.editOrderData.activity_ids,
+                    discount_amount: this.editOrderData.discount_amount,
+                    child_discounts: this.editChildDiscounts
                 }, { withCredentials: true });
 
                 if (response.data.message === '订单更新成功') {
@@ -3576,11 +3819,17 @@ createApp({
                 const response = await axios.get(`/api/activities/${activity.id}`, { withCredentials: true });
                 const data = response.data.activity;
 
-                // 格式化日期时间为input[type=datetime-local]格式
+                // 格式化日期时间为input[type=datetime-local]格式（使用本地时间）
                 const formatDateForInput = (dateStr) => {
                     if (!dateStr) return '';
                     const date = new Date(dateStr);
-                    return date.toISOString().slice(0, 16);
+                    // 使用本地时间格式化，避免UTC时区转换问题
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    return `${year}-${month}-${day}T${hours}:${minutes}`;
                 };
 
                 this.editActivityData = {

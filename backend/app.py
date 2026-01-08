@@ -673,13 +673,15 @@ def get_orders():
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 查询订单列表，关联学生信息
+        # 查询订单列表，关联学生信息（包含预计付款时间和优惠金额）
         cursor.execute("""
             SELECT
                 o.id,
                 o.student_id AS uid,
                 s.name AS student_name,
+                o.expected_payment_time,
                 o.amount_receivable,
+                o.discount_amount,
                 o.amount_received,
                 o.create_time,
                 o.status
@@ -711,6 +713,10 @@ def create_order():
         data = request.get_json()
         student_id = data.get('student_id')
         goods_list = data.get('goods_list', [])  # 商品列表 [{goods_id, total_price, price}]
+        expected_payment_time = data.get('expected_payment_time')  # 新增：预计付款时间
+        activity_ids = data.get('activity_ids', [])  # 新增：活动ID列表
+        discount_amount = float(data.get('discount_amount', 0))  # 新增：优惠金额
+        child_discounts = data.get('child_discounts', {})  # 新增：子订单优惠分摊
 
         if not student_id:
             return jsonify({'error': '学生ID不能为空'}), 400
@@ -721,28 +727,41 @@ def create_order():
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 计算应收金额（所有商品的商品总价之和）和实收金额（所有商品的标准售价之和）
+        # 计算应收金额（所有商品的商品总价之和）
         total_receivable = sum(float(g.get('total_price', 0)) for g in goods_list)
-        total_received = sum(float(g.get('price', 0)) for g in goods_list)
+        # 计算实收金额（所有商品的标准售价之和 - 优惠金额）
+        total_received = sum(float(g.get('price', 0)) for g in goods_list) - discount_amount
 
-        # 插入订单数据，状态默认为10（草稿）
+        # 插入订单数据，状态默认为10（草稿），包含预计付款时间和优惠金额
         cursor.execute("""
-            INSERT INTO `orders` (student_id, amount_receivable, amount_received, status)
-            VALUES (%s, %s, %s, 10)
-        """, (student_id, total_receivable, total_received))
+            INSERT INTO `orders` (student_id, expected_payment_time, amount_receivable, amount_received, discount_amount, status)
+            VALUES (%s, %s, %s, %s, %s, 10)
+        """, (student_id, expected_payment_time, total_receivable, total_received, discount_amount))
 
         order_id = cursor.lastrowid
 
-        # 创建子产品订单
+        # 创建子产品订单（包含优惠金额）
         for goods in goods_list:
             goods_id = goods.get('goods_id')
             goods_total_price = float(goods.get('total_price', 0))
             goods_price = float(goods.get('price', 0))
 
+            # 获取该商品的优惠金额
+            child_discount = float(child_discounts.get(str(goods_id), 0))
+            # 计算子订单实收金额
+            child_received = goods_price - child_discount
+
             cursor.execute("""
-                INSERT INTO childorders (parentsid, goodsid, amount_receivable, amount_received, status)
-                VALUES (%s, %s, %s, %s, 10)
-            """, (order_id, goods_id, goods_total_price, goods_price))
+                INSERT INTO childorders (parentsid, goodsid, amount_receivable, amount_received, discount_amount, status)
+                VALUES (%s, %s, %s, %s, %s, 10)
+            """, (order_id, goods_id, goods_total_price, child_received, child_discount))
+
+        # 批量插入订单活动关联
+        for activity_id in activity_ids:
+            cursor.execute("""
+                INSERT INTO orders_activity (orders_id, activity_id)
+                VALUES (%s, %s)
+            """, (order_id, activity_id))
 
         connection.commit()
 
@@ -767,7 +786,7 @@ def get_order_goods(order_id):
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 查询订单的子商品列表
+        # 查询订单的子商品列表（包含优惠金额）
         cursor.execute("""
             SELECT
                 c.id,
@@ -777,6 +796,7 @@ def get_order_goods(order_id):
                 b.name AS brand_name,
                 cl.name AS classify_name,
                 c.amount_receivable,
+                c.discount_amount,
                 c.amount_received
             FROM childorders c
             JOIN goods g ON c.goodsid = g.id
@@ -821,6 +841,10 @@ def update_order(order_id):
     try:
         data = request.get_json()
         goods_list = data.get('goods_list', [])
+        expected_payment_time = data.get('expected_payment_time')  # 新增：预计付款时间
+        activity_ids = data.get('activity_ids', [])  # 新增：活动ID列表
+        discount_amount = float(data.get('discount_amount', 0))  # 新增：优惠金额
+        child_discounts = data.get('child_discounts', {})  # 新增：子订单优惠分摊
 
         if not goods_list or len(goods_list) == 0:
             return jsonify({'error': '必须至少选择一个商品'}), 400
@@ -840,28 +864,43 @@ def update_order(order_id):
 
         # 计算新的应收金额和实收金额
         total_receivable = sum(float(g.get('total_price', 0)) for g in goods_list)
-        total_received = sum(float(g.get('price', 0)) for g in goods_list)
+        total_received = sum(float(g.get('price', 0)) for g in goods_list) - discount_amount
 
-        # 更新订单金额
+        # 更新订单金额、预计付款时间和优惠金额
         cursor.execute("""
             UPDATE `orders`
-            SET amount_receivable = %s, amount_received = %s
+            SET amount_receivable = %s, amount_received = %s, discount_amount = %s, expected_payment_time = %s
             WHERE id = %s
-        """, (total_receivable, total_received, order_id))
+        """, (total_receivable, total_received, discount_amount, expected_payment_time, order_id))
 
         # 删除原有的子订单
         cursor.execute("DELETE FROM childorders WHERE parentsid = %s", (order_id,))
 
-        # 创建新的子订单
+        # 删除原有的订单活动关联
+        cursor.execute("DELETE FROM orders_activity WHERE orders_id = %s", (order_id,))
+
+        # 创建新的子订单（包含优惠金额）
         for goods in goods_list:
             goods_id = goods.get('goods_id')
             goods_total_price = float(goods.get('total_price', 0))
             goods_price = float(goods.get('price', 0))
 
+            # 获取该商品的优惠金额
+            child_discount = float(child_discounts.get(str(goods_id), 0))
+            # 计算子订单实收金额
+            child_received = goods_price - child_discount
+
             cursor.execute("""
-                INSERT INTO childorders (parentsid, goodsid, amount_receivable, amount_received, status)
-                VALUES (%s, %s, %s, %s, 10)
-            """, (order_id, goods_id, goods_total_price, goods_price))
+                INSERT INTO childorders (parentsid, goodsid, amount_receivable, amount_received, discount_amount, status)
+                VALUES (%s, %s, %s, %s, %s, 10)
+            """, (order_id, goods_id, goods_total_price, child_received, child_discount))
+
+        # 批量插入新的订单活动关联
+        for activity_id in activity_ids:
+            cursor.execute("""
+                INSERT INTO orders_activity (orders_id, activity_id)
+                VALUES (%s, %s)
+            """, (order_id, activity_id))
 
         connection.commit()
 
@@ -933,7 +972,7 @@ def get_childorders():
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 查询子产品订单列表，关联商品信息
+        # 查询子产品订单列表，关联商品信息（包含优惠金额）
         cursor.execute("""
             SELECT
                 c.id,
@@ -941,6 +980,7 @@ def get_childorders():
                 c.goodsid,
                 g.name AS goods_name,
                 c.amount_receivable,
+                c.discount_amount,
                 c.amount_received,
                 c.status,
                 c.create_time
@@ -2730,6 +2770,241 @@ def get_active_activity_templates():
         templates = cursor.fetchall()
 
         return jsonify({'templates': templates}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：根据预计付款时间查询启用的活动
+@app.route('/api/activities/by-date-range', methods=['GET'])
+def get_activities_by_date_range():
+    """根据预计付款时间查询该时间范围内status=0（启用）的活动"""
+    connection = None
+    cursor = None
+    try:
+        payment_time = request.args.get('payment_time')
+
+        if not payment_time:
+            return jsonify({'error': '预计付款时间不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询在预计付款时间范围内且启用的活动
+        cursor.execute("""
+            SELECT
+                a.id,
+                a.name,
+                a.template_id,
+                a.start_time,
+                a.end_time,
+                a.status,
+                t.name AS template_name,
+                t.type AS template_type,
+                t.select_type AS template_select_type
+            FROM activity a
+            JOIN activity_template t ON a.template_id = t.id
+            WHERE a.start_time <= %s
+              AND a.end_time >= %s
+              AND a.status = 0
+            ORDER BY a.id ASC
+        """, (payment_time, payment_time))
+
+        activities = cursor.fetchall()
+
+        # 检测同类型活动重复
+        type_count = {}
+        duplicate_type = None
+        has_duplicate = False
+
+        for activity in activities:
+            activity_type = activity['template_type']
+            if activity_type in type_count:
+                has_duplicate = True
+                duplicate_type = activity_type
+                break
+            type_count[activity_type] = 1
+
+        # 如果有重复，返回错误信息
+        if has_duplicate:
+            type_names = {1: '满减', 2: '满折', 3: '满赠', 4: '换购'}
+            return jsonify({
+                'has_duplicate': True,
+                'duplicate_type': duplicate_type,
+                'type_name': type_names.get(duplicate_type, '未知'),
+                'activities': []
+            }), 200
+
+        # 为每个活动查询满折规则（仅type=2的活动）
+        for activity in activities:
+            if activity['template_type'] == 2:  # 满折类型
+                cursor.execute("""
+                    SELECT threshold_amount, discount_value
+                    FROM activity_detail
+                    WHERE activity_id = %s
+                    ORDER BY threshold_amount ASC
+                """, (activity['id'],))
+                activity['details'] = cursor.fetchall()
+            else:
+                activity['details'] = []
+
+        return jsonify({
+            'has_duplicate': False,
+            'duplicate_type': None,
+            'activities': activities
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：计算订单优惠金额
+@app.route('/api/orders/calculate-discount', methods=['POST'])
+def calculate_order_discount():
+    """计算订单优惠金额（满折）"""
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        goods_list = data.get('goods_list', [])  # [{goods_id, price, total_price}]
+        activity_ids = data.get('activity_ids', [])
+
+        if not goods_list:
+            return jsonify({'total_discount': 0, 'child_discounts': {}}), 200
+
+        if not activity_ids:
+            return jsonify({'total_discount': 0, 'child_discounts': {}}), 200
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        total_discount = 0
+        all_child_discounts = {}
+
+        # 初始化每个商品的优惠为0
+        for goods in goods_list:
+            all_child_discounts[str(goods['goods_id'])] = 0
+
+        # 遍历每个活动计算优惠
+        for activity_id in activity_ids:
+            # 查询活动信息
+            cursor.execute("""
+                SELECT a.id, a.template_id, t.type, t.select_type
+                FROM activity a
+                JOIN activity_template t ON a.template_id = t.id
+                WHERE a.id = %s
+            """, (activity_id,))
+
+            activity = cursor.fetchone()
+            if not activity:
+                continue
+
+            # 仅处理满折类型（type=2）
+            if activity['type'] != 2:
+                continue
+
+            # 查询活动满折规则
+            cursor.execute("""
+                SELECT threshold_amount, discount_value
+                FROM activity_detail
+                WHERE activity_id = %s
+                ORDER BY threshold_amount DESC
+            """, (activity_id,))
+
+            details = cursor.fetchall()
+            if not details:
+                continue
+
+            # 查询活动模板关联的商品/类型
+            cursor.execute("""
+                SELECT goods_id, classify_id
+                FROM activity_template_goods
+                WHERE template_id = %s
+            """, (activity['template_id'],))
+
+            template_goods = cursor.fetchall()
+            if not template_goods:
+                continue
+
+            # 筛选参与活动的商品
+            eligible_goods = []
+            for goods in goods_list:
+                is_eligible = False
+
+                if activity['select_type'] == 2:  # 按商品
+                    # 检查商品ID是否在模板关联的商品中
+                    for tg in template_goods:
+                        if tg['goods_id'] == goods['goods_id']:
+                            is_eligible = True
+                            break
+                else:  # 按类型
+                    # 查询商品的classifyid
+                    cursor.execute("SELECT classifyid FROM goods WHERE id = %s", (goods['goods_id'],))
+                    goods_info = cursor.fetchone()
+                    if goods_info:
+                        for tg in template_goods:
+                            if tg['classify_id'] == goods_info['classifyid']:
+                                is_eligible = True
+                                break
+
+                if is_eligible:
+                    eligible_goods.append(goods)
+
+            if not eligible_goods:
+                continue
+
+            # 计算参与商品数量
+            eligible_count = len(eligible_goods)
+
+            # 匹配最大满足的折扣档位
+            matched_discount = None
+            for detail in details:
+                if eligible_count >= float(detail['threshold_amount']):
+                    matched_discount = float(detail['discount_value'])
+                    break
+
+            if not matched_discount:
+                continue
+
+            # 计算总优惠：(1 - 折扣/10) × 参与商品标准售价之和
+            # discount_value=9表示9折(付90%)，discount_value=8表示8折(付80%)
+            eligible_price_sum = sum(float(g['price']) for g in eligible_goods)
+            discount_rate = 1 - matched_discount / 10  # 8折 -> 1 - 0.8 = 0.2 (优惠20%)
+            activity_discount = round(discount_rate * eligible_price_sum, 2)
+
+            total_discount += activity_discount
+
+            # 按比例分摊优惠到各商品
+            if activity_discount > 0 and eligible_price_sum > 0:
+                allocated = 0
+                for i, goods in enumerate(eligible_goods):
+                    if i == len(eligible_goods) - 1:
+                        # 最后一个商品用减法避免精度误差
+                        child_discount = activity_discount - allocated
+                    else:
+                        ratio = float(goods['price']) / eligible_price_sum
+                        child_discount = round(activity_discount * ratio, 2)
+                        allocated += child_discount
+
+                    goods_id_str = str(goods['goods_id'])
+                    all_child_discounts[goods_id_str] += child_discount
+
+        # 四舍五入所有子订单优惠
+        for goods_id in all_child_discounts:
+            all_child_discounts[goods_id] = round(all_child_discounts[goods_id], 2)
+
+        return jsonify({
+            'total_discount': round(total_discount, 2),
+            'child_discounts': all_child_discounts
+        }), 200
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:

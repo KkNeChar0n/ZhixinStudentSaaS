@@ -291,6 +291,7 @@
                                     <th>下单时间</th>
                                     <th>姓名</th>
                                     <th>应收金额</th>
+                                    <th>优惠金额</th>
                                     <th>实收金额</th>
                                     <th>审核状态</th>
                                     <th>操作</th>
@@ -303,7 +304,8 @@
                                     <td>{{ order.create_time }}</td>
                                     <td>{{ order.student_name }}</td>
                                     <td>{{ order.amount_receivable }}</td>
-                                    <td>{{ order.amount_received }}</td>
+                                    <td style="color: #e74c3c;">{{ order.discount_amount || '0.00' }}</td>
+                                    <td style="font-weight: bold;">{{ order.amount_received }}</td>
                                     <td>{{ getOrderStatusText(order.status) }}</td>
                                     <td class="action-column">
                                         <button v-if="order.status === 10" class="edit-btn" @click="openEditOrderDrawer(order)">编辑</button>
@@ -370,6 +372,7 @@
                                     <th>商品ID</th>
                                     <th>商品名称</th>
                                     <th>应收金额</th>
+                                    <th>优惠金额</th>
                                     <th>实收金额</th>
                                     <th>状态</th>
                                 </tr>
@@ -381,7 +384,8 @@
                                     <td>{{ childOrder.goodsid }}</td>
                                     <td>{{ childOrder.goods_name }}</td>
                                     <td>{{ childOrder.amount_receivable }}</td>
-                                    <td>{{ childOrder.amount_received }}</td>
+                                    <td style="color: #e74c3c;">{{ childOrder.discount_amount || '0.00' }}</td>
+                                    <td style="font-weight: bold;">{{ childOrder.amount_received }}</td>
                                     <td>{{ getChildOrderStatusText(childOrder.status) }}</td>
                                 </tr>
                             </tbody>
@@ -1116,12 +1120,26 @@
                     </div>
                     <div class="form-group-row">
                         <div class="form-group-col">
+                            <label for="addOrderExpectedPaymentTime">预计付款时间</label>
+                            <input type="datetime-local" id="addOrderExpectedPaymentTime" v-model="addOrderData.expected_payment_time" @change="onExpectedPaymentTimeChange">
+                        </div>
+                        <div class="form-group-col">
+                            <label>参加活动</label>
+                            <input type="text" :value="addOrderData.participating_activities || '无'" readonly class="readonly-input" :style="{color: addOrderData.participating_activities ? '#333' : '#999'}">
+                        </div>
+                    </div>
+                    <div class="form-group-row">
+                        <div class="form-group-col">
                             <label>应收金额</label>
                             <input type="text" :value="orderTotalReceivable.toFixed(2)" readonly class="readonly-input">
                         </div>
                         <div class="form-group-col">
+                            <label>优惠金额</label>
+                            <input type="text" :value="orderDiscountAmount.toFixed(2)" readonly class="readonly-input" style="color: #e74c3c; font-weight: bold;">
+                        </div>
+                        <div class="form-group-col">
                             <label>实收金额</label>
-                            <input type="text" :value="orderTotalReceived.toFixed(2)" readonly class="readonly-input">
+                            <input type="text" :value="orderTotalReceived.toFixed(2)" readonly class="readonly-input" style="color: #27ae60; font-weight: bold;">
                         </div>
                     </div>
                     <div class="form-group">
@@ -1223,12 +1241,26 @@
                     </div>
                     <div class="form-group-row">
                         <div class="form-group-col">
+                            <label for="editOrderExpectedPaymentTime">预计付款时间</label>
+                            <input type="datetime-local" id="editOrderExpectedPaymentTime" v-model="editOrderData.expected_payment_time" @change="onEditExpectedPaymentTimeChange">
+                        </div>
+                        <div class="form-group-col">
+                            <label>参加活动</label>
+                            <input type="text" :value="editOrderData.participating_activities || '无'" readonly class="readonly-input" :style="{color: editOrderData.participating_activities ? '#333' : '#999'}">
+                        </div>
+                    </div>
+                    <div class="form-group-row">
+                        <div class="form-group-col">
                             <label>应收金额</label>
                             <input type="text" :value="editOrderTotalReceivable.toFixed(2)" readonly class="readonly-input">
                         </div>
                         <div class="form-group-col">
+                            <label>优惠金额</label>
+                            <input type="text" :value="editOrderDiscountAmount.toFixed(2)" readonly class="readonly-input" style="color: #e74c3c; font-weight: bold;">
+                        </div>
+                        <div class="form-group-col">
                             <label>实收金额</label>
-                            <input type="text" :value="editOrderTotalReceived.toFixed(2)" readonly class="readonly-input">
+                            <input type="text" :value="editOrderTotalReceived.toFixed(2)" readonly class="readonly-input" style="color: #27ae60; font-weight: bold;">
                         </div>
                     </div>
                     <div class="form-group">
@@ -2353,8 +2385,8 @@
                         </div>
                     </div>
                     <!-- 商品列表 -->
-                    <div class="form-group" v-if="activityDetailData.template_select_type == 2 && activityDetailData.goods.length > 0">
-                        <label>模板包含商品（共 {{ activityDetailData.goods.length }} 条）</label>
+                    <div class="form-group" v-if="activityDetailData.goods && activityDetailData.goods.length > 0">
+                        <label>模板包含商品（共 {{ activityDetailData.goods.length }} 条）<span v-if="activityDetailData.template_select_type == 1" style="color: #666; font-weight: normal;">（按类型关联）</span></label>
                         <table class="included-goods-table">
                             <thead>
                                 <tr>
