@@ -121,6 +121,121 @@ createApp({
             showEditGoodsDrawer: false,
             showEnableGoodsConfirm: false,
             showDisableGoodsConfirm: false,
+            // 活动模板弹窗状态
+            showAddActivityTemplateDrawer: false,
+            showEditActivityTemplateDrawer: false,
+            showAddTemplateGoodsModal: false,
+            showEditTemplateGoodsModal: false,
+            // 活动管理弹窗状态
+            showAddActivityDrawer: false,
+            showEditActivityDrawer: false,
+            // 活动模板数据
+            activityTemplates: [],
+            filteredActivityTemplates: [],
+            activityTemplateFilters: {
+                id: '',
+                name: '',
+                type: '',
+                status: ''
+            },
+            activityTemplateCurrentPage: 1,
+            addActivityTemplateData: {
+                name: '',
+                type: '',
+                select_type: '',
+                status: 0,
+                classify_ids: [],
+                selected_classify_id: ''
+            },
+            templateClassifyGoods: [],
+            templateClassifyGoodsCurrentPage: 1,
+            // 活动模板详情
+            showActivityTemplateDetailDrawer: false,
+            activityTemplateDetailData: {
+                id: '',
+                name: '',
+                type: '',
+                select_type: '',
+                status: 0,
+                classifies: [],
+                goods: []
+            },
+            templateDetailGoodsCurrentPage: 1,
+            editActivityTemplateData: {
+                id: '',
+                name: '',
+                type: '',
+                select_type: '',
+                status: 0,
+                classify_ids: []
+            },
+            selectedTemplateGoods: [],
+            editSelectedTemplateGoods: [],
+            addTemplateGoodsData: {
+                goods_id: '',
+                name: '',
+                brand_name: '',
+                classify_name: '',
+                price: 0
+            },
+            editTemplateGoodsData: {
+                goods_id: '',
+                name: '',
+                brand_name: '',
+                classify_name: '',
+                price: 0
+            },
+            // 活动管理数据
+            activities: [],
+            filteredActivities: [],
+            activityFilters: {
+                id: '',
+                name: '',
+                template_id: '',
+                status: ''
+            },
+            activityCurrentPage: 1,
+            activeActivityTemplates: [],
+            addActivityData: {
+                name: '',
+                template_id: '',
+                template_type: '',
+                template_select_type: '',
+                start_time: '',
+                end_time: '',
+                status: 0,
+                details: []
+            },
+            editActivityData: {
+                id: '',
+                name: '',
+                template_id: '',
+                template_type: '',
+                template_select_type: '',
+                start_time: '',
+                end_time: '',
+                status: 0,
+                details: []
+            },
+            activityTemplateGoods: [],
+            editActivityTemplateGoods: [],
+            activityTemplateGoodsCurrentPage: 1,
+            // 活动详情
+            showActivityDetailDrawer: false,
+            activityDetailData: {
+                id: '',
+                name: '',
+                template_id: '',
+                template_name: '',
+                template_type: '',
+                template_select_type: '',
+                start_time: '',
+                end_time: '',
+                status: 0,
+                details: [],
+                goods: []
+            },
+            activityDetailGoodsCurrentPage: 1,
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -445,6 +560,70 @@ createApp({
         availableGoodsForSelection() {
             const selectedIds = this.selectedIncludedGoods.map(g => g.id);
             return this.availableGoodsForCombo.filter(g => !selectedIds.includes(g.id));
+        },
+        // 活动模板分页数据
+        paginatedActivityTemplates() {
+            const start = (this.activityTemplateCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredActivityTemplates.slice(start, end);
+        },
+        activityTemplateTotalPages() {
+            return Math.ceil(this.filteredActivityTemplates.length / this.pageSize);
+        },
+        // 活动分页数据
+        paginatedActivities() {
+            const start = (this.activityCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredActivities.slice(start, end);
+        },
+        activityTotalPages() {
+            return Math.ceil(this.filteredActivities.length / this.pageSize);
+        },
+        // 过滤掉已选择的商品（用于新增活动模板）
+        availableGoodsForTemplate() {
+            const selectedIds = this.selectedTemplateGoods.map(g => g.goods_id);
+            return this.availableGoodsForOrder.filter(g => !selectedIds.includes(g.id));
+        },
+        // 过滤掉已选择的商品（用于编辑活动模板）
+        availableGoodsForEditTemplate() {
+            const selectedIds = this.editSelectedTemplateGoods.map(g => g.goods_id);
+            return this.availableGoodsForOrder.filter(g => !selectedIds.includes(g.id));
+        },
+        // 模板类型关联商品分页
+        paginatedTemplateClassifyGoods() {
+            const start = (this.templateClassifyGoodsCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.templateClassifyGoods.slice(start, end);
+        },
+        templateClassifyGoodsTotalPages() {
+            return Math.ceil(this.templateClassifyGoods.length / this.pageSize);
+        },
+        // 模板详情商品分页
+        paginatedTemplateDetailGoods() {
+            const start = (this.templateDetailGoodsCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.activityTemplateDetailData.goods.slice(start, end);
+        },
+        templateDetailGoodsTotalPages() {
+            return Math.ceil(this.activityTemplateDetailData.goods.length / this.pageSize);
+        },
+        // 活动模板商品分页（新增活动抽屉）
+        paginatedActivityTemplateGoods() {
+            const start = (this.activityTemplateGoodsCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.activityTemplateGoods.slice(start, end);
+        },
+        activityTemplateGoodsTotalPages() {
+            return Math.ceil(this.activityTemplateGoods.length / this.pageSize);
+        },
+        // 活动详情商品分页
+        paginatedActivityDetailGoods() {
+            const start = (this.activityDetailGoodsCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.activityDetailData.goods.slice(start, end);
+        },
+        activityDetailGoodsTotalPages() {
+            return Math.ceil(this.activityDetailData.goods.length / this.pageSize);
         }
     },
     mounted() {
@@ -549,6 +728,12 @@ createApp({
                 this.fetchBrands();
             } else if (menu === 'goods') {
                 this.fetchGoods();
+            } else if (menu === 'activity_template') {
+                this.fetchActivityTemplates();
+                this.fetchClassifies();
+            } else if (menu === 'activity_management') {
+                this.fetchActivities();
+                this.fetchActivityTemplates();
             }
         },
         
@@ -978,6 +1163,10 @@ createApp({
                     if (response.data.message === '教练删除成功') {
                         await this.fetchCoaches(); // 更新教练数据
                     }
+                } else if (this.deleteType === 'activityTemplate') {
+                    await this.deleteActivityTemplate(this.deleteId);
+                } else if (this.deleteType === 'activity') {
+                    await this.deleteActivity(this.deleteId);
                 }
                 this.closeDeleteConfirm();
             } catch (err) {
@@ -2794,6 +2983,783 @@ createApp({
         changeGoodsPage(page) {
             if (page >= 1 && page <= this.goodsTotalPages) {
                 this.goodsCurrentPage = page;
+            }
+        },
+
+        // ==================== 活动模板方法 ====================
+
+        // 获取启用的商品列表（用于活动模板）
+        async fetchGoodsForOrder() {
+            try {
+                const response = await axios.get('/api/goods/active-for-order', { withCredentials: true });
+                this.availableGoodsForOrder = response.data.goods || [];
+            } catch (err) {
+                console.error('获取启用商品列表失败:', err);
+            }
+        },
+
+        // 获取活动模板列表
+        async fetchActivityTemplates() {
+            try {
+                const response = await axios.get('/api/activity-templates', { withCredentials: true });
+                this.activityTemplates = response.data.templates || [];
+                this.filteredActivityTemplates = [...this.activityTemplates];
+            } catch (err) {
+                console.error('获取活动模板失败:', err);
+            }
+        },
+
+        // 获取启用状态的活动模板
+        async fetchActiveActivityTemplates() {
+            try {
+                const response = await axios.get('/api/activity-templates/active', { withCredentials: true });
+                this.activeActivityTemplates = response.data.templates || [];
+            } catch (err) {
+                console.error('获取启用活动模板失败:', err);
+            }
+        },
+
+        // 搜索活动模板
+        searchActivityTemplates() {
+            this.filteredActivityTemplates = this.activityTemplates.filter(template => {
+                const matchId = !this.activityTemplateFilters.id || template.id == this.activityTemplateFilters.id;
+                const matchName = !this.activityTemplateFilters.name || template.name.includes(this.activityTemplateFilters.name);
+                const matchType = !this.activityTemplateFilters.type || template.type == this.activityTemplateFilters.type;
+                const matchStatus = this.activityTemplateFilters.status === '' || template.status == this.activityTemplateFilters.status;
+                return matchId && matchName && matchType && matchStatus;
+            });
+            this.activityTemplateCurrentPage = 1;
+        },
+
+        // 重置活动模板筛选
+        resetActivityTemplateFilters() {
+            this.activityTemplateFilters = { id: '', name: '', type: '', status: '' };
+            this.filteredActivityTemplates = [...this.activityTemplates];
+            this.activityTemplateCurrentPage = 1;
+        },
+
+        // 活动模板分页
+        changeActivityTemplatePage(page) {
+            if (page >= 1 && page <= this.activityTemplateTotalPages) {
+                this.activityTemplateCurrentPage = page;
+            }
+        },
+
+        // 模板类型商品分页
+        changeTemplateClassifyGoodsPage(page) {
+            if (page >= 1 && page <= this.templateClassifyGoodsTotalPages) {
+                this.templateClassifyGoodsCurrentPage = page;
+            }
+        },
+
+        // 模板详情商品分页
+        changeTemplateDetailGoodsPage(page) {
+            if (page >= 1 && page <= this.templateDetailGoodsTotalPages) {
+                this.templateDetailGoodsCurrentPage = page;
+            }
+        },
+
+        // 打开活动模板详情抽屉
+        async openActivityTemplateDetailDrawer(template) {
+            try {
+                const response = await axios.get(`/api/activity-templates/${template.id}`, { withCredentials: true });
+                const data = response.data.template;
+
+                let goods = [];
+                if (data.select_type == 1) {
+                    // 按类型选择，加载所有关联类型下的商品
+                    const classifyList = data.classify_list || [];
+                    for (const classify of classifyList) {
+                        const goodsResponse = await axios.get(`/api/goods?classifyid=${classify.classify_id}&status=0`, { withCredentials: true });
+                        goods = goods.concat(goodsResponse.data.goods || []);
+                    }
+                } else {
+                    // 按商品选择
+                    const goodsList = data.goods_list || [];
+                    goods = goodsList.map(g => ({
+                        id: g.goods_id,
+                        name: g.goods_name,
+                        price: g.price
+                    }));
+                }
+
+                this.activityTemplateDetailData = {
+                    id: data.id,
+                    name: data.name,
+                    type: data.type,
+                    select_type: data.select_type,
+                    status: data.status,
+                    classifies: data.classify_list || [],
+                    goods: goods
+                };
+                this.templateDetailGoodsCurrentPage = 1;
+                this.showActivityTemplateDetailDrawer = true;
+            } catch (err) {
+                console.error('获取模板详情失败:', err);
+                alert('获取模板详情失败');
+            }
+        },
+
+        // 关闭活动模板详情抽屉
+        closeActivityTemplateDetailDrawer() {
+            this.showActivityTemplateDetailDrawer = false;
+        },
+
+        // 获取活动类型文本
+        getActivityTypeText(type) {
+            const types = { 1: '满减', 2: '满折', 3: '满赠', 4: '换购' };
+            return types[type] || '';
+        },
+
+        // 打开新增活动模板抽屉
+        async openAddActivityTemplateDrawer() {
+            this.addActivityTemplateData = {
+                name: '',
+                type: '',
+                select_type: '',
+                status: 0,
+                classify_ids: [],
+                selected_classify_id: ''
+            };
+            this.selectedTemplateGoods = [];
+            this.templateClassifyGoods = [];
+            // 获取启用的类型列表
+            try {
+                const response = await axios.get('/api/classifies/active', { withCredentials: true });
+                this.activeClassifies = response.data.classifies || [];
+            } catch (err) {
+                console.error('获取启用类型列表失败:', err);
+            }
+            this.fetchGoodsForOrder();
+            this.showAddActivityTemplateDrawer = true;
+        },
+
+        // 关闭新增活动模板抽屉
+        closeAddActivityTemplateDrawer() {
+            this.showAddActivityTemplateDrawer = false;
+        },
+
+        // 选择方式变化
+        onTemplateSelectTypeChange() {
+            this.addActivityTemplateData.classify_ids = [];
+            this.addActivityTemplateData.selected_classify_id = '';
+            this.selectedTemplateGoods = [];
+            this.templateClassifyGoods = [];
+        },
+
+        // 类型选择变化，加载类型下的商品
+        async onTemplateClassifyChange() {
+            const classifyId = this.addActivityTemplateData.selected_classify_id;
+            if (!classifyId) {
+                this.templateClassifyGoods = [];
+                this.addActivityTemplateData.classify_ids = [];
+                return;
+            }
+            // 设置classify_ids为选中的类型
+            this.addActivityTemplateData.classify_ids = [classifyId];
+            // 重置分页
+            this.templateClassifyGoodsCurrentPage = 1;
+            // 加载该类型下的商品
+            try {
+                const response = await axios.get(`/api/goods?classifyid=${classifyId}&status=0`, { withCredentials: true });
+                this.templateClassifyGoods = response.data.goods || [];
+            } catch (err) {
+                console.error('获取类型商品失败:', err);
+                this.templateClassifyGoods = [];
+            }
+        },
+
+        // 编辑模板选择方式变化
+        onEditTemplateSelectTypeChange() {
+            this.editActivityTemplateData.classify_ids = [];
+            this.editSelectedTemplateGoods = [];
+        },
+
+        // 打开添加模板商品弹窗
+        openAddTemplateGoodsModal() {
+            this.addTemplateGoodsData = {
+                goods_id: '',
+                name: '',
+                brand_name: '',
+                classify_name: '',
+                price: 0
+            };
+            this.showAddTemplateGoodsModal = true;
+        },
+
+        // 关闭添加模板商品弹窗
+        closeAddTemplateGoodsModal() {
+            this.showAddTemplateGoodsModal = false;
+        },
+
+        // 模板商品选择变化
+        onTemplateGoodsChange() {
+            const selectedGoods = this.availableGoodsForOrder.find(g => g.id == this.addTemplateGoodsData.goods_id);
+            if (selectedGoods) {
+                this.addTemplateGoodsData.name = selectedGoods.name;
+                this.addTemplateGoodsData.brand_name = selectedGoods.brand_name || '';
+                this.addTemplateGoodsData.classify_name = selectedGoods.classify_name || '';
+                this.addTemplateGoodsData.price = selectedGoods.price;
+            }
+        },
+
+        // 保存模板商品
+        saveTemplateGoods() {
+            if (!this.addTemplateGoodsData.goods_id) {
+                alert('请选择商品');
+                return;
+            }
+            this.selectedTemplateGoods.push({
+                goods_id: this.addTemplateGoodsData.goods_id,
+                name: this.addTemplateGoodsData.name,
+                brand_name: this.addTemplateGoodsData.brand_name,
+                classify_name: this.addTemplateGoodsData.classify_name,
+                price: this.addTemplateGoodsData.price
+            });
+            this.closeAddTemplateGoodsModal();
+        },
+
+        // 删除模板商品
+        removeTemplateGoods(index) {
+            this.selectedTemplateGoods.splice(index, 1);
+        },
+
+        // 保存新增活动模板
+        async saveAddActivityTemplate() {
+            if (!this.addActivityTemplateData.name || !this.addActivityTemplateData.type || !this.addActivityTemplateData.select_type) {
+                alert('请填写必填项');
+                return;
+            }
+            if (this.addActivityTemplateData.select_type == 1 && this.addActivityTemplateData.classify_ids.length === 0) {
+                alert('请至少选择一个类型');
+                return;
+            }
+            if (this.addActivityTemplateData.select_type == 2 && this.selectedTemplateGoods.length === 0) {
+                alert('请至少选择一个商品');
+                return;
+            }
+            try {
+                const postData = {
+                    name: this.addActivityTemplateData.name,
+                    type: parseInt(this.addActivityTemplateData.type),
+                    select_type: parseInt(this.addActivityTemplateData.select_type),
+                    status: parseInt(this.addActivityTemplateData.status),
+                    classify_ids: this.addActivityTemplateData.classify_ids,
+                    goods_ids: this.selectedTemplateGoods.map(g => g.goods_id)
+                };
+                await axios.post('/api/activity-templates', postData, { withCredentials: true });
+                await this.fetchActivityTemplates();
+                this.closeAddActivityTemplateDrawer();
+                alert('活动模板创建成功');
+            } catch (err) {
+                console.error('创建活动模板失败:', err);
+                alert(err.response?.data?.error || '创建活动模板失败');
+            }
+        },
+
+        // 打开编辑活动模板抽屉
+        async openEditActivityTemplateDrawer(template) {
+            try {
+                const response = await axios.get(`/api/activity-templates/${template.id}`, { withCredentials: true });
+                const data = response.data.template;
+                this.editActivityTemplateData = {
+                    id: data.id,
+                    name: data.name,
+                    type: data.type,
+                    select_type: data.select_type,
+                    status: data.status,
+                    classify_ids: data.classify_list ? data.classify_list.map(c => c.classify_id) : []
+                };
+                if (data.goods_list) {
+                    this.editSelectedTemplateGoods = data.goods_list.map(g => ({
+                        goods_id: g.goods_id,
+                        name: g.goods_name,
+                        brand_name: g.brand_name || '',
+                        classify_name: g.classify_name || '',
+                        price: g.price
+                    }));
+                } else {
+                    this.editSelectedTemplateGoods = [];
+                }
+                await this.fetchGoodsForOrder();
+                this.showEditActivityTemplateDrawer = true;
+            } catch (err) {
+                console.error('获取活动模板详情失败:', err);
+                alert('获取活动模板详情失败');
+            }
+        },
+
+        // 关闭编辑活动模板抽屉
+        closeEditActivityTemplateDrawer() {
+            this.showEditActivityTemplateDrawer = false;
+        },
+
+        // 打开编辑模板商品弹窗
+        openEditTemplateGoodsModal() {
+            this.editTemplateGoodsData = {
+                goods_id: '',
+                name: '',
+                brand_name: '',
+                classify_name: '',
+                price: 0
+            };
+            this.showEditTemplateGoodsModal = true;
+        },
+
+        // 关闭编辑模板商品弹窗
+        closeEditTemplateGoodsModal() {
+            this.showEditTemplateGoodsModal = false;
+        },
+
+        // 编辑模板商品选择变化
+        onEditTemplateGoodsChange() {
+            const selectedGoods = this.availableGoodsForOrder.find(g => g.id == this.editTemplateGoodsData.goods_id);
+            if (selectedGoods) {
+                this.editTemplateGoodsData.name = selectedGoods.name;
+                this.editTemplateGoodsData.brand_name = selectedGoods.brand_name || '';
+                this.editTemplateGoodsData.classify_name = selectedGoods.classify_name || '';
+                this.editTemplateGoodsData.price = selectedGoods.price;
+            }
+        },
+
+        // 保存编辑模板商品
+        saveEditTemplateGoods() {
+            if (!this.editTemplateGoodsData.goods_id) {
+                alert('请选择商品');
+                return;
+            }
+            this.editSelectedTemplateGoods.push({
+                goods_id: this.editTemplateGoodsData.goods_id,
+                name: this.editTemplateGoodsData.name,
+                brand_name: this.editTemplateGoodsData.brand_name,
+                classify_name: this.editTemplateGoodsData.classify_name,
+                price: this.editTemplateGoodsData.price
+            });
+            this.closeEditTemplateGoodsModal();
+        },
+
+        // 删除编辑模板商品
+        removeEditTemplateGoods(index) {
+            this.editSelectedTemplateGoods.splice(index, 1);
+        },
+
+        // 保存编辑活动模板
+        async saveEditActivityTemplate() {
+            if (!this.editActivityTemplateData.name || !this.editActivityTemplateData.type || !this.editActivityTemplateData.select_type) {
+                alert('请填写必填项');
+                return;
+            }
+            if (this.editActivityTemplateData.select_type == 1 && this.editActivityTemplateData.classify_ids.length === 0) {
+                alert('请至少选择一个类型');
+                return;
+            }
+            if (this.editActivityTemplateData.select_type == 2 && this.editSelectedTemplateGoods.length === 0) {
+                alert('请至少选择一个商品');
+                return;
+            }
+            try {
+                const putData = {
+                    name: this.editActivityTemplateData.name,
+                    type: parseInt(this.editActivityTemplateData.type),
+                    select_type: parseInt(this.editActivityTemplateData.select_type),
+                    status: parseInt(this.editActivityTemplateData.status),
+                    classify_ids: this.editActivityTemplateData.classify_ids,
+                    goods_ids: this.editSelectedTemplateGoods.map(g => g.goods_id)
+                };
+                await axios.put(`/api/activity-templates/${this.editActivityTemplateData.id}`, putData, { withCredentials: true });
+                await this.fetchActivityTemplates();
+                this.closeEditActivityTemplateDrawer();
+                alert('活动模板更新成功');
+            } catch (err) {
+                console.error('更新活动模板失败:', err);
+                alert(err.response?.data?.error || '更新活动模板失败');
+            }
+        },
+
+        // 更新活动模板状态
+        async updateActivityTemplateStatus(id, status) {
+            try {
+                await axios.put(`/api/activity-templates/${id}/status`, { status }, { withCredentials: true });
+                await this.fetchActivityTemplates();
+                alert(status === 0 ? '已启用' : '已禁用');
+            } catch (err) {
+                console.error('更新状态失败:', err);
+                alert(err.response?.data?.error || '更新状态失败');
+            }
+        },
+
+        // 删除活动模板
+        async deleteActivityTemplate(id) {
+            try {
+                await axios.delete(`/api/activity-templates/${id}`, { withCredentials: true });
+                await this.fetchActivityTemplates();
+                alert('活动模板删除成功');
+            } catch (err) {
+                console.error('删除活动模板失败:', err);
+                alert(err.response?.data?.error || '删除活动模板失败');
+            }
+        },
+
+        // ==================== 活动管理方法 ====================
+
+        // 获取活动列表
+        async fetchActivities() {
+            try {
+                const response = await axios.get('/api/activities', { withCredentials: true });
+                this.activities = response.data.activities || [];
+                this.filteredActivities = [...this.activities];
+            } catch (err) {
+                console.error('获取活动列表失败:', err);
+            }
+        },
+
+        // 搜索活动
+        searchActivities() {
+            this.filteredActivities = this.activities.filter(activity => {
+                const matchId = !this.activityFilters.id || activity.id == this.activityFilters.id;
+                const matchName = !this.activityFilters.name || activity.name.includes(this.activityFilters.name);
+                const matchTemplate = !this.activityFilters.template_id || activity.template_id == this.activityFilters.template_id;
+                const matchStatus = this.activityFilters.status === '' || activity.status == this.activityFilters.status;
+                return matchId && matchName && matchTemplate && matchStatus;
+            });
+            this.activityCurrentPage = 1;
+        },
+
+        // 重置活动筛选
+        resetActivityFilters() {
+            this.activityFilters = { id: '', name: '', template_id: '', status: '' };
+            this.filteredActivities = [...this.activities];
+            this.activityCurrentPage = 1;
+        },
+
+        // 活动分页
+        changeActivityPage(page) {
+            if (page >= 1 && page <= this.activityTotalPages) {
+                this.activityCurrentPage = page;
+            }
+        },
+
+        // 格式化日期时间
+        formatDateTime(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        },
+
+        // 打开新增活动抽屉
+        async openAddActivityDrawer() {
+            this.addActivityData = {
+                name: '',
+                template_id: '',
+                template_type: '',
+                template_select_type: '',
+                start_time: '',
+                end_time: '',
+                status: 1,  // 默认禁用
+                details: []
+            };
+            this.activityTemplateGoods = [];
+            await this.fetchActiveActivityTemplates();
+            this.showAddActivityDrawer = true;
+        },
+
+        // 关闭新增活动抽屉
+        closeAddActivityDrawer() {
+            this.showAddActivityDrawer = false;
+        },
+
+        // 活动模板选择变化
+        async onActivityTemplateChange() {
+            const template = this.activeActivityTemplates.find(t => t.id == this.addActivityData.template_id);
+            if (template) {
+                this.addActivityData.template_type = template.type;
+                this.addActivityData.template_select_type = template.select_type;
+                // 加载模板包含的商品
+                await this.loadTemplateGoods(template.id, 'add');
+            } else {
+                this.addActivityData.template_type = '';
+                this.addActivityData.template_select_type = '';
+                this.activityTemplateGoods = [];
+            }
+        },
+
+        // 加载模板包含的商品
+        async loadTemplateGoods(templateId, mode) {
+            try {
+                const response = await axios.get(`/api/activity-templates/${templateId}`, { withCredentials: true });
+                const template = response.data.template;
+                let goods = [];
+
+                if (template.select_type == 1) {
+                    // 按类型选择，加载所有关联类型下的商品
+                    const classifyList = template.classify_list || [];
+                    for (const classify of classifyList) {
+                        const goodsResponse = await axios.get(`/api/goods?classifyid=${classify.classify_id}&status=0`, { withCredentials: true });
+                        goods = goods.concat(goodsResponse.data.goods || []);
+                    }
+                } else {
+                    // 按商品选择，使用模板关联的商品
+                    const goodsList = template.goods_list || [];
+                    goods = goodsList.map(g => ({
+                        id: g.goods_id,
+                        name: g.goods_name,
+                        price: g.price,
+                        brand_name: g.brand_name,
+                        classify_name: g.classify_name
+                    }));
+                }
+
+                if (mode === 'add') {
+                    this.activityTemplateGoods = goods;
+                } else {
+                    this.editActivityTemplateGoods = goods;
+                }
+            } catch (err) {
+                console.error('获取模板商品失败:', err);
+                if (mode === 'add') {
+                    this.activityTemplateGoods = [];
+                } else {
+                    this.editActivityTemplateGoods = [];
+                }
+            }
+        },
+
+        // 添加活动明细规则
+        addActivityDetail() {
+            this.addActivityData.details.push({ threshold_amount: 0, discount_value: 0 });
+        },
+
+        // 删除活动明细规则
+        removeActivityDetail(index) {
+            this.addActivityData.details.splice(index, 1);
+        },
+
+        // 保存新增活动
+        async saveAddActivity() {
+            if (!this.addActivityData.name || !this.addActivityData.template_id || !this.addActivityData.start_time || !this.addActivityData.end_time) {
+                alert('请填写必填项');
+                return;
+            }
+            if (this.addActivityData.template_type == 2 && this.addActivityData.details.length === 0) {
+                alert('满折类型活动需要至少添加一条优惠规则');
+                return;
+            }
+            try {
+                const postData = {
+                    name: this.addActivityData.name,
+                    template_id: parseInt(this.addActivityData.template_id),
+                    start_time: this.addActivityData.start_time,
+                    end_time: this.addActivityData.end_time,
+                    status: parseInt(this.addActivityData.status),
+                    details: this.addActivityData.details
+                };
+                await axios.post('/api/activities', postData, { withCredentials: true });
+                await this.fetchActivities();
+                this.closeAddActivityDrawer();
+                alert('活动创建成功');
+            } catch (err) {
+                console.error('创建活动失败:', err);
+                alert(err.response?.data?.error || '创建活动失败');
+            }
+        },
+
+        // 打开编辑活动抽屉
+        async openEditActivityDrawer(activity) {
+            try {
+                await this.fetchActiveActivityTemplates();
+                const response = await axios.get(`/api/activities/${activity.id}`, { withCredentials: true });
+                const data = response.data.activity;
+
+                // 格式化日期时间为input[type=datetime-local]格式
+                const formatDateForInput = (dateStr) => {
+                    if (!dateStr) return '';
+                    const date = new Date(dateStr);
+                    return date.toISOString().slice(0, 16);
+                };
+
+                this.editActivityData = {
+                    id: data.id,
+                    name: data.name,
+                    template_id: data.template_id,
+                    template_type: data.template_type,
+                    template_select_type: data.select_type,
+                    start_time: formatDateForInput(data.start_time),
+                    end_time: formatDateForInput(data.end_time),
+                    status: data.status,
+                    details: data.details || []
+                };
+                // 加载模板包含的商品
+                if (data.template_id) {
+                    await this.loadTemplateGoods(data.template_id, 'edit');
+                }
+                this.showEditActivityDrawer = true;
+            } catch (err) {
+                console.error('获取活动详情失败:', err);
+                alert('获取活动详情失败');
+            }
+        },
+
+        // 关闭编辑活动抽屉
+        closeEditActivityDrawer() {
+            this.showEditActivityDrawer = false;
+        },
+
+        // 打开活动详情抽屉
+        async openActivityDetailDrawer(activity) {
+            try {
+                await this.fetchActiveActivityTemplates();
+                const response = await axios.get(`/api/activities/${activity.id}`, { withCredentials: true });
+                const data = response.data.activity;
+
+                // 加载模板包含的商品
+                let goods = [];
+                if (data.template_id) {
+                    const templateResponse = await axios.get(`/api/activity-templates/${data.template_id}`, { withCredentials: true });
+                    const template = templateResponse.data.template;
+
+                    if (template.select_type == 1) {
+                        const classifyList = template.classify_list || [];
+                        for (const classify of classifyList) {
+                            const goodsResponse = await axios.get(`/api/goods?classifyid=${classify.classify_id}&status=0`, { withCredentials: true });
+                            goods = goods.concat(goodsResponse.data.goods || []);
+                        }
+                    } else {
+                        const goodsList = template.goods_list || [];
+                        goods = goodsList.map(g => ({
+                            id: g.goods_id,
+                            name: g.goods_name,
+                            price: g.price
+                        }));
+                    }
+                }
+
+                // 格式化日期时间
+                const formatDateForDisplay = (dateStr) => {
+                    if (!dateStr) return '';
+                    return new Date(dateStr).toLocaleString('zh-CN');
+                };
+
+                this.activityDetailData = {
+                    id: data.id,
+                    name: data.name,
+                    template_id: data.template_id,
+                    template_name: data.template_name,
+                    template_type: data.template_type,
+                    template_select_type: data.select_type,
+                    start_time: formatDateForDisplay(data.start_time),
+                    end_time: formatDateForDisplay(data.end_time),
+                    status: data.status,
+                    details: data.details || [],
+                    goods: goods
+                };
+                this.activityDetailGoodsCurrentPage = 1;
+                this.showActivityDetailDrawer = true;
+            } catch (err) {
+                console.error('获取活动详情失败:', err);
+                alert('获取活动详情失败');
+            }
+        },
+
+        // 关闭活动详情抽屉
+        closeActivityDetailDrawer() {
+            this.showActivityDetailDrawer = false;
+        },
+
+        // 活动详情商品分页
+        changeActivityDetailGoodsPage(page) {
+            if (page >= 1 && page <= this.activityDetailGoodsTotalPages) {
+                this.activityDetailGoodsCurrentPage = page;
+            }
+        },
+
+        // 活动模板商品分页（新增/编辑活动）
+        changeActivityTemplateGoodsPage(page) {
+            if (page >= 1 && page <= this.activityTemplateGoodsTotalPages) {
+                this.activityTemplateGoodsCurrentPage = page;
+            }
+        },
+
+        // 编辑活动模板选择变化
+        async onEditActivityTemplateChange() {
+            const template = this.activeActivityTemplates.find(t => t.id == this.editActivityData.template_id);
+            if (template) {
+                this.editActivityData.template_type = template.type;
+                this.editActivityData.template_select_type = template.select_type;
+                // 加载模板包含的商品
+                await this.loadTemplateGoods(template.id, 'edit');
+            } else {
+                this.editActivityData.template_type = '';
+                this.editActivityData.template_select_type = '';
+                this.editActivityTemplateGoods = [];
+            }
+        },
+
+        // 添加编辑活动明细规则
+        addEditActivityDetail() {
+            this.editActivityData.details.push({ threshold_amount: 0, discount_value: 0 });
+        },
+
+        // 删除编辑活动明细规则
+        removeEditActivityDetail(index) {
+            this.editActivityData.details.splice(index, 1);
+        },
+
+        // 保存编辑活动
+        async saveEditActivity() {
+            if (!this.editActivityData.name || !this.editActivityData.template_id || !this.editActivityData.start_time || !this.editActivityData.end_time) {
+                alert('请填写必填项');
+                return;
+            }
+            if (this.editActivityData.template_type == 2 && this.editActivityData.details.length === 0) {
+                alert('满折类型活动需要至少添加一条优惠规则');
+                return;
+            }
+            try {
+                const putData = {
+                    name: this.editActivityData.name,
+                    template_id: parseInt(this.editActivityData.template_id),
+                    start_time: this.editActivityData.start_time,
+                    end_time: this.editActivityData.end_time,
+                    status: parseInt(this.editActivityData.status),
+                    details: this.editActivityData.details
+                };
+                await axios.put(`/api/activities/${this.editActivityData.id}`, putData, { withCredentials: true });
+                await this.fetchActivities();
+                this.closeEditActivityDrawer();
+                alert('活动更新成功');
+            } catch (err) {
+                console.error('更新活动失败:', err);
+                alert(err.response?.data?.error || '更新活动失败');
+            }
+        },
+
+        // 更新活动状态
+        async updateActivityStatus(id, status) {
+            try {
+                await axios.put(`/api/activities/${id}/status`, { status }, { withCredentials: true });
+                await this.fetchActivities();
+                alert(status === 0 ? '已启用' : '已禁用');
+            } catch (err) {
+                console.error('更新状态失败:', err);
+                alert(err.response?.data?.error || '更新状态失败');
+            }
+        },
+
+        // 删除活动
+        async deleteActivity(id) {
+            try {
+                await axios.delete(`/api/activities/${id}`, { withCredentials: true });
+                await this.fetchActivities();
+                alert('活动删除成功');
+            } catch (err) {
+                console.error('删除活动失败:', err);
+                alert(err.response?.data?.error || '删除活动失败');
             }
         }
     }

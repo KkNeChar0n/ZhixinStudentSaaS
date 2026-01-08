@@ -362,19 +362,25 @@ def delete_student(id):
     cursor = None
     try:
         connection = get_db_connection()
-        cursor = connection.cursor()
-        
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查是否有关联订单
+        cursor.execute("SELECT COUNT(*) as count FROM orders WHERE student_id = %s", (id,))
+        result = cursor.fetchone()
+        if result['count'] > 0:
+            return jsonify({'error': '该学生有关联订单，无法删除'}), 400
+
         # 删除学生与教练的关联
         cursor.execute("DELETE FROM student_coach WHERE student_id = %s", (id,))
-        
+
         # 删除学生
         cursor.execute("DELETE FROM student WHERE id = %s", (id,))
-        
+
         connection.commit()
-        
+
         if cursor.rowcount == 0:
             return jsonify({'error': '学生不存在'}), 404
-            
+
         return jsonify({'message': '学生删除成功'}), 200
         
     except Exception as e:
@@ -1731,11 +1737,15 @@ def get_goods():
     connection = None
     cursor = None
     try:
+        # 获取查询参数
+        classifyid = request.args.get('classifyid', type=int)
+        status = request.args.get('status', type=int)
+
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 查询所有商品，包含品牌和类型名称
-        cursor.execute("""
+        # 构建查询SQL
+        sql = """
             SELECT
                 g.id, g.name, g.brandid, g.classifyid, g.isgroup, g.price, g.status,
                 b.name as brand_name,
@@ -1743,8 +1753,21 @@ def get_goods():
             FROM goods g
             LEFT JOIN brand b ON g.brandid = b.id
             LEFT JOIN classify c ON g.classifyid = c.id
-            ORDER BY g.id DESC
-        """)
+            WHERE 1=1
+        """
+        params = []
+
+        if classifyid is not None:
+            sql += " AND g.classifyid = %s"
+            params.append(classifyid)
+
+        if status is not None:
+            sql += " AND g.status = %s"
+            params.append(status)
+
+        sql += " ORDER BY g.id DESC"
+
+        cursor.execute(sql, params)
         goods_list = cursor.fetchall()
 
         # 为每个商品获取属性值信息
@@ -2216,6 +2239,497 @@ def get_included_goods(goods_id):
                 goods['attributes'] = ''
 
         return jsonify({'included_goods': included_goods}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# ==================== 活动模板API ====================
+
+# API接口：获取活动模板列表
+@app.route('/api/activity-templates', methods=['GET'])
+def get_activity_templates():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        cursor.execute("SELECT * FROM activity_template ORDER BY id DESC")
+        templates = cursor.fetchall()
+
+        return jsonify({'templates': templates}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取单个活动模板详情
+@app.route('/api/activity-templates/<int:id>', methods=['GET'])
+def get_activity_template(id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取模板基本信息
+        cursor.execute("SELECT * FROM activity_template WHERE id = %s", (id,))
+        template = cursor.fetchone()
+
+        if not template:
+            return jsonify({'error': '活动模板不存在'}), 404
+
+        # 获取关联的商品或类型
+        if template['select_type'] == 1:  # 按类型
+            cursor.execute("""
+                SELECT atg.classify_id, c.name as classify_name
+                FROM activity_template_goods atg
+                JOIN classify c ON atg.classify_id = c.id
+                WHERE atg.template_id = %s
+            """, (id,))
+            template['classify_list'] = cursor.fetchall()
+        else:  # 按商品
+            cursor.execute("""
+                SELECT atg.goods_id, g.name as goods_name, g.price, b.name as brand_name, c.name as classify_name
+                FROM activity_template_goods atg
+                JOIN goods g ON atg.goods_id = g.id
+                LEFT JOIN brand b ON g.brandid = b.id
+                LEFT JOIN classify c ON g.classifyid = c.id
+                WHERE atg.template_id = %s
+            """, (id,))
+            template['goods_list'] = cursor.fetchall()
+
+        return jsonify({'template': template}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：创建活动模板
+@app.route('/api/activity-templates', methods=['POST'])
+def create_activity_template():
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        type_val = data.get('type')
+        select_type = data.get('select_type')
+        status = data.get('status', 0)
+        classify_ids = data.get('classify_ids', [])
+        goods_ids = data.get('goods_ids', [])
+
+        if not name or not type_val or not select_type:
+            return jsonify({'error': '模板名称、活动类型和选择方式不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 创建活动模板
+        cursor.execute("""
+            INSERT INTO activity_template (name, type, select_type, status)
+            VALUES (%s, %s, %s, %s)
+        """, (name, type_val, select_type, status))
+
+        template_id = cursor.lastrowid
+
+        # 插入关联数据
+        if select_type == 1 and classify_ids:  # 按类型
+            for classify_id in classify_ids:
+                cursor.execute("""
+                    INSERT INTO activity_template_goods (template_id, classify_id)
+                    VALUES (%s, %s)
+                """, (template_id, classify_id))
+        elif select_type == 2 and goods_ids:  # 按商品
+            for goods_id in goods_ids:
+                cursor.execute("""
+                    INSERT INTO activity_template_goods (template_id, goods_id)
+                    VALUES (%s, %s)
+                """, (template_id, goods_id))
+
+        connection.commit()
+
+        return jsonify({'message': '活动模板创建成功', 'id': template_id}), 201
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新活动模板
+@app.route('/api/activity-templates/<int:id>', methods=['PUT'])
+def update_activity_template(id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        type_val = data.get('type')
+        select_type = data.get('select_type')
+        status = data.get('status', 0)
+        classify_ids = data.get('classify_ids', [])
+        goods_ids = data.get('goods_ids', [])
+
+        if not name or not type_val or not select_type:
+            return jsonify({'error': '模板名称、活动类型和选择方式不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 更新活动模板
+        cursor.execute("""
+            UPDATE activity_template
+            SET name = %s, type = %s, select_type = %s, status = %s
+            WHERE id = %s
+        """, (name, type_val, select_type, status, id))
+
+        # 删除原有关联数据
+        cursor.execute("DELETE FROM activity_template_goods WHERE template_id = %s", (id,))
+
+        # 插入新的关联数据
+        if select_type == 1 and classify_ids:  # 按类型
+            for classify_id in classify_ids:
+                cursor.execute("""
+                    INSERT INTO activity_template_goods (template_id, classify_id)
+                    VALUES (%s, %s)
+                """, (id, classify_id))
+        elif select_type == 2 and goods_ids:  # 按商品
+            for goods_id in goods_ids:
+                cursor.execute("""
+                    INSERT INTO activity_template_goods (template_id, goods_id)
+                    VALUES (%s, %s)
+                """, (id, goods_id))
+
+        connection.commit()
+
+        return jsonify({'message': '活动模板更新成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：删除活动模板
+@app.route('/api/activity-templates/<int:id>', methods=['DELETE'])
+def delete_activity_template(id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查是否有关联活动
+        cursor.execute("SELECT COUNT(*) as count FROM activity WHERE template_id = %s", (id,))
+        result = cursor.fetchone()
+        if result['count'] > 0:
+            return jsonify({'error': '该模板有关联活动，无法删除'}), 400
+
+        # 删除活动模板（关联数据会级联删除）
+        cursor.execute("DELETE FROM activity_template WHERE id = %s", (id,))
+
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '活动模板不存在'}), 404
+
+        return jsonify({'message': '活动模板删除成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新活动模板状态
+@app.route('/api/activity-templates/<int:id>/status', methods=['PUT'])
+def update_activity_template_status(id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        status = data.get('status')
+
+        if status is None:
+            return jsonify({'error': '状态不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        cursor.execute("UPDATE activity_template SET status = %s WHERE id = %s", (status, id))
+
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '活动模板不存在'}), 404
+
+        return jsonify({'message': '状态更新成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# ==================== 活动管理API ====================
+
+# API接口：获取活动列表
+@app.route('/api/activities', methods=['GET'])
+def get_activities():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        cursor.execute("""
+            SELECT a.*, t.name as template_name, t.type as template_type
+            FROM activity a
+            JOIN activity_template t ON a.template_id = t.id
+            ORDER BY a.id DESC
+        """)
+        activities = cursor.fetchall()
+
+        return jsonify({'activities': activities}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取单个活动详情
+@app.route('/api/activities/<int:id>', methods=['GET'])
+def get_activity(id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取活动基本信息
+        cursor.execute("""
+            SELECT a.*, t.name as template_name, t.type as template_type, t.select_type
+            FROM activity a
+            JOIN activity_template t ON a.template_id = t.id
+            WHERE a.id = %s
+        """, (id,))
+        activity = cursor.fetchone()
+
+        if not activity:
+            return jsonify({'error': '活动不存在'}), 404
+
+        # 获取活动明细（满折规则）
+        cursor.execute("""
+            SELECT * FROM activity_detail WHERE activity_id = %s ORDER BY threshold_amount
+        """, (id,))
+        activity['details'] = cursor.fetchall()
+
+        return jsonify({'activity': activity}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：创建活动
+@app.route('/api/activities', methods=['POST'])
+def create_activity():
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        template_id = data.get('template_id')
+        start_time = data.get('start_time')
+        end_time = data.get('end_time')
+        status = data.get('status', 0)
+        details = data.get('details', [])
+
+        if not name or not template_id or not start_time or not end_time:
+            return jsonify({'error': '活动名称、关联模板、开始时间和结束时间不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 创建活动
+        cursor.execute("""
+            INSERT INTO activity (name, template_id, start_time, end_time, status)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (name, template_id, start_time, end_time, status))
+
+        activity_id = cursor.lastrowid
+
+        # 插入活动明细
+        for detail in details:
+            cursor.execute("""
+                INSERT INTO activity_detail (activity_id, threshold_amount, discount_value)
+                VALUES (%s, %s, %s)
+            """, (activity_id, detail['threshold_amount'], detail['discount_value']))
+
+        connection.commit()
+
+        return jsonify({'message': '活动创建成功', 'id': activity_id}), 201
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新活动
+@app.route('/api/activities/<int:id>', methods=['PUT'])
+def update_activity(id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        template_id = data.get('template_id')
+        start_time = data.get('start_time')
+        end_time = data.get('end_time')
+        status = data.get('status', 0)
+        details = data.get('details', [])
+
+        if not name or not template_id or not start_time or not end_time:
+            return jsonify({'error': '活动名称、关联模板、开始时间和结束时间不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 更新活动
+        cursor.execute("""
+            UPDATE activity
+            SET name = %s, template_id = %s, start_time = %s, end_time = %s, status = %s
+            WHERE id = %s
+        """, (name, template_id, start_time, end_time, status, id))
+
+        # 删除原有明细
+        cursor.execute("DELETE FROM activity_detail WHERE activity_id = %s", (id,))
+
+        # 插入新的明细
+        for detail in details:
+            cursor.execute("""
+                INSERT INTO activity_detail (activity_id, threshold_amount, discount_value)
+                VALUES (%s, %s, %s)
+            """, (id, detail['threshold_amount'], detail['discount_value']))
+
+        connection.commit()
+
+        return jsonify({'message': '活动更新成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：删除活动
+@app.route('/api/activities/<int:id>', methods=['DELETE'])
+def delete_activity(id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 删除活动（明细会级联删除）
+        cursor.execute("DELETE FROM activity WHERE id = %s", (id,))
+
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '活动不存在'}), 404
+
+        return jsonify({'message': '活动删除成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新活动状态
+@app.route('/api/activities/<int:id>/status', methods=['PUT'])
+def update_activity_status(id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        status = data.get('status')
+
+        if status is None:
+            return jsonify({'error': '状态不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        cursor.execute("UPDATE activity SET status = %s WHERE id = %s", (status, id))
+
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '活动不存在'}), 404
+
+        return jsonify({'message': '状态更新成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：获取启用状态的活动模板列表
+@app.route('/api/activity-templates/active', methods=['GET'])
+def get_active_activity_templates():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        cursor.execute("SELECT * FROM activity_template WHERE status = 0 ORDER BY id DESC")
+        templates = cursor.fetchall()
+
+        return jsonify({'templates': templates}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
