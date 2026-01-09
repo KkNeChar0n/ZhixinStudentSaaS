@@ -2123,8 +2123,8 @@
                             <input type="text" :value="addActivityData.template_select_type == 1 ? '按类型' : (addActivityData.template_select_type == 2 ? '按商品' : '')" readonly class="readonly-input">
                         </div>
                     </div>
-                    <!-- 模板包含的商品展示（选择方式为商品时显示） -->
-                    <div class="form-group" v-if="addActivityData.template_id && addActivityData.template_select_type == 2 && activityTemplateGoods.length > 0">
+                    <!-- 模板包含的商品展示（选择方式为按类型或按商品时显示） -->
+                    <div class="form-group" v-if="addActivityData.template_id && (addActivityData.template_select_type == 1 || addActivityData.template_select_type == 2) && activityTemplateGoods.length > 0">
                         <label>模板包含商品（共 {{ activityTemplateGoods.length }} 条）</label>
                         <table class="included-goods-table">
                             <thead>
