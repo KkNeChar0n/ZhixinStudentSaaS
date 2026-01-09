@@ -600,6 +600,277 @@
                         </div>
                     </div>
 
+                    <!-- 合同管理页面 -->
+                    <div v-if="activeMenu === 'contract_management'">
+                        <div class="page-header">
+                            <h1>合同管理</h1>
+                            <button class="add-btn" @click="openAddContractDrawer">新增合同</button>
+                        </div>
+
+                        <!-- 筛选区 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="contractIdFilter">ID</label>
+                                    <input type="text" id="contractIdFilter" v-model="contractFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="contractUidFilter">UID</label>
+                                    <input type="text" id="contractUidFilter" v-model="contractFilters.student_id" placeholder="请输入UID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="contractStudentNameFilter">学生姓名</label>
+                                    <input type="text" id="contractStudentNameFilter" v-model="contractFilters.student_name" placeholder="请输入学生姓名">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="contractTypeFilter">合同类型</label>
+                                    <select id="contractTypeFilter" v-model="contractFilters.type">
+                                        <option value="">全部</option>
+                                        <option value="0">首报</option>
+                                        <option value="1">续报</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="contractStatusFilter">合同状态</label>
+                                    <select id="contractStatusFilter" v-model="contractFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">待审核</option>
+                                        <option value="50">已通过</option>
+                                        <option value="98">已作废</option>
+                                        <option value="99">协议中止</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="contractPaymentStatusFilter">付款状态</label>
+                                    <select id="contractPaymentStatusFilter" v-model="contractFilters.payment_status">
+                                        <option value="">全部</option>
+                                        <option value="0">未付款</option>
+                                        <option value="10">部分付款</option>
+                                        <option value="30">已付款</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchContracts">搜索</button>
+                                <button class="reset-btn" @click="resetContractFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <!-- 列表区 -->
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>UID</th>
+                                    <th>学生姓名</th>
+                                    <th>合同类型</th>
+                                    <th>签署形式</th>
+                                    <th>合同名称</th>
+                                    <th>合同金额</th>
+                                    <th>发起方</th>
+                                    <th>签署方</th>
+                                    <th>发起人</th>
+                                    <th>合同状态</th>
+                                    <th>付款状态</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="contract in paginatedContracts" :key="contract.id">
+                                    <td>{{ contract.id }}</td>
+                                    <td>{{ contract.student_id }}</td>
+                                    <td>{{ contract.student_name }}</td>
+                                    <td>{{ getContractTypeText(contract.type) }}</td>
+                                    <td>{{ getSignatureFormText(contract.signature_form) }}</td>
+                                    <td>{{ contract.name }}</td>
+                                    <td>{{ contract.contract_amount }}</td>
+                                    <td>{{ contract.initiating_party || '-' }}</td>
+                                    <td>{{ contract.signatory }}</td>
+                                    <td>{{ contract.initiator }}</td>
+                                    <td>{{ getContractStatusText(contract.status) }}</td>
+                                    <td>{{ getPaymentStatusText(contract.payment_status) }}</td>
+                                    <td>{{ formatDateTime(contract.create_time) }}</td>
+                                    <td class="action-column">
+                                        <button
+                                            class="edit-btn"
+                                            @click="openContractDetailDrawer(contract)"
+                                            :disabled="contract.signature_form == 0">
+                                            详情
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- 合同分页控件 -->
+                        <div class="pagination" v-if="contractTotalPages > 1">
+                            <button class="page-btn" @click="changeContractPage(1)" :disabled="contractCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeContractPage(contractCurrentPage - 1)" :disabled="contractCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ contractCurrentPage }} / {{ contractTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeContractPage(contractCurrentPage + 1)" :disabled="contractCurrentPage === contractTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeContractPage(contractTotalPages)" :disabled="contractCurrentPage === contractTotalPages">末页</button>
+                        </div>
+                    </div>
+
+                    <!-- 收款管理页面 -->
+                    <div v-if="activeMenu === 'payment_collection'">
+                        <div class="page-header">
+                            <h1>收款管理</h1>
+                            <button class="add-btn" @click="openAddPaymentCollectionModal">新增收款</button>
+                        </div>
+
+                        <!-- 一级Tab -->
+                        <div class="tab-container">
+                            <div class="tab-nav">
+                                <button
+                                    class="tab-btn"
+                                    :class="{ active: paymentCollectionTab === 'regular' }"
+                                    @click="paymentCollectionTab = 'regular'">
+                                    常规收款
+                                </button>
+                                <button
+                                    class="tab-btn"
+                                    :class="{ active: paymentCollectionTab === 'taobao' }"
+                                    @click="paymentCollectionTab = 'taobao'">
+                                    淘宝收款
+                                </button>
+                            </div>
+
+                            <!-- 常规收款内容 -->
+                            <div v-if="paymentCollectionTab === 'regular'" class="tab-content">
+                                <!-- 二级Tab -->
+                                <div class="sub-tab-nav">
+                                    <button
+                                        class="sub-tab-btn"
+                                        :class="{ active: paymentCollectionSubTab === 'received' }"
+                                        @click="paymentCollectionSubTab = 'received'; fetchPaymentCollections()">
+                                        已收款
+                                    </button>
+                                    <button
+                                        class="sub-tab-btn"
+                                        :class="{ active: paymentCollectionSubTab === 'pending' }"
+                                        @click="paymentCollectionSubTab = 'pending'">
+                                        待认领
+                                    </button>
+                                </div>
+
+                                <!-- 已收款内容 -->
+                                <div v-if="paymentCollectionSubTab === 'received'">
+                                    <!-- 筛选区 -->
+                                    <div class="filter-form">
+                                        <div class="filter-row">
+                                            <div class="filter-item">
+                                                <label for="pcIdFilter">ID</label>
+                                                <input type="text" id="pcIdFilter" v-model="paymentCollectionFilters.id" placeholder="请输入ID">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="pcUidFilter">UID</label>
+                                                <input type="text" id="pcUidFilter" v-model="paymentCollectionFilters.student_id" placeholder="请输入UID">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="pcPayerFilter">付款人</label>
+                                                <input type="text" id="pcPayerFilter" v-model="paymentCollectionFilters.payer" placeholder="请输入付款人">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="pcMethodFilter">付款方式</label>
+                                                <select id="pcMethodFilter" v-model="paymentCollectionFilters.payment_method">
+                                                    <option value="">全部</option>
+                                                    <option value="0">微信</option>
+                                                    <option value="1">支付宝</option>
+                                                    <option value="2">优利支付</option>
+                                                    <option value="3">零零购支付</option>
+                                                    <option value="9">对公转账</option>
+                                                </select>
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="pcDateFilter">付款时间</label>
+                                                <input type="date" id="pcDateFilter" v-model="paymentCollectionFilters.trading_date">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="pcStatusFilter">状态</label>
+                                                <select id="pcStatusFilter" v-model="paymentCollectionFilters.status">
+                                                    <option value="">全部</option>
+                                                    <option value="0">待支付</option>
+                                                    <option value="10">未核验</option>
+                                                    <option value="20">已支付</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="filter-actions">
+                                            <button class="search-btn" @click="searchPaymentCollections">搜索</button>
+                                            <button class="reset-btn" @click="resetPaymentCollectionFilters">重置</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- 列表区 -->
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>付款场景</th>
+                                                <th>付款方式</th>
+                                                <th>付款金额</th>
+                                                <th>付款方</th>
+                                                <th>收款主体</th>
+                                                <th>交易时间</th>
+                                                <th>到账时间</th>
+                                                <th>状态</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="pc in paginatedPaymentCollections" :key="pc.id">
+                                                <td>{{ pc.id }}</td>
+                                                <td>{{ getPaymentScenarioText(pc.payment_scenario) }}</td>
+                                                <td>{{ getPaymentMethodText(pc.payment_method) }}</td>
+                                                <td>{{ pc.payment_amount }}</td>
+                                                <td>{{ pc.payer || '-' }}</td>
+                                                <td>{{ getPayeeEntityText(pc.payee_entity) }}</td>
+                                                <td>{{ formatDateTime(pc.trading_hours) }}</td>
+                                                <td>{{ pc.arrival_time ? formatDateTime(pc.arrival_time) : '-' }}</td>
+                                                <td>{{ getCollectionStatusText(pc.status) }}</td>
+                                                <td class="action-column">
+                                                    <button
+                                                        v-if="pc.status === 10"
+                                                        class="edit-btn"
+                                                        @click="confirmPaymentCollection(pc)">
+                                                        确认到账
+                                                    </button>
+                                                    <button
+                                                        v-if="pc.status === 10"
+                                                        class="delete-btn"
+                                                        @click="confirmDeletePaymentCollection(pc)">
+                                                        删除
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                    <!-- 分页控件 -->
+                                    <div class="pagination" v-if="paymentCollectionTotalPages > 1">
+                                        <button class="page-btn" @click="changePaymentCollectionPage(1)" :disabled="paymentCollectionCurrentPage === 1">首页</button>
+                                        <button class="page-btn" @click="changePaymentCollectionPage(paymentCollectionCurrentPage - 1)" :disabled="paymentCollectionCurrentPage === 1">上一页</button>
+                                        <span class="page-info">第 {{ paymentCollectionCurrentPage }} / {{ paymentCollectionTotalPages }} 页</span>
+                                        <button class="page-btn" @click="changePaymentCollectionPage(paymentCollectionCurrentPage + 1)" :disabled="paymentCollectionCurrentPage === paymentCollectionTotalPages">下一页</button>
+                                        <button class="page-btn" @click="changePaymentCollectionPage(paymentCollectionTotalPages)" :disabled="paymentCollectionCurrentPage === paymentCollectionTotalPages">末页</button>
+                                    </div>
+                                </div>
+
+                                <!-- 待认领内容 -->
+                                <div v-if="paymentCollectionSubTab === 'pending'" class="empty-content">
+                                    <p>待认领功能开发中...</p>
+                                </div>
+                            </div>
+
+                            <!-- 淘宝收款内容 -->
+                            <div v-if="paymentCollectionTab === 'taobao'" class="tab-content empty-content">
+                                <p>淘宝收款功能开发中...</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- 属性管理页面 -->
                     <div v-if="activeMenu === 'attributes'">
                         <div class="page-header">
@@ -1127,6 +1398,28 @@
                             <label>参加活动</label>
                             <input type="text" :value="addOrderData.participating_activities || '无'" readonly class="readonly-input" :style="{color: addOrderData.participating_activities ? '#333' : '#999'}">
                         </div>
+                    </div>
+                    <!-- 活动模板包含的商品展示 -->
+                    <div class="form-group" v-if="orderActivityTemplateGoods.length > 0">
+                        <label>活动模板包含商品（共 {{ orderActivityTemplateGoods.length }} 条）</label>
+                        <table class="included-goods-table">
+                            <thead>
+                                <tr>
+                                    <th>商品ID</th>
+                                    <th>商品名称</th>
+                                    <th>标准售价</th>
+                                    <th>所属活动</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="goods in orderActivityTemplateGoods" :key="goods.id">
+                                    <td>{{ goods.id }}</td>
+                                    <td>{{ goods.name }}</td>
+                                    <td>{{ goods.price }}</td>
+                                    <td>{{ goods.activities.join('，') }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                     <div class="form-group-row">
                         <div class="form-group-col">
@@ -2446,6 +2739,353 @@
                 </div>
                 <div class="drawer-footer">
                     <button class="cancel-btn" @click="closeActivityDetailDrawer">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增合同抽屉 -->
+        <div class="drawer-overlay" v-if="showAddContractDrawer" @click="closeAddContractDrawer">
+            <div class="drawer" @click.stop>
+                <div class="drawer-header">
+                    <h3>新增合同</h3>
+                    <button class="close-btn" @click="closeAddContractDrawer">&times;</button>
+                </div>
+                <div class="drawer-body">
+                    <div class="form-group-row">
+                        <div class="form-group-col">
+                            <label for="addContractStudent">学生姓名 <span class="required">*</span></label>
+                            <select id="addContractStudent" v-model="addContractData.student_id" @change="onContractStudentChange" class="styled-select" required>
+                                <option value="">请选择学生</option>
+                                <option v-for="student in activeStudentsForOrder" :key="student.id" :value="student.id">{{ student.student_name }}</option>
+                            </select>
+                        </div>
+                        <div class="form-group-col">
+                            <label>UID</label>
+                            <input type="text" :value="addContractData.student_id || '选择学生后自动显示'" readonly class="readonly-input">
+                        </div>
+                    </div>
+                    <div class="form-group-row">
+                        <div class="form-group-col">
+                            <label for="addContractType">合同类型 <span class="required">*</span></label>
+                            <select id="addContractType" v-model="addContractData.type" @change="updateContractName" class="styled-select" required>
+                                <option value="">请选择合同类型</option>
+                                <option value="0">首报</option>
+                                <option value="1">续报</option>
+                            </select>
+                        </div>
+                        <div class="form-group-col">
+                            <label for="addContractSignatureForm">签署形式 <span class="required">*</span></label>
+                            <select id="addContractSignatureForm" v-model="addContractData.signature_form" @change="updateContractName" class="styled-select" required>
+                                <option value="">请选择签署形式</option>
+                                <option value="0">线上签署</option>
+                                <option value="1">线下签署</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="addContractName">合同名称 <span class="required">*</span></label>
+                        <input
+                            type="text"
+                            id="addContractName"
+                            v-model="addContractData.name"
+                            :readonly="addContractData.signature_form == 1"
+                            :class="{'readonly-input': addContractData.signature_form == 1}"
+                            placeholder="请输入合同名称"
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addContractAmount">合同金额 <span class="required">*</span></label>
+                        <input
+                            type="number"
+                            id="addContractAmount"
+                            v-model="addContractData.contract_amount"
+                            step="0.01"
+                            min="0"
+                            placeholder="请输入合同金额"
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addContractSignatory">签署方 <span class="required">*</span></label>
+                        <input
+                            type="text"
+                            id="addContractSignatory"
+                            v-model="addContractData.signatory"
+                            :readonly="addContractData.signature_form == 0"
+                            :class="{'readonly-input': addContractData.signature_form == 0}"
+                            placeholder="请输入签署方"
+                            required>
+                    </div>
+                </div>
+                <div class="drawer-footer">
+                    <button class="cancel-btn" @click="closeAddContractDrawer">关闭</button>
+                    <button class="save-btn" @click="confirmSubmitContract">提交</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 合同详情抽屉 -->
+        <div class="drawer-overlay" v-if="showContractDetailDrawer" @click="closeContractDetailDrawer">
+            <div class="drawer" @click.stop>
+                <div class="drawer-header">
+                    <h3>合同详情</h3>
+                    <button class="close-btn" @click="closeContractDetailDrawer">&times;</button>
+                </div>
+                <div class="drawer-body">
+                    <div class="form-group-row">
+                        <div class="form-group-col">
+                            <label>学生姓名</label>
+                            <input type="text" :value="contractDetailData.student_name" readonly class="readonly-input">
+                        </div>
+                        <div class="form-group-col">
+                            <label>UID</label>
+                            <input type="text" :value="contractDetailData.student_id" readonly class="readonly-input">
+                        </div>
+                    </div>
+                    <div class="form-group-row">
+                        <div class="form-group-col">
+                            <label>合同类型</label>
+                            <input type="text" :value="getContractTypeText(contractDetailData.type)" readonly class="readonly-input">
+                        </div>
+                        <div class="form-group-col">
+                            <label>签署形式</label>
+                            <input type="text" :value="getSignatureFormText(contractDetailData.signature_form)" readonly class="readonly-input">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>合同名称</label>
+                        <input type="text" :value="contractDetailData.name" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>合同金额</label>
+                        <input type="text" :value="contractDetailData.contract_amount" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>签署方</label>
+                        <input type="text" :value="contractDetailData.signatory" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group-row">
+                        <div class="form-group-col">
+                            <label>发起方</label>
+                            <input type="text" :value="contractDetailData.initiating_party || '-'" readonly class="readonly-input">
+                        </div>
+                        <div class="form-group-col">
+                            <label>发起人</label>
+                            <input type="text" :value="contractDetailData.initiator" readonly class="readonly-input">
+                        </div>
+                    </div>
+                    <div class="form-group-row">
+                        <div class="form-group-col">
+                            <label>合同状态</label>
+                            <input type="text" :value="getContractStatusText(contractDetailData.status)" readonly class="readonly-input">
+                        </div>
+                        <div class="form-group-col">
+                            <label>付款状态</label>
+                            <input type="text" :value="getPaymentStatusText(contractDetailData.payment_status)" readonly class="readonly-input">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>创建时间</label>
+                        <input type="text" :value="formatDateTime(contractDetailData.create_time)" readonly class="readonly-input">
+                    </div>
+                </div>
+                <div class="drawer-footer">
+                    <!-- 线下签署 + 已通过状态：显示中止合作按钮 -->
+                    <button
+                        v-if="contractDetailData.signature_form == 1 && contractDetailData.status == 50"
+                        class="delete-btn"
+                        @click="openTerminateContractModal">
+                        中止合作
+                    </button>
+                    <!-- 待审核状态：显示撤销按钮 -->
+                    <button
+                        v-if="contractDetailData.status == 0"
+                        class="delete-btn"
+                        @click="confirmRevokeContract">
+                        撤销
+                    </button>
+                    <button class="cancel-btn" @click="closeContractDetailDrawer">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 提交合同确认弹窗 -->
+        <div class="modal-overlay" v-if="showSubmitContractConfirm">
+            <div class="modal confirm-modal">
+                <div class="modal-header">
+                    <h3>提交确认</h3>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认提交审核？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showSubmitContractConfirm = false">取消</button>
+                    <button class="save-btn" @click="submitContract">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 撤销合同确认弹窗 -->
+        <div class="modal-overlay" v-if="showRevokeContractConfirm">
+            <div class="modal confirm-modal">
+                <div class="modal-header">
+                    <h3>撤销确认</h3>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认撤销？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showRevokeContractConfirm = false">取消</button>
+                    <button class="delete-btn" @click="revokeContract">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 中止合作弹窗 -->
+        <div class="modal-overlay" v-if="showTerminateContractModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>中止合作</h3>
+                    <button class="close-btn" @click="closeTerminateContractModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="terminationAgreement">中止协议 <span class="required">*</span></label>
+                        <input
+                            type="file"
+                            id="terminationAgreement"
+                            accept=".pdf"
+                            @change="handleTerminationFileUpload"
+                            required>
+                        <p style="color: #999; font-size: 12px; margin-top: 5px;">仅支持上传PDF文件</p>
+                        <p v-if="terminationAgreementFile" style="color: #27ae60; font-size: 12px; margin-top: 5px;">
+                            已选择文件：{{ terminationAgreementFile.name }}
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeTerminateContractModal">取消</button>
+                    <button class="save-btn" @click="terminateContract">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增收款弹窗 -->
+        <div class="modal-overlay" v-if="showAddPaymentCollectionModal">
+            <div class="modal" style="width: 500px;">
+                <div class="modal-header">
+                    <h3>新增收款</h3>
+                    <button class="close-btn" @click="closeAddPaymentCollectionModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>学生姓名 <span class="required">*</span></label>
+                        <select v-model="paymentCollectionForm.student_id" @change="onPaymentStudentChange">
+                            <option value="">请选择学生</option>
+                            <option v-for="student in activeStudents" :key="student.id" :value="student.id">
+                                {{ student.student_name }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>UID</label>
+                        <input type="text" :value="paymentCollectionForm.student_id" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>订单ID <span class="required">*</span></label>
+                        <select v-model="paymentCollectionForm.order_id" @change="onPaymentOrderChange">
+                            <option value="">请选择订单</option>
+                            <option v-for="order in studentUnpaidOrders" :key="order.id" :value="order.id">
+                                {{ order.id }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>待支付金额</label>
+                        <input type="text" :value="paymentCollectionForm.pending_amount" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>付款场景 <span class="required">*</span></label>
+                        <select v-model="paymentCollectionForm.payment_scenario" @change="onPaymentScenarioChange">
+                            <option value="">请选择</option>
+                            <option value="0" v-if="canSelectOnlinePayment">线上</option>
+                            <option value="1">线下</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>付款方式 <span class="required">*</span></label>
+                        <select v-model="paymentCollectionForm.payment_method">
+                            <option value="">请选择</option>
+                            <template v-if="paymentCollectionForm.payment_scenario === '0'">
+                                <option value="0">微信</option>
+                                <option value="1">支付宝</option>
+                                <option value="3">零零购支付</option>
+                                <option value="2">优利支付</option>
+                            </template>
+                            <template v-if="paymentCollectionForm.payment_scenario === '1'">
+                                <option value="0">微信</option>
+                                <option value="1">支付宝</option>
+                                <option value="9">对公转账</option>
+                                <option value="3">零零购支付</option>
+                                <option value="2">优利支付</option>
+                            </template>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>付款金额 <span class="required">*</span></label>
+                        <input type="number" step="0.01" v-model="paymentCollectionForm.payment_amount" placeholder="请输入付款金额">
+                    </div>
+                    <div class="form-group">
+                        <label>付款人</label>
+                        <input type="text" v-model="paymentCollectionForm.payer" placeholder="请输入付款人">
+                    </div>
+                    <div class="form-group">
+                        <label>收款主体 <span class="required">*</span></label>
+                        <select v-model="paymentCollectionForm.payee_entity">
+                            <option value="">请选择</option>
+                            <option value="0">北京</option>
+                            <option value="1">西安</option>
+                        </select>
+                    </div>
+                    <div class="form-group" v-if="paymentCollectionForm.payment_scenario === '1'">
+                        <label>交易时间</label>
+                        <input type="date" v-model="paymentCollectionForm.trading_hours">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAddPaymentCollectionModal">取消</button>
+                    <button class="save-btn" @click="submitPaymentCollection">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 确认到账弹窗 -->
+        <div class="modal-overlay" v-if="showConfirmPaymentModal">
+            <div class="modal confirm-modal">
+                <div class="modal-header">
+                    <h3>确认到账</h3>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认到账？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showConfirmPaymentModal = false">取消</button>
+                    <button class="save-btn" @click="doConfirmPayment">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 删除收款确认弹窗 -->
+        <div class="modal-overlay" v-if="showDeletePaymentModal">
+            <div class="modal confirm-modal">
+                <div class="modal-header">
+                    <h3>删除确认</h3>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认删除？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showDeletePaymentModal = false">取消</button>
+                    <button class="delete-btn" @click="doDeletePayment">确认</button>
                 </div>
             </div>
         </div>

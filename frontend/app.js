@@ -236,6 +236,79 @@ createApp({
                 goods: []
             },
             activityDetailGoodsCurrentPage: 1,
+            // 合同管理数据
+            contracts: [],
+            filteredContracts: [],
+            contractFilters: {
+                id: '',
+                student_id: '',
+                student_name: '',
+                type: '',
+                status: '',
+                payment_status: ''
+            },
+            contractCurrentPage: 1,
+            showAddContractDrawer: false,
+            showContractDetailDrawer: false,
+            showSubmitContractConfirm: false,
+            showRevokeContractConfirm: false,
+            showTerminateContractModal: false,
+            addContractData: {
+                student_id: '',
+                student_name: '',
+                type: '',
+                signature_form: '',
+                name: '',
+                contract_amount: '',
+                signatory: ''
+            },
+            contractDetailData: {
+                id: '',
+                student_id: '',
+                student_name: '',
+                type: '',
+                signature_form: '',
+                name: '',
+                contract_amount: '',
+                signatory: '',
+                initiating_party: '',
+                initiator: '',
+                status: '',
+                payment_status: '',
+                create_time: ''
+            },
+            terminationAgreementFile: null,
+            // 收款管理数据
+            paymentCollections: [],
+            filteredPaymentCollections: [],
+            paymentCollectionTab: 'regular',
+            paymentCollectionSubTab: 'received',
+            paymentCollectionFilters: {
+                id: '',
+                student_id: '',
+                payer: '',
+                payment_method: '',
+                trading_date: '',
+                status: ''
+            },
+            paymentCollectionCurrentPage: 1,
+            showAddPaymentCollectionModal: false,
+            showConfirmPaymentModal: false,
+            showDeletePaymentModal: false,
+            currentPaymentCollection: null,
+            studentUnpaidOrders: [],
+            selectedOrderInfo: null,
+            paymentCollectionForm: {
+                student_id: '',
+                order_id: '',
+                pending_amount: '',
+                payment_scenario: '',
+                payment_method: '',
+                payment_amount: '',
+                payer: '',
+                payee_entity: '',
+                trading_hours: ''
+            },
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -316,6 +389,7 @@ createApp({
             },
             // 新增：订单活动相关数据
             orderActivities: [],          // 可用活动列表
+            orderActivityTemplateGoods: [], // 订单活动模板包含的商品列表
             childDiscounts: {},           // 子订单优惠分摊 {goods_id: amount}
             editChildDiscounts: {},       // 编辑订单的子订单优惠分摊
             // 新增属性数据
@@ -601,6 +675,35 @@ createApp({
         activityTotalPages() {
             return Math.ceil(this.filteredActivities.length / this.pageSize);
         },
+        // 合同分页数据
+        paginatedContracts() {
+            const start = (this.contractCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredContracts.slice(start, end);
+        },
+        contractTotalPages() {
+            return Math.ceil(this.filteredContracts.length / this.pageSize);
+        },
+        // 收款分页数据
+        paginatedPaymentCollections() {
+            const start = (this.paymentCollectionCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredPaymentCollections.slice(start, end);
+        },
+        paymentCollectionTotalPages() {
+            return Math.ceil(this.filteredPaymentCollections.length / this.pageSize);
+        },
+        // 计算是否可以选择线上付款（预计付款日期未过）
+        canSelectOnlinePayment() {
+            if (!this.selectedOrderInfo || !this.selectedOrderInfo.expected_payment_time) {
+                return true;
+            }
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const expectedDate = new Date(this.selectedOrderInfo.expected_payment_time);
+            expectedDate.setHours(0, 0, 0, 0);
+            return expectedDate >= today;
+        },
         // 过滤掉已选择的商品（用于新增活动模板）
         availableGoodsForTemplate() {
             const selectedIds = this.selectedTemplateGoods.map(g => g.goods_id);
@@ -756,6 +859,10 @@ createApp({
             } else if (menu === 'activity_management') {
                 this.fetchActivities();
                 this.fetchActivityTemplates();
+            } else if (menu === 'contract_management') {
+                this.fetchContracts();
+            } else if (menu === 'payment_collection') {
+                this.fetchPaymentCollections();
             }
         },
         
@@ -1344,6 +1451,7 @@ createApp({
                 discount_amount: 0
             };
             this.selectedOrderGoods = [];
+            this.orderActivityTemplateGoods = [];
             this.childDiscounts = {};
         },
 
@@ -1357,6 +1465,7 @@ createApp({
                 this.addOrderData.activity_ids = [];
                 this.addOrderData.discount_amount = 0;
                 this.orderActivities = [];
+                this.orderActivityTemplateGoods = [];
                 this.childDiscounts = {};
                 return;
             }
@@ -1377,6 +1486,7 @@ createApp({
                     this.addOrderData.participating_activities = '';
                     this.addOrderData.activity_ids = [];
                     this.orderActivities = [];
+                    this.orderActivityTemplateGoods = [];
                     return;
                 }
 
@@ -1384,6 +1494,9 @@ createApp({
                 this.orderActivities = activities;
                 this.addOrderData.activity_ids = activities.map(a => a.id);
                 this.addOrderData.participating_activities = activities.map(a => a.name).join('，');
+
+                // 加载活动模板包含的商品
+                await this.loadOrderActivityTemplateGoods(activities);
 
                 // 如果已经选择了商品，自动计算优惠
                 if (this.selectedOrderGoods.length > 0) {
@@ -3773,6 +3886,63 @@ createApp({
             }
         },
 
+        // 加载订单活动模板包含的商品
+        async loadOrderActivityTemplateGoods(activities) {
+            try {
+                let allGoods = [];
+                const goodsMap = new Map(); // 用于去重
+
+                for (const activity of activities) {
+                    const templateId = activity.template_id;
+                    if (!templateId) continue;
+
+                    const response = await axios.get(`/api/activity-templates/${templateId}`, { withCredentials: true });
+                    const template = response.data.template;
+                    let goods = [];
+
+                    if (template.select_type == 1) {
+                        // 按类型选择，加载所有关联类型下的商品
+                        const classifyList = template.classify_list || [];
+                        for (const classify of classifyList) {
+                            const goodsResponse = await axios.get(`/api/goods?classifyid=${classify.classify_id}&status=0`, { withCredentials: true });
+                            goods = goods.concat(goodsResponse.data.goods || []);
+                        }
+                    } else {
+                        // 按商品选择，使用模板关联的商品
+                        const goodsList = template.goods_list || [];
+                        goods = goodsList.map(g => ({
+                            id: g.goods_id,
+                            name: g.goods_name,
+                            price: g.price,
+                            brand_name: g.brand_name,
+                            classify_name: g.classify_name
+                        }));
+                    }
+
+                    // 添加活动名称到商品信息中，并去重
+                    goods.forEach(g => {
+                        if (!goodsMap.has(g.id)) {
+                            goodsMap.set(g.id, {
+                                ...g,
+                                activities: [activity.name]
+                            });
+                        } else {
+                            const existing = goodsMap.get(g.id);
+                            if (!existing.activities.includes(activity.name)) {
+                                existing.activities.push(activity.name);
+                            }
+                        }
+                    });
+                }
+
+                // 转换Map为数组
+                this.orderActivityTemplateGoods = Array.from(goodsMap.values());
+            } catch (err) {
+                console.error('获取订单活动模板商品失败:', err);
+                this.orderActivityTemplateGoods = [];
+            }
+        },
+
         // 添加活动明细规则
         addActivityDetail() {
             this.addActivityData.details.push({ threshold_amount: 0, discount_value: 0 });
@@ -4009,6 +4179,530 @@ createApp({
             } catch (err) {
                 console.error('删除活动失败:', err);
                 alert(err.response?.data?.error || '删除活动失败');
+            }
+        },
+
+        // ==================== 合同管理方法 ====================
+
+        // 获取合同列表
+        async fetchContracts() {
+            try {
+                const response = await axios.get('/api/contracts', { withCredentials: true });
+                this.contracts = response.data.contracts || [];
+                this.filteredContracts = [...this.contracts];
+            } catch (err) {
+                console.error('获取合同列表失败:', err);
+            }
+        },
+
+        // 搜索合同
+        searchContracts() {
+            this.filteredContracts = this.contracts.filter(contract => {
+                const matchId = !this.contractFilters.id || contract.id == this.contractFilters.id;
+                const matchStudentId = !this.contractFilters.student_id || contract.student_id == this.contractFilters.student_id;
+                const matchStudentName = !this.contractFilters.student_name || (contract.student_name && contract.student_name.includes(this.contractFilters.student_name));
+                const matchType = this.contractFilters.type === '' || contract.type == this.contractFilters.type;
+                const matchStatus = this.contractFilters.status === '' || contract.status == this.contractFilters.status;
+                const matchPaymentStatus = this.contractFilters.payment_status === '' || contract.payment_status == this.contractFilters.payment_status;
+
+                return matchId && matchStudentId && matchStudentName && matchType && matchStatus && matchPaymentStatus;
+            });
+            this.contractCurrentPage = 1;
+        },
+
+        // 重置合同筛选
+        resetContractFilters() {
+            this.contractFilters = {
+                id: '',
+                student_id: '',
+                student_name: '',
+                type: '',
+                status: '',
+                payment_status: ''
+            };
+            this.filteredContracts = [...this.contracts];
+            this.contractCurrentPage = 1;
+        },
+
+        // 合同分页切换
+        changeContractPage(page) {
+            if (page >= 1 && page <= this.contractTotalPages) {
+                this.contractCurrentPage = page;
+            }
+        },
+
+        // 获取合同类型文本
+        getContractTypeText(type) {
+            const typeMap = {
+                0: '首报',
+                1: '续报'
+            };
+            return typeMap[type] || '';
+        },
+
+        // 获取签署形式文本
+        getSignatureFormText(form) {
+            const formMap = {
+                0: '线上签署',
+                1: '线下签署'
+            };
+            return formMap[form] || '';
+        },
+
+        // 获取合同状态文本
+        getContractStatusText(status) {
+            const statusMap = {
+                0: '待审核',
+                50: '已通过',
+                98: '已作废',
+                99: '协议中止'
+            };
+            return statusMap[status] || '';
+        },
+
+        // 获取付款状态文本
+        getPaymentStatusText(status) {
+            const statusMap = {
+                0: '未付款',
+                10: '部分付款',
+                30: '已付款'
+            };
+            return statusMap[status] || '';
+        },
+
+        // 打开新增合同抽屉
+        async openAddContractDrawer() {
+            this.addContractData = {
+                student_id: '',
+                student_name: '',
+                type: '',
+                signature_form: '',
+                name: '',
+                contract_amount: '',
+                signatory: ''
+            };
+
+            // 获取启用的学生列表
+            try {
+                const response = await axios.get('/api/students/active', { withCredentials: true });
+                this.activeStudentsForOrder = response.data.students;
+            } catch (err) {
+                console.error('获取学生列表失败:', err);
+            }
+
+            this.showAddContractDrawer = true;
+        },
+
+        // 关闭新增合同抽屉
+        closeAddContractDrawer() {
+            this.showAddContractDrawer = false;
+            this.addContractData = {
+                student_id: '',
+                student_name: '',
+                type: '',
+                signature_form: '',
+                name: '',
+                contract_amount: '',
+                signatory: ''
+            };
+        },
+
+        // 学生选择变化（合同）
+        onContractStudentChange() {
+            const student = this.activeStudentsForOrder.find(s => s.id === parseInt(this.addContractData.student_id));
+            if (student) {
+                this.addContractData.student_name = student.student_name;
+                this.updateContractName();
+            }
+        },
+
+        // 更新合同名称
+        updateContractName() {
+            // 只有线下签署时才自动生成合同名称
+            if (this.addContractData.signature_form == 1 && this.addContractData.student_id && this.addContractData.type !== '') {
+                const typeText = this.addContractData.type == 0 ? '首报' : '续报';
+                this.addContractData.name = `${this.addContractData.student_id}${this.addContractData.student_name}${typeText}合同`;
+            } else if (this.addContractData.signature_form == 0) {
+                // 线上签署时清空合同名称
+                this.addContractData.name = '';
+            }
+        },
+
+        // 确认提交合同
+        confirmSubmitContract() {
+            if (!this.addContractData.student_id || this.addContractData.type === '' ||
+                this.addContractData.signature_form === '' || !this.addContractData.name ||
+                !this.addContractData.contract_amount) {
+                alert('请填写所有必填项');
+                return;
+            }
+
+            // 线下签署需要填写签署方
+            if (this.addContractData.signature_form == 1 && !this.addContractData.signatory) {
+                alert('请填写签署方');
+                return;
+            }
+
+            this.showSubmitContractConfirm = true;
+        },
+
+        // 提交合同
+        async submitContract() {
+            try {
+                await axios.post('/api/contracts', this.addContractData, { withCredentials: true });
+                alert('合同提交成功');
+                this.showSubmitContractConfirm = false;
+                this.closeAddContractDrawer();
+                await this.fetchContracts();
+            } catch (err) {
+                console.error('提交合同失败:', err);
+                alert(err.response?.data?.error || '提交合同失败');
+            }
+        },
+
+        // 打开合同详情抽屉
+        async openContractDetailDrawer(contract) {
+            try {
+                const response = await axios.get(`/api/contracts/${contract.id}`, { withCredentials: true });
+                this.contractDetailData = response.data.contract;
+                this.showContractDetailDrawer = true;
+            } catch (err) {
+                console.error('获取合同详情失败:', err);
+                alert('获取合同详情失败');
+            }
+        },
+
+        // 关闭合同详情抽屉
+        closeContractDetailDrawer() {
+            this.showContractDetailDrawer = false;
+            this.contractDetailData = {
+                id: '',
+                student_id: '',
+                student_name: '',
+                type: '',
+                signature_form: '',
+                name: '',
+                contract_amount: '',
+                signatory: '',
+                initiating_party: '',
+                initiator: '',
+                status: '',
+                payment_status: '',
+                create_time: ''
+            };
+        },
+
+        // 确认撤销合同
+        confirmRevokeContract() {
+            this.showRevokeContractConfirm = true;
+        },
+
+        // 撤销合同
+        async revokeContract() {
+            try {
+                await axios.put(`/api/contracts/${this.contractDetailData.id}/revoke`, {}, { withCredentials: true });
+                alert('合同已撤销');
+                this.showRevokeContractConfirm = false;
+                this.closeContractDetailDrawer();
+                await this.fetchContracts();
+            } catch (err) {
+                console.error('撤销合同失败:', err);
+                alert(err.response?.data?.error || '撤销合同失败');
+            }
+        },
+
+        // 打开中止合作弹窗
+        openTerminateContractModal() {
+            this.terminationAgreementFile = null;
+            this.showTerminateContractModal = true;
+        },
+
+        // 关闭中止合作弹窗
+        closeTerminateContractModal() {
+            this.showTerminateContractModal = false;
+            this.terminationAgreementFile = null;
+        },
+
+        // 处理中止协议文件上传
+        handleTerminationFileUpload(event) {
+            const file = event.target.files[0];
+            if (file && file.type === 'application/pdf') {
+                this.terminationAgreementFile = file;
+            } else {
+                alert('请上传PDF文件');
+                event.target.value = '';
+            }
+        },
+
+        // 中止合作
+        async terminateContract() {
+            if (!this.terminationAgreementFile) {
+                alert('请上传中止协议');
+                return;
+            }
+
+            try {
+                // 这里简化处理，实际应该上传文件到服务器并获取文件路径
+                // 暂时使用文件名作为路径
+                const terminationAgreement = this.terminationAgreementFile.name;
+
+                await axios.put(`/api/contracts/${this.contractDetailData.id}/terminate`, {
+                    termination_agreement: terminationAgreement
+                }, { withCredentials: true });
+
+                alert('合作已中止');
+                this.closeTerminateContractModal();
+                this.closeContractDetailDrawer();
+                await this.fetchContracts();
+            } catch (err) {
+                console.error('中止合作失败:', err);
+                alert(err.response?.data?.error || '中止合作失败');
+            }
+        },
+
+        // ==================== 收款管理方法 ====================
+
+        // 获取收款列表
+        async fetchPaymentCollections() {
+            try {
+                const response = await axios.get('/api/payment-collections');
+                this.paymentCollections = response.data.collections;
+                this.filteredPaymentCollections = this.paymentCollections;
+            } catch (err) {
+                console.error('获取收款数据失败:', err);
+            }
+        },
+
+        // 搜索收款
+        searchPaymentCollections() {
+            this.filteredPaymentCollections = this.paymentCollections.filter(pc => {
+                if (this.paymentCollectionFilters.id && pc.id != this.paymentCollectionFilters.id) {
+                    return false;
+                }
+                if (this.paymentCollectionFilters.student_id && pc.student_id != this.paymentCollectionFilters.student_id) {
+                    return false;
+                }
+                if (this.paymentCollectionFilters.payer && pc.payer !== this.paymentCollectionFilters.payer) {
+                    return false;
+                }
+                if (this.paymentCollectionFilters.payment_method !== '' && pc.payment_method != this.paymentCollectionFilters.payment_method) {
+                    return false;
+                }
+                if (this.paymentCollectionFilters.trading_date) {
+                    const tradingDate = pc.trading_hours ? pc.trading_hours.split('T')[0] : '';
+                    if (tradingDate !== this.paymentCollectionFilters.trading_date) {
+                        return false;
+                    }
+                }
+                if (this.paymentCollectionFilters.status !== '' && pc.status != this.paymentCollectionFilters.status) {
+                    return false;
+                }
+                return true;
+            });
+            this.paymentCollectionCurrentPage = 1;
+        },
+
+        // 重置收款筛选
+        resetPaymentCollectionFilters() {
+            this.paymentCollectionFilters = {
+                id: '',
+                student_id: '',
+                payer: '',
+                payment_method: '',
+                trading_date: '',
+                status: ''
+            };
+            this.filteredPaymentCollections = this.paymentCollections;
+            this.paymentCollectionCurrentPage = 1;
+        },
+
+        // 分页切换
+        changePaymentCollectionPage(page) {
+            this.paymentCollectionCurrentPage = page;
+        },
+
+        // 获取付款场景文本
+        getPaymentScenarioText(scenario) {
+            const map = { 0: '线上', 1: '线下' };
+            return map[scenario] || '-';
+        },
+
+        // 获取付款方式文本
+        getPaymentMethodText(method) {
+            const map = { 0: '微信', 1: '支付宝', 2: '优利支付', 3: '零零购支付', 9: '对公转账' };
+            return map[method] || '-';
+        },
+
+        // 获取收款主体文本
+        getPayeeEntityText(entity) {
+            const map = { 0: '北京', 1: '西安' };
+            return map[entity] || '-';
+        },
+
+        // 获取收款状态文本
+        getCollectionStatusText(status) {
+            const map = { 0: '待支付', 10: '未核验', 20: '已支付' };
+            return map[status] || '-';
+        },
+
+        // 打开新增收款弹窗
+        async openAddPaymentCollectionModal() {
+            this.paymentCollectionForm = {
+                student_id: '',
+                order_id: '',
+                pending_amount: '',
+                payment_scenario: '',
+                payment_method: '',
+                payment_amount: '',
+                payer: '',
+                payee_entity: '',
+                trading_hours: ''
+            };
+            this.studentUnpaidOrders = [];
+            this.selectedOrderInfo = null;
+
+            // 加载启用的学生列表
+            try {
+                const response = await axios.get('/api/students/active');
+                this.activeStudents = response.data.students;
+            } catch (err) {
+                console.error('获取学生列表失败:', err);
+                this.activeStudents = [];
+            }
+
+            this.showAddPaymentCollectionModal = true;
+        },
+
+        // 关闭新增收款弹窗
+        closeAddPaymentCollectionModal() {
+            this.showAddPaymentCollectionModal = false;
+        },
+
+        // 学生选择变化
+        async onPaymentStudentChange() {
+            this.paymentCollectionForm.order_id = '';
+            this.paymentCollectionForm.pending_amount = '';
+            this.selectedOrderInfo = null;
+
+            if (!this.paymentCollectionForm.student_id) {
+                this.studentUnpaidOrders = [];
+                return;
+            }
+
+            try {
+                const response = await axios.get(`/api/students/${this.paymentCollectionForm.student_id}/unpaid-orders`);
+                this.studentUnpaidOrders = response.data.orders;
+            } catch (err) {
+                console.error('获取学生订单失败:', err);
+                this.studentUnpaidOrders = [];
+            }
+        },
+
+        // 订单选择变化
+        async onPaymentOrderChange() {
+            this.paymentCollectionForm.pending_amount = '';
+            this.selectedOrderInfo = null;
+
+            if (!this.paymentCollectionForm.order_id) {
+                return;
+            }
+
+            try {
+                const response = await axios.get(`/api/orders/${this.paymentCollectionForm.order_id}/pending-amount`);
+                this.paymentCollectionForm.pending_amount = response.data.pending_amount;
+                this.selectedOrderInfo = {
+                    expected_payment_time: response.data.expected_payment_time
+                };
+            } catch (err) {
+                console.error('获取待支付金额失败:', err);
+            }
+        },
+
+        // 付款场景变化
+        onPaymentScenarioChange() {
+            this.paymentCollectionForm.payment_method = '';
+        },
+
+        // 提交新增收款
+        async submitPaymentCollection() {
+            // 校验必填项
+            if (!this.paymentCollectionForm.student_id ||
+                !this.paymentCollectionForm.order_id ||
+                this.paymentCollectionForm.payment_scenario === '' ||
+                this.paymentCollectionForm.payment_method === '' ||
+                !this.paymentCollectionForm.payment_amount ||
+                this.paymentCollectionForm.payee_entity === '') {
+                alert('请填写所有必填项');
+                return;
+            }
+
+            // 校验付款金额
+            const paymentAmount = parseFloat(this.paymentCollectionForm.payment_amount);
+            const pendingAmount = parseFloat(this.paymentCollectionForm.pending_amount);
+            if (paymentAmount > pendingAmount) {
+                alert(`付款金额不能超过待支付金额(${pendingAmount})`);
+                return;
+            }
+
+            try {
+                const payload = {
+                    student_id: parseInt(this.paymentCollectionForm.student_id),
+                    order_id: parseInt(this.paymentCollectionForm.order_id),
+                    payment_scenario: parseInt(this.paymentCollectionForm.payment_scenario),
+                    payment_method: parseInt(this.paymentCollectionForm.payment_method),
+                    payment_amount: paymentAmount,
+                    payer: this.paymentCollectionForm.payer,
+                    payee_entity: parseInt(this.paymentCollectionForm.payee_entity),
+                    trading_hours: this.paymentCollectionForm.trading_hours || null
+                };
+
+                await axios.post('/api/payment-collections', payload);
+                alert('收款新增成功');
+                this.closeAddPaymentCollectionModal();
+                await this.fetchPaymentCollections();
+            } catch (err) {
+                console.error('新增收款失败:', err);
+                alert(err.response?.data?.error || '新增收款失败');
+            }
+        },
+
+        // 确认到账
+        confirmPaymentCollection(pc) {
+            this.currentPaymentCollection = pc;
+            this.showConfirmPaymentModal = true;
+        },
+
+        // 执行确认到账
+        async doConfirmPayment() {
+            try {
+                await axios.put(`/api/payment-collections/${this.currentPaymentCollection.id}/confirm`);
+                alert('已确认到账');
+                this.showConfirmPaymentModal = false;
+                this.currentPaymentCollection = null;
+                await this.fetchPaymentCollections();
+            } catch (err) {
+                console.error('确认到账失败:', err);
+                alert(err.response?.data?.error || '确认到账失败');
+            }
+        },
+
+        // 确认删除收款
+        confirmDeletePaymentCollection(pc) {
+            this.currentPaymentCollection = pc;
+            this.showDeletePaymentModal = true;
+        },
+
+        // 执行删除收款
+        async doDeletePayment() {
+            try {
+                await axios.delete(`/api/payment-collections/${this.currentPaymentCollection.id}`);
+                alert('收款已删除');
+                this.showDeletePaymentModal = false;
+                this.currentPaymentCollection = null;
+                await this.fetchPaymentCollections();
+            } catch (err) {
+                console.error('删除收款失败:', err);
+                alert(err.response?.data?.error || '删除收款失败');
             }
         }
     }

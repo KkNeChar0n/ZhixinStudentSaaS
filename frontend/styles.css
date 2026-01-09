@@ -589,6 +589,13 @@ h1 {
     background-color: #2980b9;
 }
 
+/* 弹窗和抽屉底部按钮统一样式 */
+.modal-footer .delete-btn,
+.drawer-footer .delete-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+}
+
 /* 页面标题栏 */
 .page-header {
     display: flex;
@@ -1077,4 +1084,79 @@ h1 {
 .add-included-btn:hover {
     background-color: #f0f8f0;
     border-color: #45a049;
+}
+
+/* Tab 样式 */
+.tab-container {
+    margin-top: 20px;
+}
+
+.tab-nav {
+    display: flex;
+    border-bottom: 2px solid #e0e0e0;
+    margin-bottom: 20px;
+}
+
+.tab-btn {
+    padding: 12px 24px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    color: #666;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.3s;
+}
+
+.tab-btn:hover {
+    color: #3498db;
+}
+
+.tab-btn.active {
+    color: #3498db;
+    border-bottom-color: #3498db;
+}
+
+.tab-content {
+    padding: 10px 0;
+}
+
+/* 二级Tab样式 */
+.sub-tab-nav {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.sub-tab-btn {
+    padding: 8px 16px;
+    border: 1px solid #ddd;
+    background: #f5f5f5;
+    cursor: pointer;
+    font-size: 13px;
+    border-radius: 4px;
+    transition: all 0.3s;
+}
+
+.sub-tab-btn:hover {
+    border-color: #3498db;
+    color: #3498db;
+}
+
+.sub-tab-btn.active {
+    background: #3498db;
+    border-color: #3498db;
+    color: white;
+}
+
+/* 空内容提示 */
+.empty-content {
+    padding: 60px 20px;
+    text-align: center;
+    color: #999;
+    font-size: 14px;
+    background: #fafafa;
+    border-radius: 4px;
 }

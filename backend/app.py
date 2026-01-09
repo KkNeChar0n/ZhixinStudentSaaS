@@ -3013,5 +3013,490 @@ def calculate_order_discount():
         if connection:
             connection.close()
 
+# ==================== 合同管理接口 ====================
+
+# 获取合同列表
+@app.route('/api/contracts', methods=['GET'])
+def get_contracts():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询SQL
+        sql = """
+            SELECT
+                c.id, c.name, c.student_id, c.type, c.signature_form,
+                c.contract_amount, c.signatory, c.initiating_party, c.initiator,
+                c.status, c.payment_status, c.create_time,
+                s.name AS student_name
+            FROM contract c
+            LEFT JOIN student s ON c.student_id = s.id
+            ORDER BY c.id DESC
+        """
+
+        cursor.execute(sql)
+        contracts = cursor.fetchall()
+
+        return jsonify({'contracts': contracts}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取合同详情
+@app.route('/api/contracts/<int:contract_id>', methods=['GET'])
+def get_contract(contract_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        cursor.execute("""
+            SELECT
+                c.id, c.name, c.student_id, c.type, c.signature_form,
+                c.contract_amount, c.signatory, c.initiating_party, c.initiator,
+                c.status, c.payment_status, c.termination_agreement, c.create_time,
+                s.name AS student_name
+            FROM contract c
+            LEFT JOIN student s ON c.student_id = s.id
+            WHERE c.id = %s
+        """, (contract_id,))
+
+        contract = cursor.fetchone()
+
+        if not contract:
+            return jsonify({'error': '合同不存在'}), 404
+
+        return jsonify({'contract': contract}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 新增合同
+@app.route('/api/contracts', methods=['POST'])
+def add_contract():
+    connection = None
+    cursor = None
+    try:
+        data = request.json
+        name = data.get('name')
+        student_id = data.get('student_id')
+        contract_type = data.get('type')
+        signature_form = data.get('signature_form')
+        contract_amount = data.get('contract_amount')
+        signatory = data.get('signatory')
+
+        # 校验必填项
+        if not name or not student_id or contract_type is None or signature_form is None or not contract_amount:
+            return jsonify({'error': '请填写所有必填项'}), 400
+
+        # 获取发起人（当前登录用户）
+        initiator = session.get('username', '')
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 插入合同
+        cursor.execute("""
+            INSERT INTO contract (name, student_id, type, signature_form, contract_amount, signatory, initiator, status, payment_status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 0)
+        """, (name, student_id, contract_type, signature_form, contract_amount, signatory, initiator))
+
+        connection.commit()
+        return jsonify({'message': '合同新增成功'}), 201
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 撤销合同
+@app.route('/api/contracts/<int:contract_id>/revoke', methods=['PUT'])
+def revoke_contract(contract_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查合同是否存在
+        cursor.execute("SELECT id, status FROM contract WHERE id = %s", (contract_id,))
+        contract = cursor.fetchone()
+
+        if not contract:
+            return jsonify({'error': '合同不存在'}), 404
+
+        # 只有待审核状态的合同可以撤销
+        if contract['status'] != 0:
+            return jsonify({'error': '只有待审核状态的合同可以撤销'}), 400
+
+        # 更新状态为已作废
+        cursor.execute("UPDATE contract SET status = 98 WHERE id = %s", (contract_id,))
+        connection.commit()
+
+        return jsonify({'message': '合同已撤销'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 中止合作（上传中止协议）
+@app.route('/api/contracts/<int:contract_id>/terminate', methods=['PUT'])
+def terminate_contract(contract_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.json
+        termination_agreement = data.get('termination_agreement')
+
+        if not termination_agreement:
+            return jsonify({'error': '请上传中止协议'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查合同是否存在
+        cursor.execute("SELECT id, status FROM contract WHERE id = %s", (contract_id,))
+        contract = cursor.fetchone()
+
+        if not contract:
+            return jsonify({'error': '合同不存在'}), 404
+
+        # 只有已通过状态的合同可以中止
+        if contract['status'] != 50:
+            return jsonify({'error': '只有已通过状态的合同可以中止'}), 400
+
+        # 更新状态为协议中止，并保存中止协议路径
+        cursor.execute("""
+            UPDATE contract
+            SET status = 99, termination_agreement = %s
+            WHERE id = %s
+        """, (termination_agreement, contract_id))
+        connection.commit()
+
+        return jsonify({'message': '合作已中止'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# ==================== 收款管理接口 ====================
+
+# 获取收款列表
+@app.route('/api/payment-collections', methods=['GET'])
+def get_payment_collections():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询SQL
+        sql = """
+            SELECT
+                pc.id, pc.order_id, pc.student_id, pc.payment_scenario, pc.payment_method,
+                pc.payment_amount, pc.payer, pc.payee_entity, pc.trading_hours,
+                pc.arrival_time, pc.status, pc.create_time,
+                s.name AS student_name
+            FROM payment_collection pc
+            LEFT JOIN student s ON pc.student_id = s.id
+            WHERE 1=1
+        """
+        params = []
+
+        # 获取筛选参数
+        id_filter = request.args.get('id')
+        student_id = request.args.get('student_id')
+        payer = request.args.get('payer')
+        payment_method = request.args.get('payment_method')
+        trading_date = request.args.get('trading_date')
+        status = request.args.get('status')
+
+        if id_filter:
+            sql += " AND pc.id = %s"
+            params.append(id_filter)
+
+        if student_id:
+            sql += " AND pc.student_id = %s"
+            params.append(student_id)
+
+        if payer:
+            sql += " AND pc.payer = %s"
+            params.append(payer)
+
+        if payment_method is not None and payment_method != '':
+            sql += " AND pc.payment_method = %s"
+            params.append(payment_method)
+
+        if trading_date:
+            sql += " AND DATE(pc.trading_hours) = %s"
+            params.append(trading_date)
+
+        if status is not None and status != '':
+            sql += " AND pc.status = %s"
+            params.append(status)
+
+        sql += " ORDER BY pc.id DESC"
+
+        cursor.execute(sql, params)
+        collections = cursor.fetchall()
+
+        return jsonify({'collections': collections}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取学生的待支付/部分支付订单
+@app.route('/api/students/<int:student_id>/unpaid-orders', methods=['GET'])
+def get_student_unpaid_orders(student_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询该学生状态为草稿(10)的订单，并且实收金额大于0（表示有待支付金额）
+        cursor.execute("""
+            SELECT id, amount_received, expected_payment_time
+            FROM orders
+            WHERE student_id = %s AND status = 10 AND amount_received > 0
+            ORDER BY id DESC
+        """, (student_id,))
+
+        orders = cursor.fetchall()
+        return jsonify({'orders': orders}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 计算订单的待支付金额
+@app.route('/api/orders/<int:order_id>/pending-amount', methods=['GET'])
+def get_order_pending_amount(order_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取订单的实收金额
+        cursor.execute("""
+            SELECT amount_received, expected_payment_time
+            FROM orders
+            WHERE id = %s
+        """, (order_id,))
+
+        order = cursor.fetchone()
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+
+        # 计算该订单已有的未核验、已支付的收款金额之和
+        cursor.execute("""
+            SELECT COALESCE(SUM(payment_amount), 0) AS paid_amount
+            FROM payment_collection
+            WHERE order_id = %s AND status IN (10, 20)
+        """, (order_id,))
+
+        result = cursor.fetchone()
+        paid_amount = float(result['paid_amount']) if result else 0
+
+        # 待支付金额 = 实收金额 - 已付金额
+        pending_amount = float(order['amount_received']) - paid_amount
+
+        return jsonify({
+            'pending_amount': round(pending_amount, 2),
+            'amount_received': float(order['amount_received']),
+            'paid_amount': round(paid_amount, 2),
+            'expected_payment_time': order['expected_payment_time']
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 新增收款
+@app.route('/api/payment-collections', methods=['POST'])
+def add_payment_collection():
+    connection = None
+    cursor = None
+    try:
+        data = request.json
+        order_id = data.get('order_id')
+        student_id = data.get('student_id')
+        payment_scenario = data.get('payment_scenario')
+        payment_method = data.get('payment_method')
+        payment_amount = data.get('payment_amount')
+        payer = data.get('payer')
+        payee_entity = data.get('payee_entity')
+        trading_hours = data.get('trading_hours')
+
+        # 校验必填项
+        if not order_id or not student_id or payment_scenario is None or payment_method is None or not payment_amount:
+            return jsonify({'error': '请填写所有必填项'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取订单的实收金额
+        cursor.execute("""
+            SELECT amount_received
+            FROM orders
+            WHERE id = %s
+        """, (order_id,))
+
+        order = cursor.fetchone()
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+
+        # 计算该订单已有的未核验、已支付的收款金额之和
+        cursor.execute("""
+            SELECT COALESCE(SUM(payment_amount), 0) AS paid_amount
+            FROM payment_collection
+            WHERE order_id = %s AND status IN (10, 20)
+        """, (order_id,))
+
+        result = cursor.fetchone()
+        paid_amount = float(result['paid_amount']) if result else 0
+
+        # 待支付金额
+        pending_amount = float(order['amount_received']) - paid_amount
+
+        # 校验：付款金额不能超过待支付金额
+        if float(payment_amount) > pending_amount:
+            return jsonify({'error': f'付款金额不能超过待支付金额({pending_amount})'}), 400
+
+        # 根据付款场景设置初始状态
+        # 线上(0) -> 待支付(0)
+        # 线下(1) -> 未核验(10)
+        initial_status = 0 if payment_scenario == 0 else 10
+
+        # 插入收款记录
+        cursor.execute("""
+            INSERT INTO payment_collection (order_id, student_id, payment_scenario, payment_method,
+                payment_amount, payer, payee_entity, trading_hours, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (order_id, student_id, payment_scenario, payment_method,
+              payment_amount, payer, payee_entity, trading_hours, initial_status))
+
+        connection.commit()
+        return jsonify({'message': '收款新增成功'}), 201
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 确认到账
+@app.route('/api/payment-collections/<int:collection_id>/confirm', methods=['PUT'])
+def confirm_payment_collection(collection_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查收款记录是否存在
+        cursor.execute("SELECT id, status, order_id, payment_amount FROM payment_collection WHERE id = %s", (collection_id,))
+        collection = cursor.fetchone()
+
+        if not collection:
+            return jsonify({'error': '收款记录不存在'}), 404
+
+        # 只有未核验状态可以确认到账
+        if collection['status'] != 10:
+            return jsonify({'error': '只有未核验状态的收款可以确认到账'}), 400
+
+        # 更新状态为已支付，设置到账时间
+        cursor.execute("""
+            UPDATE payment_collection
+            SET status = 20, arrival_time = NOW()
+            WHERE id = %s
+        """, (collection_id,))
+
+        connection.commit()
+        return jsonify({'message': '已确认到账'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 删除收款
+@app.route('/api/payment-collections/<int:collection_id>', methods=['DELETE'])
+def delete_payment_collection(collection_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查收款记录是否存在
+        cursor.execute("SELECT id, status FROM payment_collection WHERE id = %s", (collection_id,))
+        collection = cursor.fetchone()
+
+        if not collection:
+            return jsonify({'error': '收款记录不存在'}), 404
+
+        # 只有未核验状态可以删除
+        if collection['status'] != 10:
+            return jsonify({'error': '只有未核验状态的收款可以删除'}), 400
+
+        # 删除记录
+        cursor.execute("DELETE FROM payment_collection WHERE id = %s", (collection_id,))
+        connection.commit()
+
+        return jsonify({'message': '收款已删除'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)
