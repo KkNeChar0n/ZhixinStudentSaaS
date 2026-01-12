@@ -3020,10 +3020,10 @@ def calculate_order_discount():
             if not matched_discount:
                 continue
 
-            # 计算总优惠：(1 - 折扣/10) × 参与商品标准售价之和
-            # discount_value=9表示9折(付90%)，discount_value=8表示8折(付80%)
+            # 计算总优惠：(1 - 折扣/100) × 参与商品标准售价之和
+            # discount_value=90表示9折(付90%)，discount_value=80表示8折(付80%)
             eligible_price_sum = sum(float(g['price']) for g in eligible_goods)
-            discount_rate = 1 - matched_discount / 10  # 8折 -> 1 - 0.8 = 0.2 (优惠20%)
+            discount_rate = 1 - matched_discount / 100  # 80 -> 1 - 0.8 = 0.2 (优惠20%)
             activity_discount = round(discount_rate * eligible_price_sum, 2)
 
             total_discount += activity_discount
@@ -3591,6 +3591,54 @@ def delete_payment_collection(collection_id):
         connection.commit()
 
         return jsonify({'message': '收款已删除'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 临时API：修复活动折扣值
+@app.route('/api/fix-activity-discount/<int:activity_id>', methods=['PUT'])
+def fix_activity_discount(activity_id):
+    """修复活动折扣值：将个位数转换为正确的百分比格式"""
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询需要修复的记录（discount_value < 10）
+        cursor.execute("""
+            SELECT id, discount_value
+            FROM activity_detail
+            WHERE activity_id = %s AND discount_value < 10
+        """, (activity_id,))
+
+        records = cursor.fetchall()
+        if not records:
+            return jsonify({'message': '没有需要修复的数据'}), 200
+
+        # 修复每条记录：乘以10
+        for record in records:
+            new_value = float(record['discount_value']) * 10
+            cursor.execute("""
+                UPDATE activity_detail
+                SET discount_value = %s
+                WHERE id = %s
+            """, (new_value, record['id']))
+
+        connection.commit()
+
+        return jsonify({
+            'message': '修复成功',
+            'fixed_count': len(records),
+            'details': [{'id': r['id'], 'old': r['discount_value'], 'new': float(r['discount_value']) * 10} for r in records]
+        }), 200
+
     except Exception as e:
         if connection:
             connection.rollback()
