@@ -104,6 +104,7 @@ createApp({
             showEditOrderDrawer: false,
             showEditOrderGoodsModal: false,
             showCancelOrderConfirm: false,
+            showSubmitOrderConfirm: false,
             showAddAttributeModal: false,
             showEditAttributeModal: false,
             showEnableAttributeConfirm: false,
@@ -1410,9 +1411,9 @@ createApp({
         getOrderStatusText(status) {
             const statusMap = {
                 10: '草稿',
-                20: '审核中',
-                30: '已通过',
-                40: '已驳回',
+                20: '未支付',
+                30: '部分支付',
+                40: '已支付',
                 99: '已作废'
             };
             return statusMap[status] || '未知';
@@ -1976,6 +1977,28 @@ createApp({
             } catch (err) {
                 console.error('作废订单失败:', err);
                 alert(err.response?.data?.error || '作废订单失败');
+            }
+        },
+
+        // 打开提交订单确认弹窗
+        confirmSubmitOrder() {
+            this.showSubmitOrderConfirm = true;
+        },
+
+        // 提交订单
+        async submitOrder() {
+            try {
+                const response = await axios.put(`/api/orders/${this.editOrderData.id}/submit`, {}, { withCredentials: true });
+
+                if (response.data.message === '订单已提交') {
+                    await this.fetchOrders();
+                    this.showSubmitOrderConfirm = false;
+                    this.closeEditOrderDrawer();
+                    alert('订单已提交');
+                }
+            } catch (err) {
+                console.error('提交订单失败:', err);
+                alert(err.response?.data?.error || '提交订单失败');
             }
         },
 
@@ -4642,6 +4665,29 @@ createApp({
             if (paymentAmount > pendingAmount) {
                 alert(`付款金额不能超过待支付金额(${pendingAmount})`);
                 return;
+            }
+
+            // 校验线下支付的交易时间
+            if (parseInt(this.paymentCollectionForm.payment_scenario) === 1) {
+                if (!this.paymentCollectionForm.trading_hours) {
+                    alert('请填写交易时间');
+                    return;
+                }
+
+                // 检查交易时间是否与订单预计付款时间一致（只比较日期）
+                if (this.selectedOrderInfo && this.selectedOrderInfo.expected_payment_time) {
+                    const tradingDate = new Date(this.paymentCollectionForm.trading_hours);
+                    const expectedDate = new Date(this.selectedOrderInfo.expected_payment_time);
+
+                    // 只比较年月日
+                    const tradingDateStr = tradingDate.toISOString().split('T')[0];
+                    const expectedDateStr = expectedDate.toISOString().split('T')[0];
+
+                    if (tradingDateStr !== expectedDateStr) {
+                        alert('付款时间与订单不符！请重新填写！');
+                        return;
+                    }
+                }
             }
 
             try {

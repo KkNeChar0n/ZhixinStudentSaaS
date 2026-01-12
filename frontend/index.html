@@ -266,13 +266,13 @@
                                     <input type="number" id="orderUidFilter" v-model="orderFilters.uid" placeholder="请输入UID">
                                 </div>
                                 <div class="filter-item">
-                                    <label for="orderStatusFilter">审核状态</label>
+                                    <label for="orderStatusFilter">状态</label>
                                     <select id="orderStatusFilter" v-model="orderFilters.status">
                                         <option value="">全部</option>
                                         <option value="10">草稿</option>
-                                        <option value="20">审核中</option>
-                                        <option value="30">已通过</option>
-                                        <option value="40">已驳回</option>
+                                        <option value="20">未支付</option>
+                                        <option value="30">部分支付</option>
+                                        <option value="40">已支付</option>
                                         <option value="99">已作废</option>
                                     </select>
                                 </div>
@@ -293,7 +293,7 @@
                                     <th>应收金额</th>
                                     <th>优惠金额</th>
                                     <th>实收金额</th>
-                                    <th>审核状态</th>
+                                    <th>状态</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
@@ -1588,6 +1588,23 @@
                 <div class="drawer-footer">
                     <button class="cancel-btn" @click="closeEditOrderDrawer">取消</button>
                     <button class="save-btn" @click="saveEditOrder">保存</button>
+                    <button class="save-btn" @click="confirmSubmitOrder">提交</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 提交订单确认弹窗 -->
+        <div class="modal-overlay" v-if="showSubmitOrderConfirm">
+            <div class="modal confirm-modal">
+                <div class="modal-header">
+                    <h3>提交确认</h3>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认提交？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showSubmitOrderConfirm = false">取消</button>
+                    <button class="save-btn" @click="submitOrder">确认</button>
                 </div>
             </div>
         </div>

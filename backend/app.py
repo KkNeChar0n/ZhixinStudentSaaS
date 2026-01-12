@@ -963,6 +963,53 @@ def cancel_order(order_id):
         if connection:
             connection.close()
 
+# API接口：提交订单
+@app.route('/api/orders/<int:order_id>/submit', methods=['PUT'])
+def submit_order(order_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查订单状态是否为草稿
+        cursor.execute("SELECT status FROM `orders` WHERE id = %s", (order_id,))
+        order = cursor.fetchone()
+
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+
+        if order['status'] != 10:
+            return jsonify({'error': '只能提交草稿状态的订单'}), 400
+
+        # 将订单状态更新为20（未支付）
+        cursor.execute("""
+            UPDATE `orders`
+            SET status = 20
+            WHERE id = %s
+        """, (order_id,))
+
+        # 同时更新关联的子产品订单状态
+        cursor.execute("""
+            UPDATE childorders
+            SET status = 20
+            WHERE parentsid = %s
+        """, (order_id,))
+
+        connection.commit()
+
+        return jsonify({'message': '订单已提交'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 # API接口：获取子产品订单列表
 @app.route('/api/childorders', methods=['GET'])
 def get_childorders():
@@ -3206,6 +3253,48 @@ def terminate_contract(contract_id):
 
 # ==================== 收款管理接口 ====================
 
+# 根据收款情况更新订单状态的辅助函数
+def update_order_payment_status(cursor, order_id):
+    """
+    根据订单关联的收款记录更新订单状态
+    - 收款金额之和 = 0: 状态为20（未支付）
+    - 0 < 收款金额之和 < 实收金额: 状态为30（部分支付）
+    - 收款金额之和 >= 实收金额: 状态为40（已支付）
+    """
+    # 获取订单的实收金额
+    cursor.execute("""
+        SELECT amount_received FROM orders WHERE id = %s
+    """, (order_id,))
+    order = cursor.fetchone()
+
+    if not order:
+        return
+
+    amount_received = float(order['amount_received'])
+
+    # 计算该订单状态为未核验(10)和已支付(20)的收款金额之和
+    cursor.execute("""
+        SELECT COALESCE(SUM(payment_amount), 0) AS total_paid
+        FROM payment_collection
+        WHERE order_id = %s AND status IN (10, 20)
+    """, (order_id,))
+
+    result = cursor.fetchone()
+    total_paid = float(result['total_paid']) if result else 0
+
+    # 根据收款金额确定订单状态
+    if total_paid == 0:
+        new_status = 20  # 未支付
+    elif total_paid >= amount_received:
+        new_status = 40  # 已支付
+    else:
+        new_status = 30  # 部分支付
+
+    # 更新订单状态
+    cursor.execute("""
+        UPDATE orders SET status = %s WHERE id = %s
+    """, (new_status, order_id))
+
 # 获取收款列表
 @app.route('/api/payment-collections', methods=['GET'])
 def get_payment_collections():
@@ -3283,11 +3372,11 @@ def get_student_unpaid_orders(student_id):
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 查询该学生状态为草稿(10)的订单，并且实收金额大于0（表示有待支付金额）
+        # 查询该学生状态为未支付(20)或部分支付(30)的订单，并且实收金额大于0（表示有待支付金额）
         cursor.execute("""
             SELECT id, amount_received, expected_payment_time
             FROM orders
-            WHERE student_id = %s AND status = 10 AND amount_received > 0
+            WHERE student_id = %s AND status IN (20, 30) AND amount_received > 0
             ORDER BY id DESC
         """, (student_id,))
 
@@ -3412,6 +3501,9 @@ def add_payment_collection():
         """, (order_id, student_id, payment_scenario, payment_method,
               payment_amount, payer, payee_entity, trading_hours, initial_status))
 
+        # 更新订单状态
+        update_order_payment_status(cursor, order_id)
+
         connection.commit()
         return jsonify({'message': '收款新增成功'}), 201
     except Exception as e:
@@ -3451,6 +3543,10 @@ def confirm_payment_collection(collection_id):
             WHERE id = %s
         """, (collection_id,))
 
+        # 更新订单状态
+        order_id = collection['order_id']
+        update_order_payment_status(cursor, order_id)
+
         connection.commit()
         return jsonify({'message': '已确认到账'}), 200
     except Exception as e:
@@ -3473,7 +3569,7 @@ def delete_payment_collection(collection_id):
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
         # 检查收款记录是否存在
-        cursor.execute("SELECT id, status FROM payment_collection WHERE id = %s", (collection_id,))
+        cursor.execute("SELECT id, status, order_id FROM payment_collection WHERE id = %s", (collection_id,))
         collection = cursor.fetchone()
 
         if not collection:
@@ -3483,8 +3579,15 @@ def delete_payment_collection(collection_id):
         if collection['status'] != 10:
             return jsonify({'error': '只有未核验状态的收款可以删除'}), 400
 
+        # 获取订单ID
+        order_id = collection['order_id']
+
         # 删除记录
         cursor.execute("DELETE FROM payment_collection WHERE id = %s", (collection_id,))
+
+        # 更新订单状态
+        update_order_payment_status(cursor, order_id)
+
         connection.commit()
 
         return jsonify({'message': '收款已删除'}), 200
