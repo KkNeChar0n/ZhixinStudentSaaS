@@ -310,6 +310,21 @@ createApp({
                 payee_entity: '',
                 trading_hours: ''
             },
+            // 待认领收款数据
+            unclaimedPayments: [],
+            filteredUnclaimedPayments: [],
+            unclaimedFilters: {
+                id: '',
+                payer: '',
+                payment_method: '',
+                arrival_date: '',
+                claimer: '',
+                status: ''
+            },
+            unclaimedCurrentPage: 1,
+            showClaimConfirmModal: false,
+            showDeleteUnclaimedModal: false,
+            currentUnclaimed: null,
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -693,6 +708,15 @@ createApp({
         },
         paymentCollectionTotalPages() {
             return Math.ceil(this.filteredPaymentCollections.length / this.pageSize);
+        },
+        // 待认领分页数据
+        paginatedUnclaimedPayments() {
+            const start = (this.unclaimedCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredUnclaimedPayments.slice(start, end);
+        },
+        totalUnclaimedPages() {
+            return Math.ceil(this.filteredUnclaimedPayments.length / 10);
         },
         // 计算是否可以选择线上付款（预计付款日期未过）
         canSelectOnlinePayment() {
@@ -4749,6 +4773,127 @@ createApp({
             } catch (err) {
                 console.error('删除收款失败:', err);
                 alert(err.response?.data?.error || '删除收款失败');
+            }
+        },
+
+        // ==================== 待认领收款管理方法 ====================
+
+        // 获取待认领收款列表
+        async fetchUnclaimedPayments() {
+            try {
+                const params = new URLSearchParams();
+                if (this.unclaimedFilters.id) params.append('id', this.unclaimedFilters.id);
+                if (this.unclaimedFilters.payer) params.append('payer', this.unclaimedFilters.payer);
+                if (this.unclaimedFilters.payment_method) params.append('payment_method', this.unclaimedFilters.payment_method);
+                if (this.unclaimedFilters.arrival_date) params.append('arrival_date', this.unclaimedFilters.arrival_date);
+                if (this.unclaimedFilters.claimer) params.append('claimer', this.unclaimedFilters.claimer);
+                if (this.unclaimedFilters.status) params.append('status', this.unclaimedFilters.status);
+
+                const response = await axios.get(`/api/unclaimed?${params.toString()}`);
+                this.unclaimedPayments = response.data.unclaimed || [];
+                this.filteredUnclaimedPayments = this.unclaimedPayments;
+            } catch (err) {
+                console.error('获取待认领列表失败:', err);
+                alert(err.response?.data?.error || '获取待认领列表失败');
+            }
+        },
+
+        // 获取待认领付款方式文本
+        getUnclaimedPaymentMethodText(method) {
+            const methodMap = {
+                0: '微信',
+                1: '支付宝',
+                2: '优利支付',
+                3: '零零购支付',
+                9: '对公转账'
+            };
+            return methodMap[method] || '未知';
+        },
+
+        // 获取待认领状态文本
+        getUnclaimedStatusText(status) {
+            const statusMap = {
+                0: '待认领',
+                1: '已认领'
+            };
+            return statusMap[status] || '未知';
+        },
+
+        // 确认认领
+        confirmClaimUnclaimed(unclaimed) {
+            this.currentUnclaimed = unclaimed;
+            this.showClaimConfirmModal = true;
+        },
+
+        // 执行认领
+        async doClaimUnclaimed() {
+            try {
+                await axios.put(`/api/unclaimed/${this.currentUnclaimed.id}/claim`);
+                alert('认领成功');
+                this.showClaimConfirmModal = false;
+                this.currentUnclaimed = null;
+                await this.fetchUnclaimedPayments();
+            } catch (err) {
+                console.error('认领失败:', err);
+                alert(err.response?.data?.error || '认领失败');
+            }
+        },
+
+        // 确认删除待认领
+        confirmDeleteUnclaimed(unclaimed) {
+            this.currentUnclaimed = unclaimed;
+            this.showDeleteUnclaimedModal = true;
+        },
+
+        // 执行删除待认领
+        async doDeleteUnclaimed() {
+            try {
+                await axios.delete(`/api/unclaimed/${this.currentUnclaimed.id}`);
+                alert('删除成功');
+                this.showDeleteUnclaimedModal = false;
+                this.currentUnclaimed = null;
+                await this.fetchUnclaimedPayments();
+            } catch (err) {
+                console.error('删除失败:', err);
+                alert(err.response?.data?.error || '删除失败');
+            }
+        },
+
+        // 下载待认领Excel模板
+        downloadUnclaimedTemplate() {
+            window.location.href = '/api/unclaimed/template';
+        },
+
+        // 导入待认领Excel
+        async importUnclaimedExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await axios.post('/api/unclaimed/import', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    }
+                });
+
+                if (response.data.errors && response.data.errors.length > 0) {
+                    alert(response.data.message + '\n\n错误详情:\n' + response.data.errors.join('\n'));
+                } else {
+                    alert(response.data.message);
+                }
+
+                // 清空文件输入
+                event.target.value = '';
+
+                // 刷新列表
+                await this.fetchUnclaimedPayments();
+            } catch (err) {
+                console.error('导入失败:', err);
+                alert(err.response?.data?.error || '导入失败');
+                event.target.value = '';
             }
         }
     }

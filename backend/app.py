@@ -1,7 +1,12 @@
-from flask import Flask, jsonify, request, session
+from flask import Flask, jsonify, request, session, send_file
 from flask_cors import CORS
 import pymysql
 import os
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, Alignment
+import io
+from datetime import datetime
+import re
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')  # 用于会话加密
@@ -3638,6 +3643,384 @@ def fix_activity_discount(activity_id):
             'fixed_count': len(records),
             'details': [{'id': r['id'], 'old': r['discount_value'], 'new': float(r['discount_value']) * 10} for r in records]
         }), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# ==================== 待认领收款管理接口 ====================
+
+# 获取待认领列表
+@app.route('/api/unclaimed', methods=['GET'])
+def get_unclaimed_list():
+    """获取待认领收款列表"""
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取筛选参数
+        unclaimed_id = request.args.get('id', '')
+        payer = request.args.get('payer', '')
+        payment_method = request.args.get('payment_method', '')
+        arrival_date = request.args.get('arrival_date', '')
+        claimer = request.args.get('claimer', '')
+        status = request.args.get('status', '')
+
+        # 构建SQL查询
+        sql = """
+            SELECT
+                u.id,
+                u.payment_method,
+                u.payment_amount,
+                u.payer,
+                u.payee_entity,
+                u.arrival_time,
+                u.claimer,
+                u.status,
+                ua.username AS claimer_name
+            FROM unclaimed u
+            LEFT JOIN useraccount ua ON u.claimer = ua.id
+            WHERE 1=1
+        """
+        params = []
+
+        # 添加筛选条件
+        if unclaimed_id:
+            sql += " AND u.id = %s"
+            params.append(unclaimed_id)
+
+        if payer:
+            sql += " AND u.payer = %s"
+            params.append(payer)
+
+        if payment_method:
+            sql += " AND u.payment_method = %s"
+            params.append(payment_method)
+
+        if arrival_date:
+            sql += " AND DATE(u.arrival_time) = %s"
+            params.append(arrival_date)
+
+        if claimer:
+            sql += " AND ua.username = %s"
+            params.append(claimer)
+
+        if status:
+            sql += " AND u.status = %s"
+            params.append(status)
+
+        sql += " ORDER BY u.id DESC"
+
+        cursor.execute(sql, params)
+        unclaimed_list = cursor.fetchall()
+
+        return jsonify({'unclaimed': unclaimed_list}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 认领收款
+@app.route('/api/unclaimed/<int:unclaimed_id>/claim', methods=['PUT'])
+def claim_unclaimed(unclaimed_id):
+    """认领收款"""
+    connection = None
+    cursor = None
+    try:
+        # 检查是否登录
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取当前用户ID
+        cursor.execute("SELECT id FROM useraccount WHERE username = %s", (session['username'],))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'error': '用户不存在'}), 404
+
+        user_id = user['id']
+
+        # 检查待认领记录是否存在且状态为待认领
+        cursor.execute("SELECT status FROM unclaimed WHERE id = %s", (unclaimed_id,))
+        unclaimed = cursor.fetchone()
+
+        if not unclaimed:
+            return jsonify({'error': '待认领记录不存在'}), 404
+
+        if unclaimed['status'] != 0:
+            return jsonify({'error': '该记录已被认领'}), 400
+
+        # 更新为已认领状态
+        cursor.execute("""
+            UPDATE unclaimed
+            SET status = 1, claimer = %s
+            WHERE id = %s
+        """, (user_id, unclaimed_id))
+
+        connection.commit()
+
+        return jsonify({'message': '认领成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 删除待认领记录
+@app.route('/api/unclaimed/<int:unclaimed_id>', methods=['DELETE'])
+def delete_unclaimed(unclaimed_id):
+    """删除待认领记录"""
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查待认领记录是否存在且状态为待认领
+        cursor.execute("SELECT status FROM unclaimed WHERE id = %s", (unclaimed_id,))
+        unclaimed = cursor.fetchone()
+
+        if not unclaimed:
+            return jsonify({'error': '待认领记录不存在'}), 404
+
+        if unclaimed['status'] != 0:
+            return jsonify({'error': '仅能删除待认领状态的记录'}), 400
+
+        # 删除记录
+        cursor.execute("DELETE FROM unclaimed WHERE id = %s", (unclaimed_id,))
+        connection.commit()
+
+        return jsonify({'message': '删除成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 下载待认领Excel模板
+@app.route('/api/unclaimed/template', methods=['GET'])
+def download_unclaimed_template():
+    """下载待认领收款Excel模板"""
+    try:
+        # 创建工作簿
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "待认领收款模板"
+
+        # 设置表头
+        headers = ['付款方式', '付款金额', '付款方', '收款主体', '到账时间']
+        ws.append(headers)
+
+        # 设置表头样式
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        # 添加示例数据
+        ws.append(['微信', '1000.00', '张三', '北京', '2026-01-12'])
+
+        # 保存到内存
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='待认领收款模板.xlsx'
+        )
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 导入待认领Excel数据
+@app.route('/api/unclaimed/import', methods=['POST'])
+def import_unclaimed_excel():
+    """导入待认领收款Excel数据"""
+    connection = None
+    cursor = None
+    try:
+        # 检查文件
+        if 'file' not in request.files:
+            return jsonify({'error': '未上传文件'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': '文件名为空'}), 400
+
+        # 检查文件格式
+        if not file.filename.endswith(('.xls', '.xlsx')):
+            return jsonify({'error': '仅支持.xls和.xlsx格式'}), 400
+
+        # 读取Excel文件
+        wb = load_workbook(file)
+        ws = wb.active
+
+        # 付款方式映射
+        payment_method_map = {
+            '微信': 0,
+            '支付宝': 1,
+            '优利支付': 2,
+            '零零购支付': 3,
+            '对公转账': 9
+        }
+
+        # 收款主体映射
+        payee_entity_map = {
+            '北京': 0,
+            '西安': 1
+        }
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 跳过表头，从第二行开始读取
+        success_count = 0
+        error_rows = []
+
+        for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            if not any(row):  # 跳过空行
+                continue
+
+            try:
+                payment_method_str = str(row[0]).strip() if row[0] else ''
+                payment_amount_str = str(row[1]).strip() if row[1] else ''
+                payer = str(row[2]).strip() if row[2] else ''
+                payee_entity_str = str(row[3]).strip() if row[3] else ''
+                arrival_time_str = str(row[4]).strip() if row[4] else ''
+
+                # 验证付款方式
+                if payment_method_str not in payment_method_map:
+                    error_rows.append(f'第{idx}行：付款方式不正确，仅支持：微信、支付宝、对公转账、零零购支付、优利支付')
+                    continue
+
+                payment_method = payment_method_map[payment_method_str]
+
+                # 验证付款金额
+                try:
+                    payment_amount = float(payment_amount_str)
+                    if payment_amount <= 0:
+                        raise ValueError()
+                    # 保留两位小数
+                    payment_amount = round(payment_amount, 2)
+                except:
+                    error_rows.append(f'第{idx}行：付款金额格式不正确，必须为正数')
+                    continue
+
+                # 验证收款主体
+                if payee_entity_str not in payee_entity_map:
+                    error_rows.append(f'第{idx}行：收款主体不正确，仅支持：北京、西安')
+                    continue
+
+                payee_entity = payee_entity_map[payee_entity_str]
+
+                # 验证到账时间格式
+                try:
+                    # 尝试解析日期
+                    if isinstance(row[4], datetime):
+                        arrival_time = row[4]
+                    else:
+                        # 支持YYYY-MM-DD格式
+                        if not re.match(r'^\d{4}-\d{2}-\d{2}$', arrival_time_str):
+                            raise ValueError()
+                        arrival_time = datetime.strptime(arrival_time_str, '%Y-%m-%d')
+                except:
+                    error_rows.append(f'第{idx}行：到账时间格式不正确，必须为YYYY-MM-DD格式')
+                    continue
+
+                # 插入数据
+                cursor.execute("""
+                    INSERT INTO unclaimed (payment_method, payment_amount, payer, payee_entity, arrival_time, status)
+                    VALUES (%s, %s, %s, %s, %s, 0)
+                """, (payment_method, payment_amount, payer, payee_entity, arrival_time))
+
+                success_count += 1
+
+            except Exception as e:
+                error_rows.append(f'第{idx}行：{str(e)}')
+                continue
+
+        connection.commit()
+
+        if error_rows:
+            return jsonify({
+                'message': f'导入完成，成功{success_count}条',
+                'success_count': success_count,
+                'errors': error_rows
+            }), 200 if success_count > 0 else 400
+        else:
+            return jsonify({
+                'message': f'导入成功，共{success_count}条数据',
+                'success_count': success_count
+            }), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': f'导入失败：{str(e)}'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 临时API：创建unclaimed表
+@app.route('/api/create-unclaimed-table', methods=['POST'])
+def create_unclaimed_table():
+    """创建unclaimed表"""
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        sql = """
+        CREATE TABLE IF NOT EXISTS `unclaimed` (
+          `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '待认领ID',
+          `payment_method` TINYINT NOT NULL DEFAULT 0 COMMENT '付款方式：0-微信，1-支付宝，2-优利支付，3-零零购支付，9-对公转账',
+          `payment_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '付款金额',
+          `payer` VARCHAR(100) DEFAULT NULL COMMENT '付款方',
+          `payee_entity` TINYINT NOT NULL DEFAULT 0 COMMENT '收款主体：0-北京，1-西安',
+          `arrival_time` DATETIME DEFAULT NULL COMMENT '到账时间',
+          `claimer` INT DEFAULT NULL COMMENT '认领人ID',
+          `status` TINYINT NOT NULL DEFAULT 0 COMMENT '状态：0-待认领，1-已认领',
+          `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+          `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+          INDEX `idx_status` (`status`),
+          INDEX `idx_payment_method` (`payment_method`),
+          INDEX `idx_arrival_time` (`arrival_time`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='待认领收款表'
+        """
+
+        cursor.execute(sql)
+        connection.commit()
+
+        return jsonify({'message': 'unclaimed表创建成功'}), 200
 
     except Exception as e:
         if connection:

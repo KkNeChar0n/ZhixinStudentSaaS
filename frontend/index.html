@@ -859,8 +859,104 @@
                                 </div>
 
                                 <!-- 待认领内容 -->
-                                <div v-if="paymentCollectionSubTab === 'pending'" class="empty-content">
-                                    <p>待认领功能开发中...</p>
+                                <div v-if="paymentCollectionSubTab === 'pending'">
+                                    <!-- 操作按钮区 -->
+                                    <div class="page-header" style="margin-bottom: 20px;">
+                                        <div>
+                                            <button class="add-btn" @click="downloadUnclaimedTemplate">模板下载</button>
+                                            <label for="unclaimedImport" class="add-btn" style="margin-left: 10px; cursor: pointer;">
+                                                模板导入
+                                                <input type="file" id="unclaimedImport" @change="importUnclaimedExcel" accept=".xls,.xlsx" style="display: none;">
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <!-- 筛选表单 -->
+                                    <div class="filter-form">
+                                        <div class="filter-row">
+                                            <div class="filter-item">
+                                                <label for="unclaimedIdFilter">ID</label>
+                                                <input type="number" id="unclaimedIdFilter" v-model="unclaimedFilters.id" placeholder="请输入ID">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="unclaimedPayerFilter">付款方</label>
+                                                <input type="text" id="unclaimedPayerFilter" v-model="unclaimedFilters.payer" placeholder="请输入付款方">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="unclaimedMethodFilter">付款方式</label>
+                                                <select id="unclaimedMethodFilter" v-model="unclaimedFilters.payment_method">
+                                                    <option value="">全部</option>
+                                                    <option value="0">微信</option>
+                                                    <option value="1">支付宝</option>
+                                                    <option value="2">优利支付</option>
+                                                    <option value="3">零零购支付</option>
+                                                    <option value="9">对公转账</option>
+                                                </select>
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="unclaimedDateFilter">到账时间</label>
+                                                <input type="date" id="unclaimedDateFilter" v-model="unclaimedFilters.arrival_date">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="unclaimedClaimerFilter">认领人</label>
+                                                <input type="text" id="unclaimedClaimerFilter" v-model="unclaimedFilters.claimer" placeholder="请输入认领人">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="unclaimedStatusFilter">状态</label>
+                                                <select id="unclaimedStatusFilter" v-model="unclaimedFilters.status">
+                                                    <option value="">全部</option>
+                                                    <option value="0">待认领</option>
+                                                    <option value="1">已认领</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="filter-actions">
+                                            <button class="search-btn" @click="fetchUnclaimedPayments">搜索</button>
+                                            <button class="reset-btn" @click="unclaimedFilters = {id: '', payer: '', payment_method: '', arrival_date: '', claimer: '', status: ''}; fetchUnclaimedPayments()">重置</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- 待认领列表 -->
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>付款方式</th>
+                                                <th>付款金额</th>
+                                                <th>付款方</th>
+                                                <th>收款主体</th>
+                                                <th>到账时间</th>
+                                                <th>认领人</th>
+                                                <th>状态</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="unclaimed in paginatedUnclaimedPayments" :key="unclaimed.id">
+                                                <td>{{ unclaimed.id }}</td>
+                                                <td>{{ getUnclaimedPaymentMethodText(unclaimed.payment_method) }}</td>
+                                                <td>{{ unclaimed.payment_amount }}</td>
+                                                <td>{{ unclaimed.payer }}</td>
+                                                <td>{{ unclaimed.payee_entity === 0 ? '北京' : '西安' }}</td>
+                                                <td>{{ unclaimed.arrival_time ? new Date(unclaimed.arrival_time).toLocaleDateString() : '' }}</td>
+                                                <td>{{ unclaimed.claimer_name || '-' }}</td>
+                                                <td>{{ getUnclaimedStatusText(unclaimed.status) }}</td>
+                                                <td class="action-column">
+                                                    <button v-if="unclaimed.status === 0" class="edit-btn" @click="confirmClaimUnclaimed(unclaimed)">认领</button>
+                                                    <button v-if="unclaimed.status === 0" class="delete-btn" @click="confirmDeleteUnclaimed(unclaimed)">删除</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                    <!-- 分页控件 -->
+                                    <div class="pagination" v-if="totalUnclaimedPages > 1">
+                                        <button class="page-btn" @click="unclaimedCurrentPage = 1" :disabled="unclaimedCurrentPage === 1">首页</button>
+                                        <button class="page-btn" @click="unclaimedCurrentPage--" :disabled="unclaimedCurrentPage === 1">上一页</button>
+                                        <span class="page-info">第 {{ unclaimedCurrentPage }} 页 / 共 {{ totalUnclaimedPages }} 页</span>
+                                        <button class="page-btn" @click="unclaimedCurrentPage++" :disabled="unclaimedCurrentPage === totalUnclaimedPages">下一页</button>
+                                        <button class="page-btn" @click="unclaimedCurrentPage = totalUnclaimedPages" :disabled="unclaimedCurrentPage === totalUnclaimedPages">末页</button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -3103,6 +3199,38 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="showDeletePaymentModal = false">取消</button>
                     <button class="delete-btn" @click="doDeletePayment">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 认领确认弹窗 -->
+        <div class="modal-overlay" v-if="showClaimConfirmModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认认领</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认认领该笔收款？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showClaimConfirmModal = false">取消</button>
+                    <button class="save-btn" @click="doClaimUnclaimed">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 删除待认领确认弹窗 -->
+        <div class="modal-overlay" v-if="showDeleteUnclaimedModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认删除</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认删除？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showDeleteUnclaimedModal = false">取消</button>
+                    <button class="delete-btn" @click="doDeleteUnclaimed">确认</button>
                 </div>
             </div>
         </div>
