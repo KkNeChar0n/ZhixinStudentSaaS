@@ -3314,7 +3314,7 @@ def get_payment_collections():
             SELECT
                 pc.id, pc.order_id, pc.student_id, pc.payment_scenario, pc.payment_method,
                 pc.payment_amount, pc.payer, pc.payee_entity, pc.trading_hours,
-                pc.arrival_time, pc.status, pc.create_time,
+                pc.arrival_time, pc.merchant_order, pc.status, pc.create_time,
                 s.name AS student_name
             FROM payment_collection pc
             LEFT JOIN student s ON pc.student_id = s.id
@@ -3325,6 +3325,7 @@ def get_payment_collections():
         # 获取筛选参数
         id_filter = request.args.get('id')
         student_id = request.args.get('student_id')
+        order_id = request.args.get('order_id')
         payer = request.args.get('payer')
         payment_method = request.args.get('payment_method')
         trading_date = request.args.get('trading_date')
@@ -3337,6 +3338,10 @@ def get_payment_collections():
         if student_id:
             sql += " AND pc.student_id = %s"
             params.append(student_id)
+
+        if order_id:
+            sql += " AND pc.order_id = %s"
+            params.append(order_id)
 
         if payer:
             sql += " AND pc.payer = %s"
@@ -3457,6 +3462,7 @@ def add_payment_collection():
         payer = data.get('payer')
         payee_entity = data.get('payee_entity')
         trading_hours = data.get('trading_hours')
+        merchant_order = data.get('merchant_order')
 
         # 校验必填项
         if not order_id or not student_id or payment_scenario is None or payment_method is None or not payment_amount:
@@ -3501,10 +3507,10 @@ def add_payment_collection():
         # 插入收款记录
         cursor.execute("""
             INSERT INTO payment_collection (order_id, student_id, payment_scenario, payment_method,
-                payment_amount, payer, payee_entity, trading_hours, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                payment_amount, payer, payee_entity, trading_hours, merchant_order, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (order_id, student_id, payment_scenario, payment_method,
-              payment_amount, payer, payee_entity, trading_hours, initial_status))
+              payment_amount, payer, payee_entity, trading_hours, merchant_order, initial_status))
 
         # 更新订单状态
         update_order_payment_status(cursor, order_id)
@@ -3743,6 +3749,13 @@ def claim_unclaimed(unclaimed_id):
         if 'username' not in session:
             return jsonify({'error': '未登录'}), 401
 
+        # 获取请求参数
+        data = request.get_json()
+        order_id = data.get('order_id')
+
+        if not order_id:
+            return jsonify({'error': '请输入订单ID'}), 400
+
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
@@ -3755,7 +3768,11 @@ def claim_unclaimed(unclaimed_id):
         user_id = user['id']
 
         # 检查待认领记录是否存在且状态为待认领
-        cursor.execute("SELECT status FROM unclaimed WHERE id = %s", (unclaimed_id,))
+        cursor.execute("""
+            SELECT payment_method, payment_amount, payer, payee_entity, merchant_order, arrival_time, status
+            FROM unclaimed
+            WHERE id = %s
+        """, (unclaimed_id,))
         unclaimed = cursor.fetchone()
 
         if not unclaimed:
@@ -3764,12 +3781,68 @@ def claim_unclaimed(unclaimed_id):
         if unclaimed['status'] != 0:
             return jsonify({'error': '该记录已被认领'}), 400
 
-        # 更新为已认领状态
+        # 验证订单是否存在且状态正确
+        cursor.execute("""
+            SELECT student_id, amount_received, status
+            FROM orders
+            WHERE id = %s
+        """, (order_id,))
+        order = cursor.fetchone()
+
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+
+        # 验证订单状态是否为未支付(20)或部分支付(30)
+        if order['status'] not in [20, 30]:
+            return jsonify({'error': '订单状态必须为未支付或部分支付'}), 400
+
+        # 计算该订单已有的收款金额
+        cursor.execute("""
+            SELECT COALESCE(SUM(payment_amount), 0) AS total_paid
+            FROM payment_collection
+            WHERE order_id = %s AND status IN (10, 20)
+        """, (order_id,))
+        result = cursor.fetchone()
+        total_paid = float(result['total_paid']) if result else 0
+
+        # 验证：待认领金额 + 已有收款金额 <= 订单实收金额
+        unclaimed_amount = float(unclaimed['payment_amount'])
+        order_amount_received = float(order['amount_received'])
+
+        if total_paid + unclaimed_amount > order_amount_received:
+            return jsonify({'error': f'收款金额超出订单实收金额（已收{total_paid}元，待认领{unclaimed_amount}元，订单实收{order_amount_received}元）'}), 400
+
+        # 插入到payment_collection表
+        cursor.execute("""
+            INSERT INTO payment_collection (
+                order_id, student_id, payment_scenario, payment_method,
+                payment_amount, payer, payee_entity, merchant_order,
+                trading_hours, arrival_time, status
+            ) VALUES (%s, %s, 1, %s, %s, %s, %s, %s, %s, %s, 20)
+        """, (
+            order_id,
+            order['student_id'],
+            unclaimed['payment_method'],
+            unclaimed['payment_amount'],
+            unclaimed['payer'],
+            unclaimed['payee_entity'],
+            unclaimed['merchant_order'],
+            unclaimed['arrival_time'],
+            unclaimed['arrival_time']
+        ))
+
+        # 获取新插入的payment_collection的ID
+        payment_id = cursor.lastrowid
+
+        # 更新unclaimed为已认领状态，并关联payment_id
         cursor.execute("""
             UPDATE unclaimed
-            SET status = 1, claimer = %s
+            SET status = 1, claimer = %s, payment_id = %s
             WHERE id = %s
-        """, (user_id, unclaimed_id))
+        """, (user_id, payment_id, unclaimed_id))
+
+        # 更新订单状态
+        update_order_payment_status(cursor, order_id)
 
         connection.commit()
 
@@ -3832,7 +3905,7 @@ def download_unclaimed_template():
         ws.title = "待认领收款模板"
 
         # 设置表头
-        headers = ['付款方式', '付款金额', '付款方', '收款主体', '到账时间']
+        headers = ['付款方式', '付款金额', '付款方', '收款主体', '商户订单号', '到账时间']
         ws.append(headers)
 
         # 设置表头样式
@@ -3841,7 +3914,7 @@ def download_unclaimed_template():
             cell.alignment = Alignment(horizontal='center', vertical='center')
 
         # 添加示例数据
-        ws.append(['微信', '1000.00', '张三', '北京', '2026-01-12'])
+        ws.append(['微信', '1000.00', '张三', '北京', 'M202601120001', '2026-01-12'])
 
         # 保存到内存
         output = io.BytesIO()
@@ -3897,10 +3970,11 @@ def import_unclaimed_excel():
         }
 
         connection = get_db_connection()
-        cursor = connection.cursor()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
 
         # 跳过表头，从第二行开始读取
         success_count = 0
+        matched_count = 0
         error_rows = []
 
         for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -3912,7 +3986,8 @@ def import_unclaimed_excel():
                 payment_amount_str = str(row[1]).strip() if row[1] else ''
                 payer = str(row[2]).strip() if row[2] else ''
                 payee_entity_str = str(row[3]).strip() if row[3] else ''
-                arrival_time_str = str(row[4]).strip() if row[4] else ''
+                merchant_order = str(row[4]).strip() if row[4] and str(row[4]).strip() != 'None' else None
+                arrival_time_str = str(row[5]).strip() if row[5] else ''
 
                 # 验证付款方式
                 if payment_method_str not in payment_method_map:
@@ -3942,8 +4017,8 @@ def import_unclaimed_excel():
                 # 验证到账时间格式
                 try:
                     # 尝试解析日期
-                    if isinstance(row[4], datetime):
-                        arrival_time = row[4]
+                    if isinstance(row[5], datetime):
+                        arrival_time = row[5]
                     else:
                         # 支持YYYY-MM-DD格式
                         if not re.match(r'^\d{4}-\d{2}-\d{2}$', arrival_time_str):
@@ -3953,11 +4028,37 @@ def import_unclaimed_excel():
                     error_rows.append(f'第{idx}行：到账时间格式不正确，必须为YYYY-MM-DD格式')
                     continue
 
-                # 插入数据
-                cursor.execute("""
-                    INSERT INTO unclaimed (payment_method, payment_amount, payer, payee_entity, arrival_time, status)
-                    VALUES (%s, %s, %s, %s, %s, 0)
-                """, (payment_method, payment_amount, payer, payee_entity, arrival_time))
+                # 自动匹配逻辑：查找已收款中符合条件的记录
+                matched = False
+                if merchant_order:  # 只有商户订单号不为空时才进行匹配
+                    cursor.execute("""
+                        SELECT id FROM payment_collection
+                        WHERE payment_scenario = 1
+                        AND status = 10
+                        AND payment_method = %s
+                        AND payment_amount = %s
+                        AND merchant_order = %s
+                        AND payee_entity = %s
+                        LIMIT 1
+                    """, (payment_method, payment_amount, merchant_order, payee_entity))
+
+                    matched_payment = cursor.fetchone()
+                    if matched_payment:
+                        # 更新已收款状态为已支付，同时更新到账时间
+                        cursor.execute("""
+                            UPDATE payment_collection
+                            SET status = 20, arrival_time = %s
+                            WHERE id = %s
+                        """, (arrival_time, matched_payment['id']))
+                        matched = True
+                        matched_count += 1
+
+                # 如果没有匹配到，则插入到待认领表
+                if not matched:
+                    cursor.execute("""
+                        INSERT INTO unclaimed (payment_method, payment_amount, payer, payee_entity, merchant_order, arrival_time, status)
+                        VALUES (%s, %s, %s, %s, %s, %s, 0)
+                    """, (payment_method, payment_amount, payer, payee_entity, merchant_order, arrival_time))
 
                 success_count += 1
 
@@ -3967,16 +4068,22 @@ def import_unclaimed_excel():
 
         connection.commit()
 
+        message = f'导入完成，成功{success_count}条'
+        if matched_count > 0:
+            message += f'，其中{matched_count}条自动匹配到已收款'
+
         if error_rows:
             return jsonify({
-                'message': f'导入完成，成功{success_count}条',
+                'message': message,
                 'success_count': success_count,
+                'matched_count': matched_count,
                 'errors': error_rows
             }), 200 if success_count > 0 else 400
         else:
             return jsonify({
-                'message': f'导入成功，共{success_count}条数据',
-                'success_count': success_count
+                'message': message,
+                'success_count': success_count,
+                'matched_count': matched_count
             }), 200
 
     except Exception as e:

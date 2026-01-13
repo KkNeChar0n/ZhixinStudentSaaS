@@ -287,6 +287,7 @@ createApp({
             paymentCollectionFilters: {
                 id: '',
                 student_id: '',
+                order_id: '',
                 payer: '',
                 payment_method: '',
                 trading_date: '',
@@ -308,6 +309,7 @@ createApp({
                 payment_amount: '',
                 payer: '',
                 payee_entity: '',
+                merchant_order: '',
                 trading_hours: ''
             },
             // 待认领收款数据
@@ -325,6 +327,7 @@ createApp({
             showClaimConfirmModal: false,
             showDeleteUnclaimedModal: false,
             currentUnclaimed: null,
+            claimOrderId: '',
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -510,7 +513,22 @@ createApp({
             // 展开的菜单列表
             expandedMenus: [],
             // 菜单树数据
-            menuTree: []
+            menuTree: [],
+            // 各列表的loading状态
+            loadingStudents: false,
+            loadingCoaches: false,
+            loadingOrders: false,
+            loadingChildOrders: false,
+            loadingGoods: false,
+            loadingAttributes: false,
+            loadingBrands: false,
+            loadingClassifies: false,
+            loadingAccounts: false,
+            loadingActivityTemplates: false,
+            loadingActivities: false,
+            loadingContracts: false,
+            loadingPaymentCollections: false,
+            loadingUnclaimedPayments: false
         };
     },
     computed: {
@@ -893,6 +911,7 @@ createApp({
         
         // 获取学生数据
         async fetchStudents() {
+            this.loadingStudents = true;
             try {
                 const response = await axios.get('/api/students');
                 this.students = response.data.students;
@@ -901,11 +920,14 @@ createApp({
             } catch (err) {
                 console.error('获取学生数据失败:', err);
                 this.error = '获取学生数据失败';
+            } finally {
+                this.loadingStudents = false;
             }
         },
         
         // 获取教练数据
         async fetchCoaches() {
+            this.loadingCoaches = true;
             try {
                 const response = await axios.get('/api/coaches');
                 this.coaches = response.data.coaches;
@@ -914,6 +936,8 @@ createApp({
             } catch (err) {
                 console.error('获取教练数据失败:', err);
                 this.error = '获取教练数据失败';
+            } finally {
+                this.loadingCoaches = false;
             }
         },
         
@@ -1362,12 +1386,15 @@ createApp({
 
         // 账号管理功能
         async fetchAccounts() {
+            this.loadingAccounts = true;
             try {
                 const response = await axios.get('/api/accounts', { withCredentials: true });
                 this.accounts = response.data.accounts;
             } catch (err) {
                 console.error('获取账号数据失败:', err);
                 this.error = '获取账号数据失败';
+            } finally {
+                this.loadingAccounts = false;
             }
         },
 
@@ -1401,6 +1428,7 @@ createApp({
 
         // 获取订单数据
         async fetchOrders() {
+            this.loadingOrders = true;
             try {
                 const response = await axios.get('/api/orders', { withCredentials: true });
                 this.orders = response.data.orders;
@@ -1408,6 +1436,8 @@ createApp({
             } catch (err) {
                 console.error('获取订单失败:', err);
                 this.error = '获取订单失败';
+            } finally {
+                this.loadingOrders = false;
             }
         },
 
@@ -2030,6 +2060,7 @@ createApp({
 
         // 获取属性数据
         async fetchAttributes() {
+            this.loadingAttributes = true;
             try {
                 const response = await axios.get('/api/attributes', { withCredentials: true });
                 this.attributes = response.data.attributes;
@@ -2037,6 +2068,8 @@ createApp({
             } catch (err) {
                 console.error('获取属性失败:', err);
                 this.error = '获取属性失败';
+            } finally {
+                this.loadingAttributes = false;
             }
         },
 
@@ -2294,6 +2327,7 @@ createApp({
 
         // 获取类型数据
         async fetchClassifies() {
+            this.loadingClassifies = true;
             try {
                 const response = await axios.get('/api/classifies', { withCredentials: true });
                 this.classifies = response.data.classifies;
@@ -2301,6 +2335,8 @@ createApp({
             } catch (err) {
                 console.error('获取类型失败:', err);
                 this.error = '获取类型失败';
+            } finally {
+                this.loadingClassifies = false;
             }
         },
 
@@ -2554,6 +2590,7 @@ createApp({
 
         // 获取子产品订单数据
         async fetchChildOrders() {
+            this.loadingChildOrders = true;
             try {
                 const response = await axios.get('/api/childorders', { withCredentials: true });
                 this.childOrders = response.data.childorders;
@@ -2561,6 +2598,8 @@ createApp({
             } catch (err) {
                 console.error('获取子产品订单数据失败:', err);
                 this.error = '获取子产品订单数据失败';
+            } finally {
+                this.loadingChildOrders = false;
             }
         },
 
@@ -2639,6 +2678,7 @@ createApp({
 
         // 获取品牌数据
         async fetchBrands() {
+            this.loadingBrands = true;
             try {
                 const response = await axios.get('/api/brands', { withCredentials: true });
                 this.brands = response.data.brands;
@@ -2646,6 +2686,8 @@ createApp({
             } catch (err) {
                 console.error('获取品牌失败:', err);
                 this.error = '获取品牌失败';
+            } finally {
+                this.loadingBrands = false;
             }
         },
 
@@ -2848,6 +2890,7 @@ createApp({
 
         // 获取商品数据
         async fetchGoods() {
+            this.loadingGoods = true;
             try {
                 const response = await axios.get('/api/goods', { withCredentials: true });
                 this.goods = response.data.goods;
@@ -2855,6 +2898,8 @@ createApp({
             } catch (err) {
                 console.error('获取商品失败:', err);
                 this.error = '获取商品失败';
+            } finally {
+                this.loadingGoods = false;
             }
         },
 
@@ -3403,12 +3448,15 @@ createApp({
 
         // 获取活动模板列表
         async fetchActivityTemplates() {
+            this.loadingActivityTemplates = true;
             try {
                 const response = await axios.get('/api/activity-templates', { withCredentials: true });
                 this.activityTemplates = response.data.templates || [];
                 this.filteredActivityTemplates = [...this.activityTemplates];
             } catch (err) {
                 console.error('获取活动模板失败:', err);
+            } finally {
+                this.loadingActivityTemplates = false;
             }
         },
 
@@ -3807,12 +3855,15 @@ createApp({
 
         // 获取活动列表
         async fetchActivities() {
+            this.loadingActivities = true;
             try {
                 const response = await axios.get('/api/activities', { withCredentials: true });
                 this.activities = response.data.activities || [];
                 this.filteredActivities = [...this.activities];
             } catch (err) {
                 console.error('获取活动列表失败:', err);
+            } finally {
+                this.loadingActivities = false;
             }
         },
 
@@ -4233,12 +4284,15 @@ createApp({
 
         // 获取合同列表
         async fetchContracts() {
+            this.loadingContracts = true;
             try {
                 const response = await axios.get('/api/contracts', { withCredentials: true });
                 this.contracts = response.data.contracts || [];
                 this.filteredContracts = [...this.contracts];
             } catch (err) {
                 console.error('获取合同列表失败:', err);
+            } finally {
+                this.loadingContracts = false;
             }
         },
 
@@ -4511,12 +4565,15 @@ createApp({
 
         // 获取收款列表
         async fetchPaymentCollections() {
+            this.loadingPaymentCollections = true;
             try {
                 const response = await axios.get('/api/payment-collections');
                 this.paymentCollections = response.data.collections;
                 this.filteredPaymentCollections = this.paymentCollections;
             } catch (err) {
                 console.error('获取收款数据失败:', err);
+            } finally {
+                this.loadingPaymentCollections = false;
             }
         },
 
@@ -4527,6 +4584,9 @@ createApp({
                     return false;
                 }
                 if (this.paymentCollectionFilters.student_id && pc.student_id != this.paymentCollectionFilters.student_id) {
+                    return false;
+                }
+                if (this.paymentCollectionFilters.order_id && pc.order_id != this.paymentCollectionFilters.order_id) {
                     return false;
                 }
                 if (this.paymentCollectionFilters.payer && pc.payer !== this.paymentCollectionFilters.payer) {
@@ -4554,6 +4614,7 @@ createApp({
             this.paymentCollectionFilters = {
                 id: '',
                 student_id: '',
+                order_id: '',
                 payer: '',
                 payment_method: '',
                 trading_date: '',
@@ -4683,6 +4744,14 @@ createApp({
                 return;
             }
 
+            // 校验线下支付的商户订单号
+            if (parseInt(this.paymentCollectionForm.payment_scenario) === 1) {
+                if (!this.paymentCollectionForm.merchant_order) {
+                    alert('请填写商户订单号');
+                    return;
+                }
+            }
+
             // 校验付款金额
             const paymentAmount = parseFloat(this.paymentCollectionForm.payment_amount);
             const pendingAmount = parseFloat(this.paymentCollectionForm.pending_amount);
@@ -4723,6 +4792,7 @@ createApp({
                     payment_amount: paymentAmount,
                     payer: this.paymentCollectionForm.payer,
                     payee_entity: parseInt(this.paymentCollectionForm.payee_entity),
+                    merchant_order: this.paymentCollectionForm.merchant_order || null,
                     trading_hours: this.paymentCollectionForm.trading_hours || null
                 };
 
@@ -4780,6 +4850,7 @@ createApp({
 
         // 获取待认领收款列表
         async fetchUnclaimedPayments() {
+            this.loadingUnclaimedPayments = true;
             try {
                 const params = new URLSearchParams();
                 if (this.unclaimedFilters.id) params.append('id', this.unclaimedFilters.id);
@@ -4795,6 +4866,8 @@ createApp({
             } catch (err) {
                 console.error('获取待认领列表失败:', err);
                 alert(err.response?.data?.error || '获取待认领列表失败');
+            } finally {
+                this.loadingUnclaimedPayments = false;
             }
         },
 
@@ -4827,11 +4900,20 @@ createApp({
 
         // 执行认领
         async doClaimUnclaimed() {
+            // 验证订单ID是否填写
+            if (!this.claimOrderId) {
+                alert('请输入订单ID');
+                return;
+            }
+
             try {
-                await axios.put(`/api/unclaimed/${this.currentUnclaimed.id}/claim`);
+                await axios.put(`/api/unclaimed/${this.currentUnclaimed.id}/claim`, {
+                    order_id: parseInt(this.claimOrderId)
+                });
                 alert('认领成功');
                 this.showClaimConfirmModal = false;
                 this.currentUnclaimed = null;
+                this.claimOrderId = '';
                 await this.fetchUnclaimedPayments();
             } catch (err) {
                 console.error('认领失败:', err);

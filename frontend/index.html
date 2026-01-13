@@ -65,7 +65,12 @@
                 <!-- 右侧内容区域 -->
                 <div class="content-area">
                     <!-- 学生管理页面 -->
-                    <div v-if="activeMenu === 'students'">
+                    <div v-if="activeMenu === 'students'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingStudents" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
                         <div class="page-header">
                             <h1>学生管理</h1>
                             <button class="add-btn" @click="openAddStudentModal">新增学生</button>
@@ -152,7 +157,12 @@
                     </div>
                     
                     <!-- 教练管理页面 -->
-                    <div v-if="activeMenu === 'coaches'">
+                    <div v-if="activeMenu === 'coaches'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingCoaches" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
                         <div class="page-header">
                             <h1>教练管理</h1>
                             <button class="add-btn" @click="openAddCoachModal">新增教练</button>
@@ -248,7 +258,12 @@
                     </div>
 
                     <!-- 订单管理页面 -->
-                    <div v-if="activeMenu === 'orders'">
+                    <div v-if="activeMenu === 'orders'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingOrders" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
                         <div class="page-header">
                             <h1>订单管理</h1>
                             <button class="add-btn" @click="openAddOrderDrawer">新增订单</button>
@@ -326,7 +341,13 @@
                     </div>
 
                     <!-- 子产品订单页面 -->
-                    <div v-if="activeMenu === 'childorders'">
+                    <div v-if="activeMenu === 'childorders'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingChildOrders" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
                         <div class="page-header">
                             <h1>子产品订单</h1>
                         </div>
@@ -402,7 +423,13 @@
                     </div>
 
                     <!-- 活动模板页面 -->
-                    <div v-if="activeMenu === 'activity_template'">
+                    <div v-if="activeMenu === 'activity_template'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingActivityTemplates" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
                         <div class="page-header">
                             <h1>活动模板</h1>
                             <button class="add-btn" @click="openAddActivityTemplateDrawer">新增模板</button>
@@ -481,7 +508,13 @@
                     </div>
 
                     <!-- 活动管理页面 -->
-                    <div v-if="activeMenu === 'activity_management'">
+                    <div v-if="activeMenu === 'activity_management'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingActivities" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
                         <div class="page-header">
                             <h1>活动管理</h1>
                             <button class="add-btn" @click="openAddActivityDrawer">新增活动</button>
@@ -563,7 +596,13 @@
                     </div>
 
                     <!-- 账号管理页面 -->
-                    <div v-if="activeMenu === 'accounts'">
+                    <div v-if="activeMenu === 'accounts'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingAccounts" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
                         <h1>账号管理</h1>
 
                         <table class="data-table">
@@ -601,7 +640,13 @@
                     </div>
 
                     <!-- 合同管理页面 -->
-                    <div v-if="activeMenu === 'contract_management'">
+                    <div v-if="activeMenu === 'contract_management'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingContracts" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
                         <div class="page-header">
                             <h1>合同管理</h1>
                             <button class="add-btn" @click="openAddContractDrawer">新增合同</button>
@@ -714,7 +759,13 @@
                     </div>
 
                     <!-- 收款管理页面 -->
-                    <div v-if="activeMenu === 'payment_collection'">
+                    <div v-if="activeMenu === 'payment_collection'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingPaymentCollections" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
                         <div class="page-header">
                             <h1>收款管理</h1>
                             <button class="add-btn" @click="openAddPaymentCollectionModal">新增收款</button>
@@ -750,7 +801,7 @@
                                     <button
                                         class="sub-tab-btn"
                                         :class="{ active: paymentCollectionSubTab === 'pending' }"
-                                        @click="paymentCollectionSubTab = 'pending'">
+                                        @click="paymentCollectionSubTab = 'pending'; fetchUnclaimedPayments()">
                                         待认领
                                     </button>
                                 </div>
@@ -767,6 +818,10 @@
                                             <div class="filter-item">
                                                 <label for="pcUidFilter">UID</label>
                                                 <input type="text" id="pcUidFilter" v-model="paymentCollectionFilters.student_id" placeholder="请输入UID">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="pcOrderIdFilter">订单ID</label>
+                                                <input type="text" id="pcOrderIdFilter" v-model="paymentCollectionFilters.order_id" placeholder="请输入订单ID">
                                             </div>
                                             <div class="filter-item">
                                                 <label for="pcPayerFilter">付款人</label>
@@ -808,11 +863,14 @@
                                         <thead>
                                             <tr>
                                                 <th>ID</th>
+                                                <th>UID</th>
+                                                <th>订单ID</th>
                                                 <th>付款场景</th>
                                                 <th>付款方式</th>
                                                 <th>付款金额</th>
                                                 <th>付款方</th>
                                                 <th>收款主体</th>
+                                                <th>商户订单号</th>
                                                 <th>交易时间</th>
                                                 <th>到账时间</th>
                                                 <th>状态</th>
@@ -822,11 +880,14 @@
                                         <tbody>
                                             <tr v-for="pc in paginatedPaymentCollections" :key="pc.id">
                                                 <td>{{ pc.id }}</td>
+                                                <td>{{ pc.student_id || '-' }}</td>
+                                                <td>{{ pc.order_id || '-' }}</td>
                                                 <td>{{ getPaymentScenarioText(pc.payment_scenario) }}</td>
                                                 <td>{{ getPaymentMethodText(pc.payment_method) }}</td>
                                                 <td>{{ pc.payment_amount }}</td>
                                                 <td>{{ pc.payer || '-' }}</td>
                                                 <td>{{ getPayeeEntityText(pc.payee_entity) }}</td>
+                                                <td>{{ pc.merchant_order || '-' }}</td>
                                                 <td>{{ formatDateTime(pc.trading_hours) }}</td>
                                                 <td>{{ pc.arrival_time ? formatDateTime(pc.arrival_time) : '-' }}</td>
                                                 <td>{{ getCollectionStatusText(pc.status) }}</td>
@@ -859,12 +920,18 @@
                                 </div>
 
                                 <!-- 待认领内容 -->
-                                <div v-if="paymentCollectionSubTab === 'pending'">
+                                <div v-if="paymentCollectionSubTab === 'pending'" style="position: relative;">
+                                    <!-- Loading遮罩层 -->
+                                    <div v-if="loadingUnclaimedPayments" class="loading-overlay">
+                                        <div class="loading-spinner"></div>
+                                        <div class="loading-text">加载中...</div>
+                                    </div>
+
                                     <!-- 操作按钮区 -->
                                     <div class="page-header" style="margin-bottom: 20px;">
                                         <div>
                                             <button class="add-btn" @click="downloadUnclaimedTemplate">模板下载</button>
-                                            <label for="unclaimedImport" class="add-btn" style="margin-left: 10px; cursor: pointer;">
+                                            <label for="unclaimedImport" class="add-btn" style="margin-left: 10px;">
                                                 模板导入
                                                 <input type="file" id="unclaimedImport" @change="importUnclaimedExcel" accept=".xls,.xlsx" style="display: none;">
                                             </label>
@@ -925,6 +992,7 @@
                                                 <th>付款金额</th>
                                                 <th>付款方</th>
                                                 <th>收款主体</th>
+                                                <th>商户订单号</th>
                                                 <th>到账时间</th>
                                                 <th>认领人</th>
                                                 <th>状态</th>
@@ -938,6 +1006,7 @@
                                                 <td>{{ unclaimed.payment_amount }}</td>
                                                 <td>{{ unclaimed.payer }}</td>
                                                 <td>{{ unclaimed.payee_entity === 0 ? '北京' : '西安' }}</td>
+                                                <td>{{ unclaimed.merchant_order || '-' }}</td>
                                                 <td>{{ unclaimed.arrival_time ? new Date(unclaimed.arrival_time).toLocaleDateString() : '' }}</td>
                                                 <td>{{ unclaimed.claimer_name || '-' }}</td>
                                                 <td>{{ getUnclaimedStatusText(unclaimed.status) }}</td>
@@ -968,7 +1037,13 @@
                     </div>
 
                     <!-- 属性管理页面 -->
-                    <div v-if="activeMenu === 'attributes'">
+                    <div v-if="activeMenu === 'attributes'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingAttributes" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
                         <div class="page-header">
                             <h1>属性管理</h1>
                             <button class="add-btn" @click="openAddAttributeModal">新增属性</button>
@@ -1043,7 +1118,13 @@
                     </div>
 
                     <!-- 类型管理页面 -->
-                    <div v-if="activeMenu === 'classifies'">
+                    <div v-if="activeMenu === 'classifies'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingClassifies" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
                         <div class="page-header">
                             <h1>类型管理</h1>
                             <button class="add-btn" @click="openAddClassifyModal">新增</button>
@@ -1115,7 +1196,13 @@
                     </div>
 
                     <!-- 品牌管理页面 -->
-                    <div v-if="activeMenu === 'brands'">
+                    <div v-if="activeMenu === 'brands'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingBrands" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
                         <div class="page-header">
                             <h1>品牌管理</h1>
                             <button class="add-btn" @click="openAddBrandModal">新增</button>
@@ -1181,7 +1268,13 @@
                     </div>
 
                     <!-- 商品管理页面 -->
-                    <div v-if="activeMenu === 'goods'">
+                    <div v-if="activeMenu === 'goods'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingGoods" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
                         <div class="page-header">
                             <h1>商品管理</h1>
                             <button class="add-btn" @click="openAddGoodsDrawer">新增</button>
@@ -3160,6 +3253,10 @@
                         </select>
                     </div>
                     <div class="form-group" v-if="paymentCollectionForm.payment_scenario === '1'">
+                        <label>商户订单号 <span class="required">*</span></label>
+                        <input type="text" v-model="paymentCollectionForm.merchant_order" placeholder="请输入商户订单号">
+                    </div>
+                    <div class="form-group" v-if="paymentCollectionForm.payment_scenario === '1'">
                         <label>交易时间</label>
                         <input type="date" v-model="paymentCollectionForm.trading_hours">
                     </div>
@@ -3210,10 +3307,17 @@
                     <h2>确认认领</h2>
                 </div>
                 <div class="modal-body">
-                    <p>是否确认认领该笔收款？</p>
+                    <p>请输入要关联的订单ID：</p>
+                    <div class="form-group">
+                        <label for="claimOrderId">订单ID <span class="required">*</span></label>
+                        <input type="number" id="claimOrderId" v-model="claimOrderId" placeholder="请输入订单ID" required>
+                    </div>
+                    <p style="color: #666; font-size: 14px; margin-top: 10px;">
+                        注意：订单状态必须为"未支付"或"部分支付"，且认领金额不能超过订单待支付金额。
+                    </p>
                 </div>
                 <div class="modal-footer">
-                    <button class="cancel-btn" @click="showClaimConfirmModal = false">取消</button>
+                    <button class="cancel-btn" @click="showClaimConfirmModal = false; claimOrderId = ''">取消</button>
                     <button class="save-btn" @click="doClaimUnclaimed">确认</button>
                 </div>
             </div>
