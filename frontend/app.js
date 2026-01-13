@@ -328,6 +328,45 @@ createApp({
             showDeleteUnclaimedModal: false,
             currentUnclaimed: null,
             claimOrderId: '',
+            // 淘宝收款数据
+            taobaoPayments: [],
+            filteredTaobaoPayments: [],
+            taobaoPaymentFilters: {
+                id: '',
+                student_id: '',
+                order_id: '',
+                order_time: '',
+                status: ''
+            },
+            taobaoPaymentCurrentPage: 1,
+            showAddTaobaoPaymentModal: false,
+            showConfirmTaobaoPaymentModal: false,
+            showDeleteTaobaoPaymentModal: false,
+            currentTaobaoPayment: null,
+            taobaoPaymentForm: {
+                order_id: '',
+                student_id: '',
+                payer: '',
+                zhifubao_account: '',
+                payment_amount: '',
+                order_time: '',
+                merchant_order: '',
+                pending_amount: ''
+            },
+            // 淘宝待认领数据
+            taobaoUnclaimedPayments: [],
+            filteredTaobaoUnclaimedPayments: [],
+            taobaoUnclaimedFilters: {
+                id: '',
+                arrival_time: '',
+                status: ''
+            },
+            taobaoUnclaimedCurrentPage: 1,
+            showClaimTaobaoModal: false,
+            showDeleteTaobaoUnclaimedModal: false,
+            currentTaobaoUnclaimed: null,
+            claimTaobaoOrderId: '',
+            taobaoSubTab: 'paid',
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -528,7 +567,9 @@ createApp({
             loadingActivities: false,
             loadingContracts: false,
             loadingPaymentCollections: false,
-            loadingUnclaimedPayments: false
+            loadingUnclaimedPayments: false,
+            loadingTaobaoPayments: false,
+            loadingTaobaoUnclaimed: false
         };
     },
     computed: {
@@ -735,6 +776,24 @@ createApp({
         },
         totalUnclaimedPages() {
             return Math.ceil(this.filteredUnclaimedPayments.length / 10);
+        },
+        // 淘宝已付款分页数据
+        paginatedTaobaoPayments() {
+            const start = (this.taobaoPaymentCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredTaobaoPayments.slice(start, end);
+        },
+        totalTaobaoPaymentPages() {
+            return Math.ceil(this.filteredTaobaoPayments.length / 10);
+        },
+        // 淘宝待认领分页数据
+        paginatedTaobaoUnclaimed() {
+            const start = (this.taobaoUnclaimedCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredTaobaoUnclaimedPayments.slice(start, end);
+        },
+        totalTaobaoUnclaimedPages() {
+            return Math.ceil(this.filteredTaobaoUnclaimedPayments.length / 10);
         },
         // 计算是否可以选择线上付款（预计付款日期未过）
         canSelectOnlinePayment() {
@@ -4972,6 +5031,351 @@ createApp({
 
                 // 刷新列表
                 await this.fetchUnclaimedPayments();
+            } catch (err) {
+                console.error('导入失败:', err);
+                alert(err.response?.data?.error || '导入失败');
+                event.target.value = '';
+            }
+        },
+
+        // ============ 淘宝收款管理 ============
+        // 获取淘宝已付款列表
+        async fetchTaobaoPayments() {
+            this.loadingTaobaoPayments = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.taobaoPaymentFilters.id) params.append('id', this.taobaoPaymentFilters.id);
+                if (this.taobaoPaymentFilters.student_id) params.append('student_id', this.taobaoPaymentFilters.student_id);
+                if (this.taobaoPaymentFilters.order_id) params.append('order_id', this.taobaoPaymentFilters.order_id);
+                if (this.taobaoPaymentFilters.order_time) params.append('order_time', this.taobaoPaymentFilters.order_time);
+                if (this.taobaoPaymentFilters.status !== '') params.append('status', this.taobaoPaymentFilters.status);
+
+                const response = await axios.get(`/api/taobao-payments?${params.toString()}`);
+                this.taobaoPayments = response.data.payments || [];
+                this.filteredTaobaoPayments = this.taobaoPayments;
+            } catch (err) {
+                console.error('获取淘宝已付款列表失败:', err);
+                alert(err.response?.data?.error || '获取淘宝已付款列表失败');
+            } finally {
+                this.loadingTaobaoPayments = false;
+            }
+        },
+
+        // 搜索淘宝已付款
+        searchTaobaoPayments() {
+            this.filteredTaobaoPayments = this.taobaoPayments.filter(tp => {
+                if (this.taobaoPaymentFilters.id && tp.id != this.taobaoPaymentFilters.id) {
+                    return false;
+                }
+                if (this.taobaoPaymentFilters.student_id && tp.student_id != this.taobaoPaymentFilters.student_id) {
+                    return false;
+                }
+                if (this.taobaoPaymentFilters.order_id && tp.order_id != this.taobaoPaymentFilters.order_id) {
+                    return false;
+                }
+                if (this.taobaoPaymentFilters.order_time) {
+                    const orderDate = tp.order_time ? tp.order_time.split('T')[0] : '';
+                    if (orderDate !== this.taobaoPaymentFilters.order_time) {
+                        return false;
+                    }
+                }
+                if (this.taobaoPaymentFilters.status !== '' && tp.status != this.taobaoPaymentFilters.status) {
+                    return false;
+                }
+                return true;
+            });
+            this.taobaoPaymentCurrentPage = 1;
+        },
+
+        // 重置淘宝已付款筛选
+        resetTaobaoPaymentFilters() {
+            this.taobaoPaymentFilters = {
+                id: '',
+                student_id: '',
+                order_id: '',
+                order_time: '',
+                status: ''
+            };
+            this.fetchTaobaoPayments();
+            this.taobaoPaymentCurrentPage = 1;
+        },
+
+        // 淘宝已付款分页切换
+        changeTaobaoPaymentPage(page) {
+            this.taobaoPaymentCurrentPage = page;
+        },
+
+        // 获取淘宝状态文本
+        getTaobaoStatusText(status) {
+            const map = { 0: '已下单', 10: '待认领', 20: '已认领', 30: '已到账', 40: '已退单' };
+            return map[status] || '-';
+        },
+
+        // 打开新增淘宝收款弹窗
+        async openAddTaobaoPaymentModal() {
+            this.taobaoPaymentForm = {
+                order_id: '',
+                student_id: '',
+                payer: '',
+                zhifubao_account: '',
+                payment_amount: '',
+                order_time: '',
+                merchant_order: '',
+                pending_amount: ''
+            };
+            this.studentUnpaidOrders = [];
+            this.selectedOrderInfo = null;
+
+            // 加载启用的学生列表
+            try {
+                const response = await axios.get('/api/students/active');
+                this.activeStudents = response.data.students;
+            } catch (err) {
+                console.error('获取学生列表失败:', err);
+                this.activeStudents = [];
+            }
+
+            this.showAddTaobaoPaymentModal = true;
+        },
+
+        // 淘宝收款学生选择变化
+        async onTaobaoStudentChange() {
+            this.taobaoPaymentForm.order_id = '';
+            this.taobaoPaymentForm.pending_amount = '';
+            this.selectedOrderInfo = null;
+
+            if (!this.taobaoPaymentForm.student_id) {
+                this.studentUnpaidOrders = [];
+                return;
+            }
+
+            try {
+                const response = await axios.get(`/api/students/${this.taobaoPaymentForm.student_id}/unpaid-orders`);
+                this.studentUnpaidOrders = response.data.orders;
+            } catch (err) {
+                console.error('获取学生订单失败:', err);
+                this.studentUnpaidOrders = [];
+            }
+        },
+
+        // 淘宝收款订单选择变化
+        async onTaobaoOrderChange() {
+            if (!this.taobaoPaymentForm.order_id) {
+                this.taobaoPaymentForm.pending_amount = '';
+                this.selectedOrderInfo = null;
+                return;
+            }
+
+            const selectedOrder = this.studentUnpaidOrders.find(o => o.id == this.taobaoPaymentForm.order_id);
+            if (selectedOrder) {
+                this.selectedOrderInfo = selectedOrder;
+                // 计算待支付金额 = 应收金额 - 已收金额
+                const pending = parseFloat(selectedOrder.amount_received || 0) - parseFloat(selectedOrder.paid_amount || 0);
+                this.taobaoPaymentForm.pending_amount = pending.toFixed(2);
+            }
+        },
+
+        // 新增淘宝收款
+        async addTaobaoPayment() {
+            // 验证必填字段
+            if (!this.taobaoPaymentForm.order_id || !this.taobaoPaymentForm.student_id ||
+                !this.taobaoPaymentForm.payment_amount || !this.taobaoPaymentForm.order_time) {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            try {
+                await axios.post('/api/taobao-payments', this.taobaoPaymentForm);
+                alert('新增成功');
+                this.showAddTaobaoPaymentModal = false;
+                await this.fetchTaobaoPayments();
+            } catch (err) {
+                console.error('新增失败:', err);
+                alert(err.response?.data?.error || '新增失败');
+            }
+        },
+
+        // 确认到账
+        confirmTaobaoPayment(payment) {
+            this.currentTaobaoPayment = payment;
+            this.showConfirmTaobaoPaymentModal = true;
+        },
+
+        // 执行确认到账
+        async doConfirmTaobaoPayment() {
+            try {
+                await axios.put(`/api/taobao-payments/${this.currentTaobaoPayment.id}/confirm`);
+                alert('确认到账成功');
+                this.showConfirmTaobaoPaymentModal = false;
+                this.currentTaobaoPayment = null;
+                await this.fetchTaobaoPayments();
+            } catch (err) {
+                console.error('确认到账失败:', err);
+                alert(err.response?.data?.error || '确认到账失败');
+            }
+        },
+
+        // 删除淘宝收款
+        deleteTaobaoPayment(payment) {
+            this.currentTaobaoPayment = payment;
+            this.showDeleteTaobaoPaymentModal = true;
+        },
+
+        // 执行删除淘宝收款
+        async doDeleteTaobaoPayment() {
+            try {
+                await axios.delete(`/api/taobao-payments/${this.currentTaobaoPayment.id}`);
+                alert('删除成功');
+                this.showDeleteTaobaoPaymentModal = false;
+                this.currentTaobaoPayment = null;
+                await this.fetchTaobaoPayments();
+            } catch (err) {
+                console.error('删除失败:', err);
+                alert(err.response?.data?.error || '删除失败');
+            }
+        },
+
+        // 获取淘宝待认领列表
+        async fetchTaobaoUnclaimed() {
+            this.loadingTaobaoUnclaimed = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.taobaoUnclaimedFilters.id) params.append('id', this.taobaoUnclaimedFilters.id);
+                if (this.taobaoUnclaimedFilters.arrival_time) params.append('arrival_time', this.taobaoUnclaimedFilters.arrival_time);
+                if (this.taobaoUnclaimedFilters.status !== '') params.append('status', this.taobaoUnclaimedFilters.status);
+
+                const response = await axios.get(`/api/taobao-unclaimed?${params.toString()}`);
+                this.taobaoUnclaimedPayments = response.data.unclaimed || [];
+                this.filteredTaobaoUnclaimedPayments = this.taobaoUnclaimedPayments;
+            } catch (err) {
+                console.error('获取淘宝待认领列表失败:', err);
+                alert(err.response?.data?.error || '获取淘宝待认领列表失败');
+            } finally {
+                this.loadingTaobaoUnclaimed = false;
+            }
+        },
+
+        // 搜索淘宝待认领
+        searchTaobaoUnclaimed() {
+            this.filteredTaobaoUnclaimedPayments = this.taobaoUnclaimedPayments.filter(tu => {
+                if (this.taobaoUnclaimedFilters.id && tu.id != this.taobaoUnclaimedFilters.id) {
+                    return false;
+                }
+                if (this.taobaoUnclaimedFilters.arrival_time) {
+                    const arrivalDate = tu.arrival_time ? tu.arrival_time.split('T')[0] : '';
+                    if (arrivalDate !== this.taobaoUnclaimedFilters.arrival_time) {
+                        return false;
+                    }
+                }
+                if (this.taobaoUnclaimedFilters.status !== '' && tu.status != this.taobaoUnclaimedFilters.status) {
+                    return false;
+                }
+                return true;
+            });
+            this.taobaoUnclaimedCurrentPage = 1;
+        },
+
+        // 重置淘宝待认领筛选
+        resetTaobaoUnclaimedFilters() {
+            this.taobaoUnclaimedFilters = {
+                id: '',
+                arrival_time: '',
+                status: ''
+            };
+            this.fetchTaobaoUnclaimed();
+            this.taobaoUnclaimedCurrentPage = 1;
+        },
+
+        // 淘宝待认领分页切换
+        changeTaobaoUnclaimedPage(page) {
+            this.taobaoUnclaimedCurrentPage = page;
+        },
+
+        // 获取淘宝待认领状态文本
+        getTaobaoUnclaimedStatusText(status) {
+            const map = { 10: '待认领', 20: '已认领' };
+            return map[status] || '-';
+        },
+
+        // 认领淘宝待认领
+        claimTaobaoUnclaimed(unclaimed) {
+            this.currentTaobaoUnclaimed = unclaimed;
+            this.showClaimTaobaoModal = true;
+        },
+
+        // 执行认领淘宝待认领
+        async doClaimTaobaoUnclaimed() {
+            if (!this.claimTaobaoOrderId) {
+                alert('请输入订单ID');
+                return;
+            }
+
+            try {
+                await axios.put(`/api/taobao-unclaimed/${this.currentTaobaoUnclaimed.id}/claim`, {
+                    order_id: parseInt(this.claimTaobaoOrderId)
+                });
+                alert('认领成功');
+                this.showClaimTaobaoModal = false;
+                this.currentTaobaoUnclaimed = null;
+                this.claimTaobaoOrderId = '';
+                await this.fetchTaobaoUnclaimed();
+            } catch (err) {
+                console.error('认领失败:', err);
+                alert(err.response?.data?.error || '认领失败');
+            }
+        },
+
+        // 删除淘宝待认领
+        deleteTaobaoUnclaimed(unclaimed) {
+            this.currentTaobaoUnclaimed = unclaimed;
+            this.showDeleteTaobaoUnclaimedModal = true;
+        },
+
+        // 执行删除淘宝待认领
+        async doDeleteTaobaoUnclaimed() {
+            try {
+                await axios.delete(`/api/taobao-unclaimed/${this.currentTaobaoUnclaimed.id}`);
+                alert('删除成功');
+                this.showDeleteTaobaoUnclaimedModal = false;
+                this.currentTaobaoUnclaimed = null;
+                await this.fetchTaobaoUnclaimed();
+            } catch (err) {
+                console.error('删除失败:', err);
+                alert(err.response?.data?.error || '删除失败');
+            }
+        },
+
+        // 下载淘宝待认领Excel模板
+        downloadTaobaoTemplate() {
+            window.location.href = '/api/taobao-unclaimed/template';
+        },
+
+        // 导入淘宝待认领Excel
+        async importTaobaoExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await axios.post('/api/taobao-unclaimed/import', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    }
+                });
+
+                if (response.data.errors && response.data.errors.length > 0) {
+                    alert(response.data.message + '\n\n错误详情:\n' + response.data.errors.join('\n'));
+                } else {
+                    alert(response.data.message);
+                }
+
+                // 清空文件输入
+                event.target.value = '';
+
+                // 刷新列表
+                await this.fetchTaobaoUnclaimed();
             } catch (err) {
                 console.error('导入失败:', err);
                 alert(err.response?.data?.error || '导入失败');

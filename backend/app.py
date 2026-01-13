@@ -3612,6 +3612,607 @@ def delete_payment_collection(collection_id):
         if connection:
             connection.close()
 
+# ==================== 淘宝收款管理 ====================
+
+# 获取淘宝已付款列表
+@app.route('/api/taobao-payments', methods=['GET'])
+def get_taobao_payments():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询SQL - 只查询已下单、已到账、已退单状态的记录
+        sql = """
+            SELECT
+                tp.id, tp.order_id, tp.student_id, tp.payer, tp.zhifubao_account,
+                tp.payment_amount, tp.order_time, tp.arrival_time, tp.merchant_order,
+                tp.status, tp.create_time,
+                s.name AS student_name
+            FROM taobao_payment tp
+            LEFT JOIN student s ON tp.student_id = s.id
+            WHERE tp.status IN (0, 30, 40)
+        """
+        params = []
+
+        # 获取筛选参数
+        id_filter = request.args.get('id')
+        student_id = request.args.get('student_id')
+        order_id = request.args.get('order_id')
+        order_date = request.args.get('order_date')
+        status = request.args.get('status')
+
+        if id_filter:
+            sql += " AND tp.id = %s"
+            params.append(id_filter)
+
+        if student_id:
+            sql += " AND tp.student_id = %s"
+            params.append(student_id)
+
+        if order_id:
+            sql += " AND tp.order_id = %s"
+            params.append(order_id)
+
+        if order_date:
+            sql += " AND DATE(tp.order_time) = %s"
+            params.append(order_date)
+
+        if status is not None and status != '':
+            sql += " AND tp.status = %s"
+            params.append(status)
+
+        sql += " ORDER BY tp.id DESC"
+
+        cursor.execute(sql, params)
+        payments = cursor.fetchall()
+
+        return jsonify({'payments': payments}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 新增淘宝收款
+@app.route('/api/taobao-payments', methods=['POST'])
+def add_taobao_payment():
+    connection = None
+    cursor = None
+    try:
+        data = request.json
+        student_id = data.get('student_id')
+        order_id = data.get('order_id')
+        zhifubao_account = data.get('zhifubao_account')
+        payer = data.get('payer')
+        payment_amount = data.get('payment_amount')
+        order_time = data.get('order_time')
+        merchant_order = data.get('merchant_order')
+
+        # 校验必填项
+        if not student_id or not order_id or not payment_amount or not order_time or not merchant_order:
+            return jsonify({'error': '请填写所有必填项'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取订单的实收金额
+        cursor.execute("""
+            SELECT amount_received, status
+            FROM orders
+            WHERE id = %s
+        """, (order_id,))
+
+        order = cursor.fetchone()
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+
+        # 验证订单状态
+        if order['status'] not in [20, 30]:
+            return jsonify({'error': '订单状态必须为未支付或部分支付'}), 400
+
+        # 计算该订单已有的收款金额（包括常规收款和淘宝收款）
+        cursor.execute("""
+            SELECT COALESCE(SUM(payment_amount), 0) AS paid_amount
+            FROM payment_collection
+            WHERE order_id = %s AND status IN (10, 20)
+        """, (order_id,))
+        result1 = cursor.fetchone()
+        paid_amount1 = float(result1['paid_amount']) if result1 else 0
+
+        cursor.execute("""
+            SELECT COALESCE(SUM(payment_amount), 0) AS paid_amount
+            FROM taobao_payment
+            WHERE order_id = %s AND status IN (0, 30)
+        """, (order_id,))
+        result2 = cursor.fetchone()
+        paid_amount2 = float(result2['paid_amount']) if result2 else 0
+
+        total_paid = paid_amount1 + paid_amount2
+
+        # 待支付金额
+        pending_amount = float(order['amount_received']) - total_paid
+
+        # 校验：付款金额不能超过待支付金额
+        if float(payment_amount) > pending_amount:
+            return jsonify({'error': f'付款金额不能超过待支付金额({pending_amount})'}), 400
+
+        # 插入淘宝收款记录，初始状态为已下单(0)
+        cursor.execute("""
+            INSERT INTO taobao_payment (order_id, student_id, payer, zhifubao_account,
+                payment_amount, order_time, merchant_order, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 0)
+        """, (order_id, student_id, payer, zhifubao_account, payment_amount, order_time, merchant_order))
+
+        # 更新订单状态
+        update_order_payment_status(cursor, order_id)
+
+        connection.commit()
+        return jsonify({'message': '淘宝收款新增成功'}), 201
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 确认到账
+@app.route('/api/taobao-payments/<int:payment_id>/confirm', methods=['PUT'])
+def confirm_taobao_payment(payment_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查记录是否存在
+        cursor.execute("SELECT id, status, order_id FROM taobao_payment WHERE id = %s", (payment_id,))
+        payment = cursor.fetchone()
+
+        if not payment:
+            return jsonify({'error': '记录不存在'}), 404
+
+        # 只有已下单状态可以确认到账
+        if payment['status'] != 0:
+            return jsonify({'error': '只有已下单状态可以确认到账'}), 400
+
+        # 更新状态为已到账(30)
+        cursor.execute("""
+            UPDATE taobao_payment
+            SET status = 30, arrival_time = NOW()
+            WHERE id = %s
+        """, (payment_id,))
+
+        # 更新订单状态
+        update_order_payment_status(cursor, payment['order_id'])
+
+        connection.commit()
+
+        return jsonify({'message': '已确认到账'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 删除淘宝收款
+@app.route('/api/taobao-payments/<int:payment_id>', methods=['DELETE'])
+def delete_taobao_payment(payment_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查记录是否存在
+        cursor.execute("SELECT id, status, order_id FROM taobao_payment WHERE id = %s", (payment_id,))
+        payment = cursor.fetchone()
+
+        if not payment:
+            return jsonify({'error': '记录不存在'}), 404
+
+        # 只有已下单和待认领状态可以删除
+        if payment['status'] not in [0, 10]:
+            return jsonify({'error': '只有已下单或待认领状态可以删除'}), 400
+
+        # 获取订单ID
+        order_id = payment['order_id']
+
+        # 删除记录
+        cursor.execute("DELETE FROM taobao_payment WHERE id = %s", (payment_id,))
+
+        # 如果有关联订单，更新订单状态
+        if order_id:
+            update_order_payment_status(cursor, order_id)
+
+        connection.commit()
+
+        return jsonify({'message': '已删除'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取淘宝待认领列表
+@app.route('/api/taobao-unclaimed', methods=['GET'])
+def get_taobao_unclaimed():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询SQL - 只查询待认领和已认领状态的记录
+        sql = """
+            SELECT
+                tp.id, tp.order_id, tp.student_id, tp.payer, tp.zhifubao_account,
+                tp.payment_amount, tp.arrival_time, tp.merchant_order,
+                tp.status, tp.claimer, tp.create_time,
+                s.name AS student_name,
+                u.username AS claimer_name
+            FROM taobao_payment tp
+            LEFT JOIN student s ON tp.student_id = s.id
+            LEFT JOIN useraccount u ON tp.claimer = u.id
+            WHERE tp.status IN (10, 20)
+        """
+        params = []
+
+        # 获取筛选参数
+        id_filter = request.args.get('id')
+        arrival_date = request.args.get('arrival_date')
+        status = request.args.get('status')
+
+        if id_filter:
+            sql += " AND tp.id = %s"
+            params.append(id_filter)
+
+        if arrival_date:
+            sql += " AND DATE(tp.arrival_time) = %s"
+            params.append(arrival_date)
+
+        if status is not None and status != '':
+            sql += " AND tp.status = %s"
+            params.append(status)
+
+        sql += " ORDER BY tp.id DESC"
+
+        cursor.execute(sql, params)
+        payments = cursor.fetchall()
+
+        return jsonify({'unclaimed': payments}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 认领淘宝待认领
+@app.route('/api/taobao-unclaimed/<int:unclaimed_id>/claim', methods=['PUT'])
+def claim_taobao_unclaimed(unclaimed_id):
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        # 获取请求参数
+        data = request.get_json()
+        order_id = data.get('order_id')
+
+        if not order_id:
+            return jsonify({'error': '请输入订单ID'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取当前用户ID
+        cursor.execute("SELECT id FROM useraccount WHERE username = %s", (session['username'],))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'error': '用户不存在'}), 404
+        user_id = user['id']
+
+        # 检查待认领记录是否存在且状态为待认领
+        cursor.execute("""
+            SELECT payment_amount, zhifubao_account, payer, merchant_order, arrival_time, status
+            FROM taobao_payment
+            WHERE id = %s
+        """, (unclaimed_id,))
+        unclaimed = cursor.fetchone()
+
+        if not unclaimed:
+            return jsonify({'error': '记录不存在'}), 404
+
+        if unclaimed['status'] != 10:
+            return jsonify({'error': '该记录已被认领'}), 400
+
+        # 验证订单是否存在且状态正确
+        cursor.execute("""
+            SELECT student_id, amount_received, status
+            FROM orders
+            WHERE id = %s
+        """, (order_id,))
+        order = cursor.fetchone()
+
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+
+        # 验证订单状态是否为未支付(20)或部分支付(30)
+        if order['status'] not in [20, 30]:
+            return jsonify({'error': '订单状态必须为未支付或部分支付'}), 400
+
+        # 计算该订单已有的收款金额（包括常规收款和淘宝收款）
+        cursor.execute("""
+            SELECT COALESCE(SUM(payment_amount), 0) AS total_paid
+            FROM payment_collection
+            WHERE order_id = %s AND status IN (10, 20)
+        """, (order_id,))
+        result1 = cursor.fetchone()
+        total_paid1 = float(result1['total_paid']) if result1 else 0
+
+        cursor.execute("""
+            SELECT COALESCE(SUM(payment_amount), 0) AS total_paid
+            FROM taobao_payment
+            WHERE order_id = %s AND status IN (0, 30)
+        """, (order_id,))
+        result2 = cursor.fetchone()
+        total_paid2 = float(result2['total_paid']) if result2 else 0
+
+        total_paid = total_paid1 + total_paid2
+
+        # 验证：待认领金额 + 已有收款金额 <= 订单实收金额
+        unclaimed_amount = float(unclaimed['payment_amount'])
+        order_amount_received = float(order['amount_received'])
+
+        if total_paid + unclaimed_amount > order_amount_received:
+            return jsonify({'error': f'收款金额超出订单实收金额（已收{total_paid}元，待认领{unclaimed_amount}元，订单实收{order_amount_received}元）'}), 400
+
+        # 更新待认领记录为已认领状态，并关联订单和学生
+        cursor.execute("""
+            UPDATE taobao_payment
+            SET status = 20, claimer = %s, order_id = %s, student_id = %s
+            WHERE id = %s
+        """, (user_id, order_id, order['student_id'], unclaimed_id))
+
+        # 更新订单状态
+        update_order_payment_status(cursor, order_id)
+
+        connection.commit()
+
+        return jsonify({'message': '认领成功'}), 200
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 下载淘宝待认领Excel模板
+@app.route('/api/taobao-unclaimed/template', methods=['GET'])
+def download_taobao_unclaimed_template():
+    try:
+        # 创建工作簿
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "淘宝待认领模板"
+
+        # 设置表头
+        headers = ['付款方', '支付宝账号', '付款金额', '商户订单号', '到账时间']
+        ws.append(headers)
+
+        # 设置表头样式
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        # 添加示例数据
+        ws.append(['张三', 'zhangsan@example.com', '1000.00', 'TB202601120001', '2026-01-12'])
+
+        # 保存到内存
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='淘宝待认领模板.xlsx'
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 导入淘宝待认领Excel
+@app.route('/api/taobao-unclaimed/import', methods=['POST'])
+def import_taobao_unclaimed_excel():
+    connection = None
+    cursor = None
+    try:
+        # 检查文件
+        if 'file' not in request.files:
+            return jsonify({'error': '未上传文件'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': '文件名为空'}), 400
+
+        # 检查文件格式
+        if not file.filename.endswith(('.xls', '.xlsx')):
+            return jsonify({'error': '仅支持.xls和.xlsx格式'}), 400
+
+        # 读取Excel文件
+        wb = load_workbook(file)
+        ws = wb.active
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 跳过表头，从第二行开始读取
+        success_count = 0
+        matched_count = 0
+        error_rows = []
+
+        for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            if not any(row):  # 跳过空行
+                continue
+
+            try:
+                payer = str(row[0]).strip() if row[0] and str(row[0]).strip() != 'None' else None
+                zhifubao_account = str(row[1]).strip() if row[1] and str(row[1]).strip() != 'None' else None
+                payment_amount_str = str(row[2]).strip() if row[2] else ''
+                merchant_order = str(row[3]).strip() if row[3] else ''
+                arrival_time_str = str(row[4]).strip() if row[4] else ''
+
+                # 验证付款金额
+                try:
+                    payment_amount = float(payment_amount_str)
+                    if payment_amount <= 0:
+                        raise ValueError()
+                    # 保留两位小数
+                    payment_amount = round(payment_amount, 2)
+                except:
+                    error_rows.append(f'第{idx}行：付款金额格式不正确，必须为正数')
+                    continue
+
+                # 验证商户订单号
+                if not merchant_order:
+                    error_rows.append(f'第{idx}行：商户订单号不能为空')
+                    continue
+
+                # 验证到账时间格式
+                try:
+                    # 尝试解析日期
+                    if isinstance(row[4], datetime):
+                        arrival_time = row[4]
+                    else:
+                        # 支持YYYY-MM-DD格式
+                        if not re.match(r'^\d{4}-\d{2}-\d{2}$', arrival_time_str):
+                            raise ValueError()
+                        arrival_time = datetime.strptime(arrival_time_str, '%Y-%m-%d')
+                except:
+                    error_rows.append(f'第{idx}行：到账时间格式不正确，必须为YYYY-MM-DD格式')
+                    continue
+
+                # 自动匹配逻辑：查找已下单中符合条件的记录
+                matched = False
+                cursor.execute("""
+                    SELECT id FROM taobao_payment
+                    WHERE status = 0
+                    AND payment_amount = %s
+                    AND merchant_order = %s
+                    LIMIT 1
+                """, (payment_amount, merchant_order))
+
+                matched_payment = cursor.fetchone()
+                if matched_payment:
+                    # 更新已下单状态为已到账，同时更新到账时间、付款方和支付宝账号
+                    cursor.execute("""
+                        UPDATE taobao_payment
+                        SET status = 30, arrival_time = %s, payer = %s, zhifubao_account = %s
+                        WHERE id = %s
+                    """, (arrival_time, payer, zhifubao_account, matched_payment['id']))
+                    matched = True
+                    matched_count += 1
+
+                # 如果没有匹配到，则插入到待认领表
+                if not matched:
+                    cursor.execute("""
+                        INSERT INTO taobao_payment (zhifubao_account, payment_amount, payer, merchant_order, arrival_time, status)
+                        VALUES (%s, %s, %s, %s, %s, 10)
+                    """, (zhifubao_account, payment_amount, payer, merchant_order, arrival_time))
+
+                success_count += 1
+
+            except Exception as e:
+                error_rows.append(f'第{idx}行：{str(e)}')
+                continue
+
+        connection.commit()
+
+        message = f'导入完成，成功{success_count}条'
+        if matched_count > 0:
+            message += f'，其中{matched_count}条自动匹配到已付款'
+
+        if error_rows:
+            return jsonify({
+                'message': message,
+                'success_count': success_count,
+                'matched_count': matched_count,
+                'errors': error_rows
+            }), 200 if success_count > 0 else 400
+        else:
+            return jsonify({
+                'message': message,
+                'success_count': success_count,
+                'matched_count': matched_count
+            }), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 删除淘宝待认领
+@app.route('/api/taobao-unclaimed/<int:unclaimed_id>', methods=['DELETE'])
+def delete_taobao_unclaimed(unclaimed_id):
+    """删除淘宝待认领记录"""
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查待认领记录是否存在且状态为待认领
+        cursor.execute("SELECT status FROM taobao_payment WHERE id = %s", (unclaimed_id,))
+        unclaimed = cursor.fetchone()
+
+        if not unclaimed:
+            return jsonify({'error': '待认领记录不存在'}), 404
+
+        if unclaimed['status'] != 10:
+            return jsonify({'error': '仅能删除待认领状态的记录'}), 400
+
+        # 删除记录
+        cursor.execute("DELETE FROM taobao_payment WHERE id = %s", (unclaimed_id,))
+        connection.commit()
+
+        return jsonify({'message': '删除成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 # 临时API：修复活动折扣值
 @app.route('/api/fix-activity-discount/<int:activity_id>', methods=['PUT'])
 def fix_activity_discount(activity_id):
@@ -4140,4 +4741,5 @@ def create_unclaimed_table():
             connection.close()
 
 if __name__ == '__main__':
+    # 以调试模式运行
     app.run(debug=True, host='0.0.0.0', port=5001)

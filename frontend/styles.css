@@ -1201,3 +1201,122 @@ h1 {
     font-size: 14px;
     font-weight: bold;
 }
+
+/* 淘宝收款表格样式优化 */
+.tab-content .data-table {
+    font-size: 13px;
+}
+
+.tab-content .data-table th,
+.tab-content .data-table td {
+    padding: 10px 8px;
+    height: auto;
+    min-height: 40px;
+}
+
+.tab-content .data-table th {
+    font-size: 12px;
+    padding: 12px 8px;
+}
+
+/* 淘宝收款筛选条件优化 */
+.tab-content .filter-section {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.tab-content .filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.tab-content .filter-item {
+    display: flex;
+    flex-direction: column;
+    min-width: 150px;
+    flex: 1;
+}
+
+.tab-content .filter-item label {
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #555;
+    font-size: 13px;
+}
+
+.tab-content .filter-item input,
+.tab-content .filter-item select {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: border-color 0.3s;
+}
+
+.tab-content .filter-item input:focus,
+.tab-content .filter-item select:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.tab-content .filter-buttons {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+/* 确保表格可以横向滚动 */
+.tab-content {
+    overflow-x: auto;
+}
+
+/* 操作按钮样式优化 */
+.tab-content .action-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    margin-right: 5px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    color: #fff;
+}
+
+.tab-content .action-btn.confirm-btn {
+    background-color: #27ae60;
+}
+
+.tab-content .action-btn.confirm-btn:hover {
+    background-color: #229954;
+}
+
+.tab-content .action-btn.delete-btn {
+    background-color: #e74c3c;
+}
+
+.tab-content .action-btn.delete-btn:hover {
+    background-color: #c0392b;
+}
+
+/* 弹窗中的确认按钮样式 */
+.confirm-btn {
+    background-color: #27ae60;
+    color: #fff;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.confirm-btn:hover {
+    background-color: #229954;
+}

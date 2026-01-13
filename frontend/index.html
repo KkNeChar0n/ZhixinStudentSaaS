@@ -768,7 +768,7 @@
 
                         <div class="page-header">
                             <h1>收款管理</h1>
-                            <button class="add-btn" @click="openAddPaymentCollectionModal">新增收款</button>
+                            <button class="add-btn" @click="paymentCollectionTab === 'taobao' ? openAddTaobaoPaymentModal() : openAddPaymentCollectionModal()">新增收款</button>
                         </div>
 
                         <!-- 一级Tab -->
@@ -783,7 +783,7 @@
                                 <button
                                     class="tab-btn"
                                     :class="{ active: paymentCollectionTab === 'taobao' }"
-                                    @click="paymentCollectionTab = 'taobao'">
+                                    @click="paymentCollectionTab = 'taobao'; taobaoSubTab = 'paid'; fetchTaobaoPayments()">
                                     淘宝收款
                                 </button>
                             </div>
@@ -1030,8 +1030,200 @@
                             </div>
 
                             <!-- 淘宝收款内容 -->
-                            <div v-if="paymentCollectionTab === 'taobao'" class="tab-content empty-content">
-                                <p>淘宝收款功能开发中...</p>
+                            <div v-if="paymentCollectionTab === 'taobao'" class="tab-content" style="position: relative;">
+                                <!-- 子标签页 -->
+                                <div class="sub-tab-nav">
+                                    <button
+                                        :class="['sub-tab-btn', { active: taobaoSubTab === 'paid' }]"
+                                        @click="taobaoSubTab = 'paid'; fetchTaobaoPayments()">
+                                        已付款
+                                    </button>
+                                    <button
+                                        :class="['sub-tab-btn', { active: taobaoSubTab === 'unclaimed' }]"
+                                        @click="taobaoSubTab = 'unclaimed'; fetchTaobaoUnclaimed()">
+                                        待认领
+                                    </button>
+                                </div>
+
+                                <!-- 已付款内容 -->
+                                <div v-if="taobaoSubTab === 'paid'" style="position: relative;">
+                                    <!-- Loading 遮罩 -->
+                                    <div v-if="loadingTaobaoPayments" class="loading-overlay">
+                                        <div class="loading-spinner"></div>
+                                        <div class="loading-text">加载中...</div>
+                                    </div>
+
+                                    <!-- 筛选条件 -->
+                                    <div class="filter-section">
+                                        <div class="filter-row">
+                                            <div class="filter-item">
+                                                <label for="taobaoIdFilter">ID</label>
+                                                <input type="text" id="taobaoIdFilter" v-model="taobaoPaymentFilters.id" placeholder="请输入ID">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="taobaoStudentIdFilter">UID</label>
+                                                <input type="text" id="taobaoStudentIdFilter" v-model="taobaoPaymentFilters.student_id" placeholder="请输入UID">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="taobaoOrderIdFilter">订单ID</label>
+                                                <input type="text" id="taobaoOrderIdFilter" v-model="taobaoPaymentFilters.order_id" placeholder="请输入订单ID">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="taobaoOrderTimeFilter">下单时间</label>
+                                                <input type="date" id="taobaoOrderTimeFilter" v-model="taobaoPaymentFilters.order_time">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="taobaoStatusFilter">状态</label>
+                                                <select id="taobaoStatusFilter" v-model="taobaoPaymentFilters.status">
+                                                    <option value="">全部</option>
+                                                    <option value="0">已下单</option>
+                                                    <option value="30">已到账</option>
+                                                    <option value="40">已退单</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="filter-buttons">
+                                            <button class="search-btn" @click="searchTaobaoPayments">搜索</button>
+                                            <button class="reset-btn" @click="resetTaobaoPaymentFilters">重置</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- 数据表格 -->
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>UID</th>
+                                                <th>订单ID</th>
+                                                <th>付款方</th>
+                                                <th>支付宝账号</th>
+                                                <th>金额</th>
+                                                <th>下单时间</th>
+                                                <th>到账时间</th>
+                                                <th>商户订单号</th>
+                                                <th>状态</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="tp in paginatedTaobaoPayments" :key="tp.id">
+                                                <td>{{ tp.id }}</td>
+                                                <td>{{ tp.student_id || '-' }}</td>
+                                                <td>{{ tp.order_id || '-' }}</td>
+                                                <td>{{ tp.payer || '-' }}</td>
+                                                <td>{{ tp.zhifubao_account || '-' }}</td>
+                                                <td>{{ tp.payment_amount }}</td>
+                                                <td>{{ tp.order_time ? tp.order_time.replace('T', ' ').substring(0, 19) : '-' }}</td>
+                                                <td>{{ tp.arrival_time ? tp.arrival_time.replace('T', ' ').substring(0, 19) : '-' }}</td>
+                                                <td>{{ tp.merchant_order || '-' }}</td>
+                                                <td>{{ getTaobaoStatusText(tp.status) }}</td>
+                                                <td>
+                                                    <button v-if="tp.status === 0" class="action-btn confirm-btn" @click="confirmTaobaoPayment(tp)">确认到账</button>
+                                                    <button v-if="tp.status !== 30" class="action-btn delete-btn" @click="deleteTaobaoPayment(tp)">删除</button>
+                                                </td>
+                                            </tr>
+                                            <tr v-if="paginatedTaobaoPayments.length === 0">
+                                                <td colspan="11" style="text-align: center; padding: 20px;">暂无数据</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                    <!-- 分页 -->
+                                    <div class="pagination" v-if="totalTaobaoPaymentPages > 1">
+                                        <button @click="changeTaobaoPaymentPage(taobaoPaymentCurrentPage - 1)" :disabled="taobaoPaymentCurrentPage === 1">上一页</button>
+                                        <span>第 {{ taobaoPaymentCurrentPage }} / {{ totalTaobaoPaymentPages }} 页</span>
+                                        <button @click="changeTaobaoPaymentPage(taobaoPaymentCurrentPage + 1)" :disabled="taobaoPaymentCurrentPage === totalTaobaoPaymentPages">下一页</button>
+                                    </div>
+                                </div>
+
+                                <!-- 待认领内容 -->
+                                <div v-if="taobaoSubTab === 'unclaimed'" style="position: relative;">
+                                    <!-- Loading 遮罩 -->
+                                    <div v-if="loadingTaobaoUnclaimed" class="loading-overlay">
+                                        <div class="loading-spinner"></div>
+                                        <div class="loading-text">加载中...</div>
+                                    </div>
+
+                                    <!-- 操作按钮区 -->
+                                    <div class="page-header" style="margin-bottom: 20px;">
+                                        <div>
+                                            <button class="add-btn" @click="downloadTaobaoTemplate">模板下载</button>
+                                            <label for="taobaoTemplateImport" class="add-btn" style="margin-left: 10px;">
+                                                模板导入
+                                                <input type="file" id="taobaoTemplateImport" @change="importTaobaoExcel" accept=".xlsx,.xls" style="display: none;">
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <!-- 筛选条件 -->
+                                    <div class="filter-section">
+                                        <div class="filter-row">
+                                            <div class="filter-item">
+                                                <label for="taobaoUnclaimedIdFilter">ID</label>
+                                                <input type="text" id="taobaoUnclaimedIdFilter" v-model="taobaoUnclaimedFilters.id" placeholder="请输入ID">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="taobaoArrivalTimeFilter">到账时间</label>
+                                                <input type="date" id="taobaoArrivalTimeFilter" v-model="taobaoUnclaimedFilters.arrival_time">
+                                            </div>
+                                            <div class="filter-item">
+                                                <label for="taobaoUnclaimedStatusFilter">状态</label>
+                                                <select id="taobaoUnclaimedStatusFilter" v-model="taobaoUnclaimedFilters.status">
+                                                    <option value="">全部</option>
+                                                    <option value="10">待认领</option>
+                                                    <option value="20">已认领</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="filter-buttons">
+                                            <button class="search-btn" @click="searchTaobaoUnclaimed">搜索</button>
+                                            <button class="reset-btn" @click="resetTaobaoUnclaimedFilters">重置</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- 数据表格 -->
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>付款方</th>
+                                                <th>支付宝账号</th>
+                                                <th>金额</th>
+                                                <th>到账时间</th>
+                                                <th>商户订单号</th>
+                                                <th>状态</th>
+                                                <th>认领人ID</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="tu in paginatedTaobaoUnclaimed" :key="tu.id">
+                                                <td>{{ tu.id }}</td>
+                                                <td>{{ tu.payer || '-' }}</td>
+                                                <td>{{ tu.zhifubao_account || '-' }}</td>
+                                                <td>{{ tu.payment_amount }}</td>
+                                                <td>{{ tu.arrival_time ? tu.arrival_time.replace('T', ' ').substring(0, 19) : '-' }}</td>
+                                                <td>{{ tu.merchant_order || '-' }}</td>
+                                                <td>{{ getTaobaoUnclaimedStatusText(tu.status) }}</td>
+                                                <td>{{ tu.claimer || '-' }}</td>
+                                                <td class="action-column">
+                                                    <button v-if="tu.status === 10" class="edit-btn" @click="claimTaobaoUnclaimed(tu)">认领</button>
+                                                    <button v-if="tu.status === 10" class="delete-btn" @click="deleteTaobaoUnclaimed(tu)">删除</button>
+                                                </td>
+                                            </tr>
+                                            <tr v-if="paginatedTaobaoUnclaimed.length === 0">
+                                                <td colspan="9" style="text-align: center; padding: 20px;">暂无数据</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                    <!-- 分页 -->
+                                    <div class="pagination" v-if="totalTaobaoUnclaimedPages > 1">
+                                        <button @click="changeTaobaoUnclaimedPage(taobaoUnclaimedCurrentPage - 1)" :disabled="taobaoUnclaimedCurrentPage === 1">上一页</button>
+                                        <span>第 {{ taobaoUnclaimedCurrentPage }} / {{ totalTaobaoUnclaimedPages }} 页</span>
+                                        <button @click="changeTaobaoUnclaimedPage(taobaoUnclaimedCurrentPage + 1)" :disabled="taobaoUnclaimedCurrentPage === totalTaobaoUnclaimedPages">下一页</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3335,6 +3527,135 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="showDeleteUnclaimedModal = false">取消</button>
                     <button class="delete-btn" @click="doDeleteUnclaimed">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 淘宝新增收款弹窗 -->
+        <div class="modal-overlay" v-if="showAddTaobaoPaymentModal">
+            <div class="modal" style="width: 500px;">
+                <div class="modal-header">
+                    <h3>新增淘宝收款</h3>
+                    <button class="close-btn" @click="showAddTaobaoPaymentModal = false">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>学生姓名 <span class="required">*</span></label>
+                        <select v-model="taobaoPaymentForm.student_id" @change="onTaobaoStudentChange">
+                            <option value="">请选择学生</option>
+                            <option v-for="student in activeStudents" :key="student.id" :value="student.id">
+                                {{ student.student_name }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>UID</label>
+                        <input type="text" :value="taobaoPaymentForm.student_id" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>订单ID <span class="required">*</span></label>
+                        <select v-model="taobaoPaymentForm.order_id" @change="onTaobaoOrderChange">
+                            <option value="">请选择订单</option>
+                            <option v-for="order in studentUnpaidOrders" :key="order.id" :value="order.id">
+                                {{ order.id }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>待支付金额</label>
+                        <input type="text" :value="taobaoPaymentForm.pending_amount" readonly class="readonly-input">
+                    </div>
+                    <div class="form-group">
+                        <label>付款方</label>
+                        <input type="text" v-model="taobaoPaymentForm.payer" placeholder="请输入付款方">
+                    </div>
+                    <div class="form-group">
+                        <label>支付宝账号</label>
+                        <input type="text" v-model="taobaoPaymentForm.zhifubao_account" placeholder="请输入支付宝账号">
+                    </div>
+                    <div class="form-group">
+                        <label>付款金额 <span class="required">*</span></label>
+                        <input type="number" step="0.01" v-model="taobaoPaymentForm.payment_amount" placeholder="请输入付款金额">
+                    </div>
+                    <div class="form-group">
+                        <label>下单时间 <span class="required">*</span></label>
+                        <input type="datetime-local" v-model="taobaoPaymentForm.order_time">
+                    </div>
+                    <div class="form-group">
+                        <label>商户订单号</label>
+                        <input type="text" v-model="taobaoPaymentForm.merchant_order" placeholder="请输入商户订单号">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showAddTaobaoPaymentModal = false">取消</button>
+                    <button class="save-btn" @click="addTaobaoPayment">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 确认淘宝到账弹窗 -->
+        <div class="modal-overlay" v-if="showConfirmTaobaoPaymentModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认到账</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认该笔款项已到账？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showConfirmTaobaoPaymentModal = false">取消</button>
+                    <button class="confirm-btn" @click="doConfirmTaobaoPayment">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 删除淘宝收款确认弹窗 -->
+        <div class="modal-overlay" v-if="showDeleteTaobaoPaymentModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认删除</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认删除该淘宝收款记录？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showDeleteTaobaoPaymentModal = false">取消</button>
+                    <button class="delete-btn" @click="doDeleteTaobaoPayment">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 认领淘宝待认领弹窗 -->
+        <div class="modal-overlay" v-if="showClaimTaobaoModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>认领待认领款项</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="claimTaobaoOrderId">订单ID <span style="color: red;">*</span></label>
+                        <input type="number" id="claimTaobaoOrderId" v-model="claimTaobaoOrderId" placeholder="请输入要关联的订单ID">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showClaimTaobaoModal = false">取消</button>
+                    <button class="confirm-btn" @click="doClaimTaobaoUnclaimed">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 删除淘宝待认领确认弹窗 -->
+        <div class="modal-overlay" v-if="showDeleteTaobaoUnclaimedModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认删除</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认删除该待认领记录？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showDeleteTaobaoUnclaimedModal = false">取消</button>
+                    <button class="delete-btn" @click="doDeleteTaobaoUnclaimed">确认</button>
                 </div>
             </div>
         </div>
