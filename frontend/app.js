@@ -1104,6 +1104,8 @@ createApp({
                 this.fetchPaymentCollections();
             } else if (menu === 'separate_account') {
                 this.fetchSeparateAccounts();
+            } else if (menu === 'refund_orders') {
+                this.fetchRefundOrders();
             } else if (menu === 'approval_flow_type') {
                 this.fetchApprovalFlowTypes();
             } else if (menu === 'approval_flow_template') {
