@@ -5187,6 +5187,642 @@ def regenerate_separate_accounts_for_taobao(payment_id):
         if connection:
             connection.close()
 
+# ============ 退款订单管理 ============
+# 获取订单退费信息（用于申请退费弹窗）
+@app.route('/api/orders/<int:order_id>/refund-info', methods=['GET'])
+def get_order_refund_info(order_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 1. 获取订单基本信息和学生信息
+        cursor.execute("""
+            SELECT o.*, s.name AS student_name, g.name AS grade, s.sex_id AS gender
+            FROM orders o
+            LEFT JOIN student s ON o.student_id = s.id
+            LEFT JOIN grade g ON s.grade_id = g.id
+            WHERE o.id = %s
+        """, (order_id,))
+        order = cursor.fetchone()
+
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+
+        # 检查订单状态是否允许退费（部分支付30或已支付40）
+        if order['status'] not in [30, 40]:
+            return jsonify({'error': '订单状态不允许退费'}), 400
+
+        # 2. 校验关联的收款是否都已验证
+        # 常规收款：状态必须为已支付(20)
+        cursor.execute("""
+            SELECT COUNT(*) as unverified_count
+            FROM payment_collection
+            WHERE order_id = %s AND status != 20
+        """, (order_id,))
+        result = cursor.fetchone()
+        if result['unverified_count'] > 0:
+            return jsonify({'error': '存在未验证收款，禁止退费！'}), 400
+
+        # 淘宝收款：状态必须为已到账(30)
+        cursor.execute("""
+            SELECT COUNT(*) as unverified_count
+            FROM taobao_payment
+            WHERE order_id = %s AND status NOT IN (30, 40)
+        """, (order_id,))
+        result = cursor.fetchone()
+        if result['unverified_count'] > 0:
+            return jsonify({'error': '存在未验证收款，禁止退费！'}), 400
+
+        # 3. 获取子订单列表及可退金额
+        cursor.execute("""
+            SELECT
+                co.id as childorder_id,
+                co.goodsid as goods_id,
+                g.name as goods_name,
+                co.amount_received,
+                COALESCE(SUM(roi.refund_amount), 0) as refunded_amount
+            FROM childorders co
+            LEFT JOIN goods g ON co.goodsid = g.id
+            LEFT JOIN refund_order_item roi ON co.id = roi.childorder_id
+            WHERE co.parentsid = %s
+            GROUP BY co.id
+            ORDER BY co.id
+        """, (order_id,))
+        child_orders = cursor.fetchall()
+
+        # 计算每个子订单的可退金额
+        for co in child_orders:
+            co['available_refund'] = float(co['amount_received']) - float(co['refunded_amount'])
+
+        # 4. 获取收款列表及可退金额
+        # 常规收款
+        cursor.execute("""
+            SELECT
+                pc.id as payment_id,
+                0 as payment_type,
+                pc.payment_amount,
+                pc.payee_entity,
+                COALESCE(SUM(rp.refund_amount), 0) as refunded_amount
+            FROM payment_collection pc
+            LEFT JOIN refund_payment rp ON pc.id = rp.payment_id AND rp.payment_type = 0
+            WHERE pc.order_id = %s AND pc.status = 20
+            GROUP BY pc.id
+        """, (order_id,))
+        payments = cursor.fetchall()
+
+        # 淘宝收款
+        cursor.execute("""
+            SELECT
+                tp.id as payment_id,
+                1 as payment_type,
+                tp.payment_amount,
+                NULL as payee_entity,
+                COALESCE(SUM(rp.refund_amount), 0) as refunded_amount
+            FROM taobao_payment tp
+            LEFT JOIN refund_payment rp ON tp.id = rp.payment_id AND rp.payment_type = 1
+            WHERE tp.order_id = %s AND tp.status = 30
+            GROUP BY tp.id
+        """, (order_id,))
+        taobao_payments = cursor.fetchall()
+
+        # 合并收款列表并计算可退金额
+        all_payments = list(payments) + list(taobao_payments)
+        for payment in all_payments:
+            payment['available_refund'] = float(payment['payment_amount']) - float(payment['refunded_amount'])
+
+        return jsonify({
+            'order': {
+                'id': order['id'],
+                'student_id': order['student_id'],
+                'student_name': order['student_name'],
+                'grade': order['grade'],
+                'gender': order['gender'],
+                'status': order['status']
+            },
+            'child_orders': child_orders,
+            'payments': all_payments
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 提交退款申请
+@app.route('/api/refund-orders', methods=['POST'])
+def create_refund_order():
+    connection = None
+    cursor = None
+    try:
+        # 检查是否登录
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        order_id = data.get('order_id')
+        refund_items = data.get('refund_items', [])  # [{childorder_id, goods_id, goods_name, refund_amount}]
+        refund_payments = data.get('refund_payments', [])  # [{payment_id, payment_type, refund_amount}]
+
+        if not order_id or not refund_items or not refund_payments:
+            return jsonify({'error': '参数不完整'}), 400
+
+        # 计算退费总额
+        refund_total = sum(float(item['refund_amount']) for item in refund_items)
+        payment_total = sum(float(item['refund_amount']) for item in refund_payments)
+
+        # 校验退费金额和收款分配是否一致
+        if abs(refund_total - payment_total) > 0.01:
+            return jsonify({'error': '退费金额与收款分配不一致'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取订单信息
+        cursor.execute("SELECT student_id, status FROM orders WHERE id = %s", (order_id,))
+        order = cursor.fetchone()
+        if not order:
+            return jsonify({'error': '订单不存在'}), 404
+
+        # 1. 创建退款订单主记录
+        cursor.execute("""
+            INSERT INTO refund_order (order_id, student_id, refund_amount, submitter, status)
+            VALUES (%s, %s, %s, %s, 0)
+        """, (order_id, order['student_id'], refund_total, session['username']))
+        refund_order_id = cursor.lastrowid
+
+        # 2. 创建退款子订单明细
+        for item in refund_items:
+            cursor.execute("""
+                INSERT INTO refund_order_item (refund_order_id, childorder_id, goods_id, goods_name, refund_amount)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (refund_order_id, item['childorder_id'], item['goods_id'], item['goods_name'], item['refund_amount']))
+
+        # 3. 创建退款收款分配记录
+        for payment in refund_payments:
+            cursor.execute("""
+                INSERT INTO refund_payment (refund_order_id, payment_id, payment_type, refund_amount)
+                VALUES (%s, %s, %s, %s)
+            """, (refund_order_id, payment['payment_id'], payment['payment_type'], payment['refund_amount']))
+
+        # 4. 更新订单状态为50（退费中）
+        cursor.execute("""
+            UPDATE orders SET status = 50 WHERE id = %s
+        """, (order_id,))
+
+        connection.commit()
+        return jsonify({'message': '退款申请提交成功', 'refund_order_id': refund_order_id}), 201
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取退款订单列表
+@app.route('/api/refund-orders', methods=['GET'])
+def get_refund_orders():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取筛选参数
+        refund_id = request.args.get('id')
+        uid = request.args.get('uid')
+        order_id = request.args.get('order_id')
+
+        sql = """
+            SELECT
+                ro.id, ro.order_id, ro.student_id as uid, ro.refund_amount,
+                ro.submitter, ro.submit_time, ro.status
+            FROM refund_order ro
+            WHERE 1=1
+        """
+        params = []
+
+        if refund_id:
+            sql += " AND ro.id = %s"
+            params.append(refund_id)
+
+        if uid:
+            sql += " AND ro.student_id = %s"
+            params.append(uid)
+
+        if order_id:
+            sql += " AND ro.order_id = %s"
+            params.append(order_id)
+
+        sql += " ORDER BY ro.submit_time DESC"
+
+        cursor.execute(sql, params)
+        refund_orders = cursor.fetchall()
+
+        return jsonify({'refund_orders': refund_orders}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取退款订单详情
+@app.route('/api/refund-orders/<int:refund_order_id>', methods=['GET'])
+def get_refund_order_detail(refund_order_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取退款订单主信息
+        cursor.execute("""
+            SELECT ro.*, s.name as student_name, g.name as grade, s.sex_id as gender
+            FROM refund_order ro
+            LEFT JOIN student s ON ro.student_id = s.id
+            LEFT JOIN grade g ON s.grade_id = g.id
+            WHERE ro.id = %s
+        """, (refund_order_id,))
+        refund_order = cursor.fetchone()
+
+        if not refund_order:
+            return jsonify({'error': '退款订单不存在'}), 404
+
+        # 获取退款子订单明细
+        cursor.execute("""
+            SELECT * FROM refund_order_item WHERE refund_order_id = %s
+        """, (refund_order_id,))
+        refund_items = cursor.fetchall()
+
+        # 获取退款收款分配
+        cursor.execute("""
+            SELECT * FROM refund_payment WHERE refund_order_id = %s
+        """, (refund_order_id,))
+        refund_payments = cursor.fetchall()
+
+        return jsonify({
+            'refund_order': refund_order,
+            'refund_items': refund_items,
+            'refund_payments': refund_payments
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# ==================== 审批流类型管理 ====================
+
+# 获取审批流类型列表
+@app.route('/api/approval-flow-types', methods=['GET'])
+def get_approval_flow_types():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = []
+        params = []
+
+        if request.args.get('id'):
+            conditions.append('id = %s')
+            params.append(request.args.get('id'))
+
+        if request.args.get('name'):
+            conditions.append('name = %s')
+            params.append(request.args.get('name'))
+
+        if request.args.get('status') is not None and request.args.get('status') != '':
+            conditions.append('status = %s')
+            params.append(request.args.get('status'))
+
+        where_clause = ' AND '.join(conditions) if conditions else '1=1'
+
+        cursor.execute(f"""
+            SELECT * FROM approval_flow_type
+            WHERE {where_clause}
+            ORDER BY id DESC
+        """, params)
+
+        types = cursor.fetchall()
+        return jsonify({'approval_flow_types': types}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 更新审批流类型状态
+@app.route('/api/approval-flow-types/<int:type_id>/status', methods=['PUT'])
+def update_approval_flow_type_status(type_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        new_status = data.get('status')
+
+        if new_status not in [0, 1]:
+            return jsonify({'error': '无效的状态值'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        cursor.execute("""
+            UPDATE approval_flow_type
+            SET status = %s
+            WHERE id = %s
+        """, (new_status, type_id))
+
+        connection.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'error': '审批流类型不存在'}), 404
+
+        return jsonify({'message': '状态更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# ==================== 审批流模板管理 ====================
+
+# 获取审批流模板列表
+@app.route('/api/approval-flow-templates', methods=['GET'])
+def get_approval_flow_templates():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = []
+        params = []
+
+        if request.args.get('id'):
+            conditions.append('t.id = %s')
+            params.append(request.args.get('id'))
+
+        if request.args.get('approval_flow_type_id'):
+            conditions.append('t.approval_flow_type_id = %s')
+            params.append(request.args.get('approval_flow_type_id'))
+
+        if request.args.get('name'):
+            conditions.append('t.name LIKE %s')
+            params.append(f"%{request.args.get('name')}%")
+
+        if request.args.get('status') is not None and request.args.get('status') != '':
+            conditions.append('t.status = %s')
+            params.append(request.args.get('status'))
+
+        where_clause = ' AND '.join(conditions) if conditions else '1=1'
+
+        cursor.execute(f"""
+            SELECT t.*, ft.name as flow_type_name
+            FROM approval_flow_template t
+            LEFT JOIN approval_flow_type ft ON t.approval_flow_type_id = ft.id
+            WHERE {where_clause}
+            ORDER BY t.id DESC
+        """, params)
+
+        templates = cursor.fetchall()
+        return jsonify({'approval_flow_templates': templates}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取审批流模板详情
+@app.route('/api/approval-flow-templates/<int:template_id>', methods=['GET'])
+def get_approval_flow_template_detail(template_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取模板基本信息
+        cursor.execute("""
+            SELECT t.*, ft.name as flow_type_name
+            FROM approval_flow_template t
+            LEFT JOIN approval_flow_type ft ON t.approval_flow_type_id = ft.id
+            WHERE t.id = %s
+        """, (template_id,))
+        template = cursor.fetchone()
+
+        if not template:
+            return jsonify({'error': '模板不存在'}), 404
+
+        # 获取节点信息
+        cursor.execute("""
+            SELECT * FROM approval_flow_template_node
+            WHERE template_id = %s
+            ORDER BY sort
+        """, (template_id,))
+        nodes = cursor.fetchall()
+
+        # 为每个节点获取审批人员
+        for node in nodes:
+            cursor.execute("""
+                SELECT anu.useraccount_id, u.username
+                FROM approval_node_useraccount anu
+                LEFT JOIN useraccount u ON anu.useraccount_id = u.id
+                WHERE anu.node_id = %s
+            """, (node['id'],))
+            node['approvers'] = cursor.fetchall()
+
+        # 获取抄送人员
+        cursor.execute("""
+            SELECT acu.useraccount_id, u.username
+            FROM approval_copy_useraccount acu
+            LEFT JOIN useraccount u ON acu.useraccount_id = u.id
+            WHERE acu.approval_flow_template_id = %s
+        """, (template_id,))
+        copy_users = cursor.fetchall()
+
+        return jsonify({
+            'template': template,
+            'nodes': nodes,
+            'copy_users': copy_users
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 新增审批流模板
+@app.route('/api/approval-flow-templates', methods=['POST'])
+def create_approval_flow_template():
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        approval_flow_type_id = data.get('approval_flow_type_id')
+        nodes = data.get('nodes', [])
+        copy_users = data.get('copy_users', [])
+
+        if not name or not approval_flow_type_id:
+            return jsonify({'error': '模板名称和审批流类型为必填项'}), 400
+
+        if not nodes or len(nodes) == 0:
+            return jsonify({'error': '至少需要一个审批节点'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取创建人
+        creator = session.get('username', 'system')
+
+        # 创建模板
+        cursor.execute("""
+            INSERT INTO approval_flow_template (name, approval_flow_type_id, creator, status)
+            VALUES (%s, %s, %s, 1)
+        """, (name, approval_flow_type_id, creator))
+
+        template_id = cursor.lastrowid
+
+        # 创建节点
+        for idx, node in enumerate(nodes):
+            node_name = node.get('name')
+            node_type = node.get('type')
+            approvers = node.get('approvers', [])
+
+            if not node_name or node_type is None:
+                raise ValueError(f'节点{idx+1}名称和审批类型为必填项')
+
+            if not approvers or len(approvers) == 0:
+                raise ValueError(f'节点{idx+1}至少需要一个审批人员')
+
+            cursor.execute("""
+                INSERT INTO approval_flow_template_node (template_id, name, sort, type)
+                VALUES (%s, %s, %s, %s)
+            """, (template_id, node_name, idx + 1, node_type))
+
+            node_id = cursor.lastrowid
+
+            # 添加审批人员
+            for approver_id in approvers:
+                cursor.execute("""
+                    INSERT INTO approval_node_useraccount (node_id, useraccount_id)
+                    VALUES (%s, %s)
+                """, (node_id, approver_id))
+
+        # 添加抄送人员
+        for copy_user_id in copy_users:
+            cursor.execute("""
+                INSERT INTO approval_copy_useraccount (approval_flow_template_id, useraccount_id)
+                VALUES (%s, %s)
+            """, (template_id, copy_user_id))
+
+        connection.commit()
+
+        return jsonify({
+            'message': '审批流模板创建成功',
+            'template_id': template_id
+        }), 201
+
+    except ValueError as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 更新审批流模板状态
+@app.route('/api/approval-flow-templates/<int:template_id>/status', methods=['PUT'])
+def update_approval_flow_template_status(template_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        new_status = data.get('status')
+
+        if new_status not in [0, 1]:
+            return jsonify({'error': '无效的状态值'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取当前模板的类型
+        cursor.execute("""
+            SELECT approval_flow_type_id FROM approval_flow_template
+            WHERE id = %s
+        """, (template_id,))
+        template = cursor.fetchone()
+
+        if not template:
+            return jsonify({'error': '模板不存在'}), 404
+
+        # 如果启用，需要禁用同类型的其他模板
+        if new_status == 0:
+            cursor.execute("""
+                UPDATE approval_flow_template
+                SET status = 1
+                WHERE approval_flow_type_id = %s AND id != %s AND status = 0
+            """, (template['approval_flow_type_id'], template_id))
+
+        # 更新当前模板状态
+        cursor.execute("""
+            UPDATE approval_flow_template
+            SET status = %s
+            WHERE id = %s
+        """, (new_status, template_id))
+
+        connection.commit()
+
+        return jsonify({'message': '状态更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     # 以调试模式运行
     app.run(debug=True, host='0.0.0.0', port=5001)

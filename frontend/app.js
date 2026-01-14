@@ -381,6 +381,93 @@ createApp({
             },
             separateAccountCurrentPage: 1,
             loadingSeparateAccounts: false,
+            // 退款申请弹窗
+            showRefundDialog: false,
+            refundForm: {
+                order_id: null,
+                student_id: null,
+                student_name: '',
+                grade: '',
+                gender: '',
+                child_orders: [],
+                selected_refunds: [],
+                payments: [],
+                refund_total: 0,
+                unallocated_amount: 0
+            },
+            // 退款订单管理
+            refundOrders: [],
+            filteredRefundOrders: [],
+            refundOrderFilters: {
+                id: '',
+                uid: '',
+                order_id: ''
+            },
+            refundOrderCurrentPage: 1,
+            loadingRefundOrders: false,
+            showRefundOrderDetail: false,
+            refundOrderDetail: {
+                id: '',
+                order_id: '',
+                student_id: '',
+                student_name: '',
+                grade: '',
+                gender: '',
+                refund_amount: '',
+                submitter: '',
+                submit_time: '',
+                status: 0,
+                refund_items: [],
+                refund_payments: []
+            },
+            // 审批流类型数据
+            approvalFlowTypes: [],
+            filteredApprovalFlowTypes: [],
+            approvalFlowTypeFilters: {
+                id: '',
+                name: '',
+                status: ''
+            },
+            approvalFlowTypeCurrentPage: 1,
+            loadingApprovalFlowTypes: false,
+            showEnableFlowTypeConfirm: false,
+            showDisableFlowTypeConfirm: false,
+            currentFlowType: null,
+            // 审批流模板数据
+            approvalFlowTemplates: [],
+            filteredApprovalFlowTemplates: [],
+            approvalFlowTemplateFilters: {
+                id: '',
+                approval_flow_type_id: '',
+                name: '',
+                status: ''
+            },
+            approvalFlowTemplateCurrentPage: 1,
+            loadingApprovalFlowTemplates: false,
+            showAddApprovalFlowTemplateDrawer: false,
+            showEnableFlowTemplateConfirm: false,
+            showDisableFlowTemplateConfirm: false,
+            currentFlowTemplate: null,
+            addApprovalFlowTemplateData: {
+                name: '',
+                approval_flow_type_id: '',
+                nodes: [{
+                    name: '',
+                    type: 0,
+                    approvers: ['']
+                }],
+                copy_users: []
+            },
+            activeApprovalFlowTypes: [],
+            activeUserAccounts: [],
+            showViewApprovalFlowTemplateDrawer: false,
+            viewApprovalFlowTemplateData: {
+                name: '',
+                approval_flow_type_id: '',
+                flow_type_name: '',
+                nodes: [],
+                copy_users: []
+            },
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -818,6 +905,33 @@ createApp({
         totalSeparateAccountPages() {
             return Math.ceil(this.filteredSeparateAccounts.length / 10);
         },
+        // 退款订单分页数据
+        paginatedRefundOrders() {
+            const start = (this.refundOrderCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredRefundOrders.slice(start, end);
+        },
+        refundOrderTotalPages() {
+            return Math.ceil(this.filteredRefundOrders.length / 10);
+        },
+        // 审批流类型分页数据
+        paginatedApprovalFlowTypes() {
+            const start = (this.approvalFlowTypeCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredApprovalFlowTypes.slice(start, end);
+        },
+        approvalFlowTypeTotalPages() {
+            return Math.ceil(this.filteredApprovalFlowTypes.length / 10);
+        },
+        // 审批流模板分页数据
+        paginatedApprovalFlowTemplates() {
+            const start = (this.approvalFlowTemplateCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredApprovalFlowTemplates.slice(start, end);
+        },
+        approvalFlowTemplateTotalPages() {
+            return Math.ceil(this.filteredApprovalFlowTemplates.length / 10);
+        },
         // 计算是否可以选择线上付款（预计付款日期未过）
         canSelectOnlinePayment() {
             if (!this.selectedOrderInfo || !this.selectedOrderInfo.expected_payment_time) {
@@ -990,6 +1104,10 @@ createApp({
                 this.fetchPaymentCollections();
             } else if (menu === 'separate_account') {
                 this.fetchSeparateAccounts();
+            } else if (menu === 'approval_flow_type') {
+                this.fetchApprovalFlowTypes();
+            } else if (menu === 'approval_flow_template') {
+                this.fetchApprovalFlowTemplates();
             }
         },
         
@@ -1552,6 +1670,7 @@ createApp({
                 20: '未支付',
                 30: '部分支付',
                 40: '已支付',
+                50: '退费中',
                 99: '已作废'
             };
             return statusMap[status] || '未知';
@@ -2137,6 +2256,611 @@ createApp({
             } catch (err) {
                 console.error('提交订单失败:', err);
                 alert(err.response?.data?.error || '提交订单失败');
+            }
+        },
+
+        // ==================== 退款申请功能 ====================
+
+        // 打开退款申请弹窗
+        async openRefundDialog(orderId) {
+            try {
+                const response = await axios.get(`/api/orders/${orderId}/refund-info`, { withCredentials: true });
+                const data = response.data;
+
+                // 初始化退款表单数据
+                this.refundForm = {
+                    order_id: orderId,
+                    student_id: data.order.student_id,
+                    student_name: data.order.student_name,
+                    grade: data.order.grade,
+                    gender: data.order.gender,
+                    child_orders: data.child_orders || [],
+                    selected_refunds: [],
+                    payments: (data.payments || []).map(p => ({
+                        ...p,
+                        refund_amount: 0
+                    })),
+                    refund_total: 0,
+                    unallocated_amount: 0
+                };
+
+                this.showRefundDialog = true;
+            } catch (err) {
+                console.error('获取退款信息失败:', err);
+                alert(err.response?.data?.error || '获取退款信息失败');
+            }
+        },
+
+        // 关闭退款申请弹窗
+        closeRefundDialog() {
+            this.showRefundDialog = false;
+            this.refundForm = {
+                order_id: null,
+                student_id: null,
+                student_name: '',
+                grade: '',
+                gender: '',
+                child_orders: [],
+                selected_refunds: [],
+                payments: [],
+                refund_total: 0,
+                unallocated_amount: 0
+            };
+        },
+
+        // 选择子订单添加到待退费区
+        selectChildOrderForRefund(item) {
+            // 检查是否已经添加
+            const exists = this.refundForm.selected_refunds.find(r => r.childorder_id === item.childorder_id);
+            if (exists) {
+                alert('该子订单已添加到待退费区');
+                return;
+            }
+
+            // 添加到待退费区，初始退费金额为0
+            this.refundForm.selected_refunds.push({
+                childorder_id: item.childorder_id,
+                goods_id: item.goods_id,
+                goods_name: item.goods_name,
+                available_refund: item.available_refund,
+                refund_amount: 0
+            });
+        },
+
+        // 从待退费区删除
+        removeRefundItem(index) {
+            this.refundForm.selected_refunds.splice(index, 1);
+            // 重新计算退费总额
+            this.applyRefundTotal();
+        },
+
+        // 验证退费金额
+        validateRefundAmount(item) {
+            if (item.refund_amount > item.available_refund) {
+                item.refund_amount = item.available_refund;
+                alert('退费金额不能大于可退金额');
+            }
+            if (item.refund_amount < 0) {
+                item.refund_amount = 0;
+            }
+        },
+
+        // 应用退费总额
+        applyRefundTotal() {
+            // 计算退费总额
+            this.refundForm.refund_total = this.refundForm.selected_refunds.reduce((sum, item) => {
+                return sum + (parseFloat(item.refund_amount) || 0);
+            }, 0);
+
+            // 更新待分配金额
+            this.calculateUnallocatedAmount();
+        },
+
+        // 计算待分配金额
+        calculateUnallocatedAmount() {
+            const totalPaymentRefund = this.refundForm.payments.reduce((sum, payment) => {
+                return sum + (parseFloat(payment.refund_amount) || 0);
+            }, 0);
+
+            this.refundForm.unallocated_amount = this.refundForm.refund_total - totalPaymentRefund;
+        },
+
+        // 验证收款退费金额
+        validatePaymentRefundAmount(payment) {
+            if (payment.refund_amount > payment.available_refund) {
+                payment.refund_amount = payment.available_refund;
+                alert('退费金额不能大于可退金额');
+            }
+            if (payment.refund_amount < 0) {
+                payment.refund_amount = 0;
+            }
+            this.calculateUnallocatedAmount();
+        },
+
+        // 提交退款申请
+        async submitRefundApplication() {
+            // 校验
+            if (this.refundForm.selected_refunds.length === 0) {
+                alert('请选择需要退费的子订单');
+                return;
+            }
+
+            // 检查所有退费金额是否大于0
+            for (const item of this.refundForm.selected_refunds) {
+                if (!item.refund_amount || item.refund_amount <= 0) {
+                    alert('所有退费金额必须大于0');
+                    return;
+                }
+            }
+
+            // 检查待分配金额是否为0
+            if (Math.abs(this.refundForm.unallocated_amount) > 0.01) {
+                alert('待分配金额必须为0，请调整收款列表中的退费金额');
+                return;
+            }
+
+            try {
+                const requestData = {
+                    order_id: this.refundForm.order_id,
+                    refund_items: this.refundForm.selected_refunds.map(item => ({
+                        childorder_id: item.childorder_id,
+                        goods_id: item.goods_id,
+                        goods_name: item.goods_name,
+                        refund_amount: item.refund_amount.toFixed(2)
+                    })),
+                    refund_payments: this.refundForm.payments
+                        .filter(p => p.refund_amount > 0)
+                        .map(p => ({
+                            payment_id: p.payment_id,
+                            payment_type: p.payment_type,
+                            refund_amount: p.refund_amount.toFixed(2)
+                        }))
+                };
+
+                const response = await axios.post('/api/refund-orders', requestData, { withCredentials: true });
+
+                alert('退款申请提交成功');
+                this.closeRefundDialog();
+                await this.fetchOrders();
+            } catch (err) {
+                console.error('提交退款申请失败:', err);
+                alert(err.response?.data?.error || '提交退款申请失败');
+            }
+        },
+
+        // ==================== 退款订单管理功能 ====================
+
+        // 获取退款订单列表
+        async fetchRefundOrders() {
+            this.loadingRefundOrders = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.refundOrderFilters.id) params.append('id', this.refundOrderFilters.id);
+                if (this.refundOrderFilters.uid) params.append('uid', this.refundOrderFilters.uid);
+                if (this.refundOrderFilters.order_id) params.append('order_id', this.refundOrderFilters.order_id);
+
+                const response = await axios.get(`/api/refund-orders?${params.toString()}`, { withCredentials: true });
+                this.refundOrders = response.data.refund_orders || [];
+                this.filteredRefundOrders = this.refundOrders;
+            } catch (err) {
+                console.error('获取退款订单失败:', err);
+                this.error = '获取退款订单失败';
+            } finally {
+                this.loadingRefundOrders = false;
+            }
+        },
+
+        // 搜索退款订单
+        searchRefundOrders() {
+            this.fetchRefundOrders();
+            this.refundOrderCurrentPage = 1;
+        },
+
+        // 重置退款订单筛选
+        resetRefundOrderFilters() {
+            this.refundOrderFilters = {
+                id: '',
+                uid: '',
+                order_id: ''
+            };
+            this.fetchRefundOrders();
+        },
+
+        // 打开退款订单详情
+        async openRefundOrderDetail(refundOrderId) {
+            try {
+                const response = await axios.get(`/api/refund-orders/${refundOrderId}`, { withCredentials: true });
+                const data = response.data;
+
+                this.refundOrderDetail = {
+                    id: data.refund_order.id,
+                    order_id: data.refund_order.order_id,
+                    student_id: data.refund_order.student_id,
+                    student_name: data.refund_order.student_name,
+                    grade: data.refund_order.grade,
+                    gender: data.refund_order.gender,
+                    refund_amount: data.refund_order.refund_amount,
+                    submitter: data.refund_order.submitter,
+                    submit_time: data.refund_order.submit_time,
+                    status: data.refund_order.status,
+                    refund_items: data.refund_items || [],
+                    refund_payments: data.refund_payments || []
+                };
+
+                this.showRefundOrderDetail = true;
+            } catch (err) {
+                console.error('获取退款订单详情失败:', err);
+                alert(err.response?.data?.error || '获取退款订单详情失败');
+            }
+        },
+
+        // 关闭退款订单详情
+        closeRefundOrderDetail() {
+            this.showRefundOrderDetail = false;
+            this.refundOrderDetail = {
+                id: '',
+                order_id: '',
+                student_id: '',
+                student_name: '',
+                grade: '',
+                gender: '',
+                refund_amount: '',
+                submitter: '',
+                submit_time: '',
+                status: 0,
+                refund_items: [],
+                refund_payments: []
+            };
+        },
+
+        // 退款订单分页
+        changeRefundOrderPage(page) {
+            if (page >= 1 && page <= this.refundOrderTotalPages) {
+                this.refundOrderCurrentPage = page;
+            }
+        },
+
+        // 获取退款订单状态文本
+        getRefundOrderStatusText(status) {
+            const statusMap = {
+                0: '待审批',
+                10: '已通过',
+                20: '已驳回'
+            };
+            return statusMap[status] || '未知';
+        },
+
+        // ==================== 审批流类型管理 ====================
+
+        // 获取审批流类型列表
+        async fetchApprovalFlowTypes() {
+            this.loadingApprovalFlowTypes = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.approvalFlowTypeFilters.id) params.append('id', this.approvalFlowTypeFilters.id);
+                if (this.approvalFlowTypeFilters.name) params.append('name', this.approvalFlowTypeFilters.name);
+                if (this.approvalFlowTypeFilters.status !== '') params.append('status', this.approvalFlowTypeFilters.status);
+
+                const response = await axios.get(`/api/approval-flow-types?${params.toString()}`, { withCredentials: true });
+                this.approvalFlowTypes = response.data.approval_flow_types || [];
+                this.filteredApprovalFlowTypes = this.approvalFlowTypes;
+            } catch (err) {
+                console.error('获取审批流类型失败:', err);
+                alert(err.response?.data?.error || '获取审批流类型失败');
+            } finally {
+                this.loadingApprovalFlowTypes = false;
+            }
+        },
+
+        // 搜索审批流类型
+        searchApprovalFlowTypes() {
+            this.fetchApprovalFlowTypes();
+            this.approvalFlowTypeCurrentPage = 1;
+        },
+
+        // 重置审批流类型筛选
+        resetApprovalFlowTypeFilters() {
+            this.approvalFlowTypeFilters = {
+                id: '',
+                name: '',
+                status: ''
+            };
+            this.fetchApprovalFlowTypes();
+        },
+
+        // 打开启用审批流类型确认
+        openEnableFlowTypeConfirm(flowType) {
+            this.currentFlowType = flowType;
+            this.showEnableFlowTypeConfirm = true;
+        },
+
+        // 打开禁用审批流类型确认
+        openDisableFlowTypeConfirm(flowType) {
+            this.currentFlowType = flowType;
+            this.showDisableFlowTypeConfirm = true;
+        },
+
+        // 启用审批流类型
+        async doEnableFlowType() {
+            try {
+                await axios.put(`/api/approval-flow-types/${this.currentFlowType.id}/status`, {
+                    status: 0
+                }, { withCredentials: true });
+
+                alert('审批流类型已启用');
+                this.showEnableFlowTypeConfirm = false;
+                this.currentFlowType = null;
+                await this.fetchApprovalFlowTypes();
+            } catch (err) {
+                console.error('启用审批流类型失败:', err);
+                alert(err.response?.data?.error || '启用审批流类型失败');
+            }
+        },
+
+        // 禁用审批流类型
+        async doDisableFlowType() {
+            try {
+                await axios.put(`/api/approval-flow-types/${this.currentFlowType.id}/status`, {
+                    status: 1
+                }, { withCredentials: true });
+
+                alert('审批流类型已禁用');
+                this.showDisableFlowTypeConfirm = false;
+                this.currentFlowType = null;
+                await this.fetchApprovalFlowTypes();
+            } catch (err) {
+                console.error('禁用审批流类型失败:', err);
+                alert(err.response?.data?.error || '禁用审批流类型失败');
+            }
+        },
+
+        // 审批流类型分页
+        changeApprovalFlowTypePage(page) {
+            if (page >= 1 && page <= this.approvalFlowTypeTotalPages) {
+                this.approvalFlowTypeCurrentPage = page;
+            }
+        },
+
+        // ==================== 审批流模板管理 ====================
+
+        // 获取审批流模板列表
+        async fetchApprovalFlowTemplates() {
+            this.loadingApprovalFlowTemplates = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.approvalFlowTemplateFilters.id) params.append('id', this.approvalFlowTemplateFilters.id);
+                if (this.approvalFlowTemplateFilters.approval_flow_type_id) params.append('approval_flow_type_id', this.approvalFlowTemplateFilters.approval_flow_type_id);
+                if (this.approvalFlowTemplateFilters.name) params.append('name', this.approvalFlowTemplateFilters.name);
+                if (this.approvalFlowTemplateFilters.status !== '') params.append('status', this.approvalFlowTemplateFilters.status);
+
+                const response = await axios.get(`/api/approval-flow-templates?${params.toString()}`, { withCredentials: true });
+                this.approvalFlowTemplates = response.data.approval_flow_templates || [];
+                this.filteredApprovalFlowTemplates = this.approvalFlowTemplates;
+            } catch (err) {
+                console.error('获取审批流模板失败:', err);
+                alert(err.response?.data?.error || '获取审批流模板失败');
+            } finally {
+                this.loadingApprovalFlowTemplates = false;
+            }
+        },
+
+        // 搜索审批流模板
+        searchApprovalFlowTemplates() {
+            this.fetchApprovalFlowTemplates();
+            this.approvalFlowTemplateCurrentPage = 1;
+        },
+
+        // 重置审批流模板筛选
+        resetApprovalFlowTemplateFilters() {
+            this.approvalFlowTemplateFilters = {
+                id: '',
+                approval_flow_type_id: '',
+                name: '',
+                status: ''
+            };
+            this.fetchApprovalFlowTemplates();
+        },
+
+        // 打开新增审批流模板弹窗
+        async openAddApprovalFlowTemplateDrawer() {
+            try {
+                // 获取启用的审批流类型
+                const typesResponse = await axios.get('/api/approval-flow-types?status=0', { withCredentials: true });
+                this.activeApprovalFlowTypes = typesResponse.data.approval_flow_types || [];
+
+                // 获取启用的用户账号
+                const accountsResponse = await axios.get('/api/accounts?status=0', { withCredentials: true });
+                this.activeUserAccounts = accountsResponse.data.accounts || [];
+
+                this.showAddApprovalFlowTemplateDrawer = true;
+            } catch (err) {
+                console.error('获取数据失败:', err);
+                alert(err.response?.data?.error || '获取数据失败');
+            }
+        },
+
+        // 关闭新增审批流模板弹窗
+        closeAddApprovalFlowTemplateDrawer() {
+            this.showAddApprovalFlowTemplateDrawer = false;
+            this.addApprovalFlowTemplateData = {
+                name: '',
+                approval_flow_type_id: '',
+                nodes: [{
+                    name: '',
+                    type: 0,
+                    approvers: ['']
+                }],
+                copy_users: []
+            };
+        },
+
+        // 添加审批节点
+        addApprovalNode() {
+            this.addApprovalFlowTemplateData.nodes.push({
+                name: '',
+                type: 0,
+                approvers: ['']
+            });
+        },
+
+        // 删除审批节点
+        removeApprovalNode(nodeIndex) {
+            if (this.addApprovalFlowTemplateData.nodes.length > 1) {
+                this.addApprovalFlowTemplateData.nodes.splice(nodeIndex, 1);
+            }
+        },
+
+        // 添加审批人员
+        addApprover(nodeIndex) {
+            this.addApprovalFlowTemplateData.nodes[nodeIndex].approvers.push('');
+        },
+
+        // 删除审批人员
+        removeApprover(nodeIndex, approverIndex) {
+            const node = this.addApprovalFlowTemplateData.nodes[nodeIndex];
+            if (node.approvers.length > 1) {
+                node.approvers.splice(approverIndex, 1);
+            }
+        },
+
+        // 添加抄送人员
+        addCopyUser() {
+            this.addApprovalFlowTemplateData.copy_users.push('');
+        },
+
+        // 删除抄送人员
+        removeCopyUser(copyIndex) {
+            this.addApprovalFlowTemplateData.copy_users.splice(copyIndex, 1);
+        },
+
+        // 保存审批流模板
+        async saveApprovalFlowTemplate() {
+            // 验证
+            if (!this.addApprovalFlowTemplateData.name) {
+                alert('请输入模板名称');
+                return;
+            }
+
+            if (!this.addApprovalFlowTemplateData.approval_flow_type_id) {
+                alert('请选择审批流类型');
+                return;
+            }
+
+            // 验证节点
+            for (let i = 0; i < this.addApprovalFlowTemplateData.nodes.length; i++) {
+                const node = this.addApprovalFlowTemplateData.nodes[i];
+                if (!node.name) {
+                    alert(`请输入节点${i + 1}的名称`);
+                    return;
+                }
+
+                // 过滤空的审批人员
+                const validApprovers = node.approvers.filter(a => a !== '');
+                if (validApprovers.length === 0) {
+                    alert(`节点${i + 1}至少需要一个审批人员`);
+                    return;
+                }
+                node.approvers = validApprovers;
+            }
+
+            // 过滤空的抄送人员
+            this.addApprovalFlowTemplateData.copy_users = this.addApprovalFlowTemplateData.copy_users.filter(u => u !== '');
+
+            try {
+                const response = await axios.post('/api/approval-flow-templates', this.addApprovalFlowTemplateData, { withCredentials: true });
+
+                alert('审批流模板创建成功');
+                this.closeAddApprovalFlowTemplateDrawer();
+                await this.fetchApprovalFlowTemplates();
+            } catch (err) {
+                console.error('创建审批流模板失败:', err);
+                alert(err.response?.data?.error || '创建审批流模板失败');
+            }
+        },
+
+        // 打开查看审批流模板详情弹窗
+        async openViewApprovalFlowTemplateDrawer(template) {
+            try {
+                const response = await axios.get(`/api/approval-flow-templates/${template.id}`, { withCredentials: true });
+                const data = response.data;
+
+                this.viewApprovalFlowTemplateData = {
+                    name: data.template.name,
+                    approval_flow_type_id: data.template.approval_flow_type_id,
+                    flow_type_name: data.template.flow_type_name,
+                    nodes: data.nodes || [],
+                    copy_users: data.copy_users || []
+                };
+
+                this.showViewApprovalFlowTemplateDrawer = true;
+            } catch (err) {
+                console.error('获取审批流模板详情失败:', err);
+                alert(err.response?.data?.error || '获取审批流模板详情失败');
+            }
+        },
+
+        // 关闭查看审批流模板详情弹窗
+        closeViewApprovalFlowTemplateDrawer() {
+            this.showViewApprovalFlowTemplateDrawer = false;
+            this.viewApprovalFlowTemplateData = {
+                name: '',
+                approval_flow_type_id: '',
+                flow_type_name: '',
+                nodes: [],
+                copy_users: []
+            };
+        },
+
+        // 打开启用审批流模板确认
+        openEnableFlowTemplateConfirm(template) {
+            this.currentFlowTemplate = template;
+            this.showEnableFlowTemplateConfirm = true;
+        },
+
+        // 打开禁用审批流模板确认
+        openDisableFlowTemplateConfirm(template) {
+            this.currentFlowTemplate = template;
+            this.showDisableFlowTemplateConfirm = true;
+        },
+
+        // 启用审批流模板
+        async doEnableFlowTemplate() {
+            try {
+                await axios.put(`/api/approval-flow-templates/${this.currentFlowTemplate.id}/status`, {
+                    status: 0
+                }, { withCredentials: true });
+
+                alert('审批流模板已启用');
+                this.showEnableFlowTemplateConfirm = false;
+                this.currentFlowTemplate = null;
+                await this.fetchApprovalFlowTemplates();
+            } catch (err) {
+                console.error('启用审批流模板失败:', err);
+                alert(err.response?.data?.error || '启用审批流模板失败');
+            }
+        },
+
+        // 禁用审批流模板
+        async doDisableFlowTemplate() {
+            try {
+                await axios.put(`/api/approval-flow-templates/${this.currentFlowTemplate.id}/status`, {
+                    status: 1
+                }, { withCredentials: true });
+
+                alert('审批流模板已禁用');
+                this.showDisableFlowTemplateConfirm = false;
+                this.currentFlowTemplate = null;
+                await this.fetchApprovalFlowTemplates();
+            } catch (err) {
+                console.error('禁用审批流模板失败:', err);
+                alert(err.response?.data?.error || '禁用审批流模板失败');
+            }
+        },
+
+        // 审批流模板分页
+        changeApprovalFlowTemplatePage(page) {
+            if (page >= 1 && page <= this.approvalFlowTemplateTotalPages) {
+                this.approvalFlowTemplateCurrentPage = page;
             }
         },
 

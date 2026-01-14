@@ -882,10 +882,11 @@ h1 {
 
 /* 美化的下拉框样式 */
 .styled-select {
-    padding: 8px 12px;
+    width: 100%;
+    padding: 12px;
     border: 1px solid #ddd;
     border-radius: 4px;
-    font-size: 14px;
+    font-size: 16px;
     background-color: white;
     cursor: pointer;
     transition: all 0.3s;
@@ -1319,4 +1320,314 @@ h1 {
 
 .confirm-btn:hover {
     background-color: #229954;
+}
+
+/* 退款弹窗样式 */
+.drawer-large {
+    width: 90%;
+    max-width: 1200px;
+}
+
+.refund-section {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.refund-section h4 {
+    margin: 0 0 15px 0;
+    color: #2c3e50;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.section-header h4 {
+    margin: 0;
+}
+
+.section-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.refund-total,
+.unallocated-amount {
+    font-weight: bold;
+    color: #e74c3c;
+    font-size: 14px;
+}
+
+.apply-btn {
+    background-color: #3498db;
+    color: #fff;
+    padding: 6px 15px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.apply-btn:hover {
+    background-color: #2980b9;
+}
+
+.select-btn {
+    background-color: #27ae60;
+    color: #fff;
+    padding: 5px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.select-btn:hover:not(:disabled) {
+    background-color: #229954;
+}
+
+.select-btn:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+}
+
+.amount-input {
+    width: 120px;
+    padding: 5px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.amount-input:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+.empty-message {
+    text-align: center;
+    color: #7f8c8d;
+    padding: 30px;
+    font-size: 14px;
+}
+
+.refund-btn {
+    background-color: #e67e22;
+    color: #fff;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.refund-btn:hover {
+    background-color: #d35400;
+}
+
+/* 退款订单状态标签 */
+.status-badge {
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.status-badge.status-0 {
+    background-color: #f39c12;
+    color: #fff;
+}
+
+.status-badge.status-10 {
+    background-color: #27ae60;
+    color: #fff;
+}
+
+.status-badge.status-20 {
+    background-color: #e74c3c;
+    color: #fff;
+}
+
+/* 审批流模板样式 */
+.approval-nodes {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    background: #f9f9f9;
+}
+
+.approval-node {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.approval-node:last-child {
+    margin-bottom: 0;
+}
+
+.node-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.node-header h4 {
+    margin: 0;
+    color: #2c3e50;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+.node-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.add-node-btn,
+.remove-node-btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 4px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.add-node-btn {
+    background-color: #27ae60;
+    color: #fff;
+}
+
+.add-node-btn:hover {
+    background-color: #229954;
+}
+
+.remove-node-btn {
+    background-color: #e74c3c;
+    color: #fff;
+}
+
+.remove-node-btn:hover:not(:disabled) {
+    background-color: #c0392b;
+}
+
+.remove-node-btn:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+}
+
+.node-content {
+    padding: 0;
+}
+
+.approver-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.approver-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.approver-item select {
+    flex: 1;
+}
+
+.add-approver-btn,
+.remove-approver-btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.add-approver-btn {
+    background-color: #3498db;
+    color: #fff;
+}
+
+.add-approver-btn:hover {
+    background-color: #2980b9;
+}
+
+.remove-approver-btn {
+    background-color: #e74c3c;
+    color: #fff;
+}
+
+.remove-approver-btn:hover:not(:disabled) {
+    background-color: #c0392b;
+}
+
+.remove-approver-btn:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+}
+
+.copy-section {
+    background: #fff9f0;
+    border-color: #f39c12;
+}
+
+.copy-section .node-header {
+    border-bottom-color: #f39c12;
+}
+
+.copy-section .node-header h4 {
+    color: #f39c12;
+}
+
+/* 表单行布局 - 让多个字段在同一行显示 */
+.form-row {
+    display: flex;
+    gap: 15px;
+    align-items: flex-start;
+}
+
+.form-row .form-group {
+    margin-bottom: 15px;
+}
+
+/* 查看详情按钮样式 */
+.view-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    border-radius: 3px;
+    min-width: 60px;
+    text-align: center;
+    background-color: #f39c12;
+    margin-right: 5px;
+}
+
+.view-btn:hover {
+    background-color: #e67e22;
 }
