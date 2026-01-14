@@ -758,7 +758,7 @@ def create_order():
 
             cursor.execute("""
                 INSERT INTO childorders (parentsid, goodsid, amount_receivable, amount_received, discount_amount, status)
-                VALUES (%s, %s, %s, %s, %s, 10)
+                VALUES (%s, %s, %s, %s, %s, 0)
             """, (order_id, goods_id, goods_total_price, child_received, child_discount))
 
         # 批量插入订单活动关联
@@ -897,7 +897,7 @@ def update_order(order_id):
 
             cursor.execute("""
                 INSERT INTO childorders (parentsid, goodsid, amount_receivable, amount_received, discount_amount, status)
-                VALUES (%s, %s, %s, %s, %s, 10)
+                VALUES (%s, %s, %s, %s, %s, 0)
             """, (order_id, goods_id, goods_total_price, child_received, child_discount))
 
         # 批量插入新的订单活动关联
@@ -994,10 +994,10 @@ def submit_order(order_id):
             WHERE id = %s
         """, (order_id,))
 
-        # 同时更新关联的子产品订单状态
+        # 同时更新关联的子产品订单状态为10（未支付）
         cursor.execute("""
             UPDATE childorders
-            SET status = 20
+            SET status = 10
             WHERE parentsid = %s
         """, (order_id,))
 
@@ -3300,6 +3300,232 @@ def update_order_payment_status(cursor, order_id):
         UPDATE orders SET status = %s WHERE id = %s
     """, (new_status, order_id))
 
+def generate_separate_accounts(cursor, payment_id, order_id):
+    """
+    生成分账明细
+    当收款确认到账后，按照子订单生成顺序依次分配收款金额
+    """
+    # 获取收款信息
+    cursor.execute("""
+        SELECT payment_amount, student_id
+        FROM payment_collection
+        WHERE id = %s
+    """, (payment_id,))
+    payment = cursor.fetchone()
+
+    if not payment:
+        return
+
+    payment_amount = float(payment['payment_amount'])
+    student_id = payment['student_id']
+    remaining_amount = payment_amount  # 待分配金额
+
+    # 获取该订单的所有子订单，按ID排序
+    cursor.execute("""
+        SELECT co.id, co.goodsid, co.amount_received, g.name AS goods_name
+        FROM childorders co
+        LEFT JOIN goods g ON co.goodsid = g.id
+        WHERE co.parentsid = %s
+        ORDER BY co.id ASC
+    """, (order_id,))
+
+    child_orders = cursor.fetchall()
+
+    if not child_orders:
+        return
+
+    # 检查该收款是否已经生成过分账明细
+    # 需要同时检查 payment_id 和 orders_id，避免不同订单的相同ID冲突
+    cursor.execute("""
+        SELECT COUNT(*) as count FROM separate_account
+        WHERE payment_id = %s AND orders_id = %s
+    """, (payment_id, order_id))
+    result = cursor.fetchone()
+    if result and result['count'] > 0:
+        return  # 已存在分账明细，不重复生成
+
+    # 按子订单顺序分配收款金额
+    for child_order in child_orders:
+        if remaining_amount <= 0:
+            break
+
+        child_order_id = child_order['id']
+        goods_id = child_order['goodsid']
+        goods_name = child_order['goods_name']
+        actual_amount = float(child_order['amount_received'])
+
+        # 计算该子订单已分配的金额
+        cursor.execute("""
+            SELECT COALESCE(SUM(separate_amount), 0) as allocated_amount
+            FROM separate_account
+            WHERE childorders_id = %s AND type = 0
+        """, (child_order_id,))
+        result = cursor.fetchone()
+        allocated_amount = float(result['allocated_amount']) if result else 0
+
+        # 该子订单还需要的金额
+        needed_amount = actual_amount - allocated_amount
+
+        if needed_amount <= 0:
+            continue  # 该子订单已经分配完成
+
+        # 分配金额 = min(剩余收款金额, 子订单还需金额)
+        separate_amount = min(remaining_amount, needed_amount)
+
+        # 插入分账明细（常规收款，payment_type=0）
+        cursor.execute("""
+            INSERT INTO separate_account (uid, orders_id, childorders_id, payment_id, payment_type,
+                goods_id, goods_name, separate_amount, type)
+            VALUES (%s, %s, %s, %s, 0, %s, %s, %s, 0)
+        """, (student_id, order_id, child_order_id, payment_id,
+              goods_id, goods_name, separate_amount))
+
+        remaining_amount -= separate_amount
+
+    # 更新所有子订单的支付状态
+    for child_order in child_orders:
+        child_order_id = child_order['id']
+        actual_amount = float(child_order['amount_received'])
+
+        # 计算该子订单的总分账金额
+        cursor.execute("""
+            SELECT COALESCE(SUM(separate_amount), 0) as total_allocated
+            FROM separate_account
+            WHERE childorders_id = %s AND type = 0
+        """, (child_order_id,))
+        result = cursor.fetchone()
+        total_allocated = float(result['total_allocated']) if result else 0
+
+        # 根据分账金额更新子订单状态
+        if total_allocated <= 0:
+            # 无分账，保持状态10（未支付）
+            new_status = 10
+        elif total_allocated < actual_amount:
+            # 部分支付
+            new_status = 20
+        else:
+            # 已支付（分账金额 >= 实收金额）
+            new_status = 30
+
+        cursor.execute("""
+            UPDATE childorders
+            SET status = %s
+            WHERE id = %s
+        """, (new_status, child_order_id))
+
+def generate_separate_accounts_for_taobao(cursor, taobao_payment_id, order_id):
+    """
+    为淘宝收款生成分账明细
+    当淘宝收款确认到账后，按照子订单生成顺序依次分配收款金额
+    """
+    # 获取淘宝收款信息
+    cursor.execute("""
+        SELECT payment_amount, student_id
+        FROM taobao_payment
+        WHERE id = %s
+    """, (taobao_payment_id,))
+    payment = cursor.fetchone()
+
+    if not payment:
+        return
+
+    payment_amount = float(payment['payment_amount'])
+    student_id = payment['student_id']
+    remaining_amount = payment_amount  # 待分配金额
+
+    # 获取该订单的所有子订单，按ID排序
+    cursor.execute("""
+        SELECT co.id, co.goodsid, co.amount_received, g.name AS goods_name
+        FROM childorders co
+        LEFT JOIN goods g ON co.goodsid = g.id
+        WHERE co.parentsid = %s
+        ORDER BY co.id ASC
+    """, (order_id,))
+
+    child_orders = cursor.fetchall()
+
+    if not child_orders:
+        return
+
+    # 检查该淘宝收款是否已经生成过分账明细
+    # 需要同时检查 payment_id 和 orders_id，避免不同订单的相同ID冲突
+    cursor.execute("""
+        SELECT COUNT(*) as count FROM separate_account
+        WHERE payment_id = %s AND orders_id = %s
+    """, (taobao_payment_id, order_id))
+    result = cursor.fetchone()
+    if result and result['count'] > 0:
+        return  # 已存在分账明细，不重复生成
+
+    # 按子订单顺序分配收款金额
+    for child_order in child_orders:
+        if remaining_amount <= 0:
+            break
+
+        child_order_id = child_order['id']
+        goods_id = child_order['goodsid']
+        goods_name = child_order['goods_name']
+        actual_amount = float(child_order['amount_received'])
+
+        # 计算该子订单已分配的金额
+        cursor.execute("""
+            SELECT COALESCE(SUM(separate_amount), 0) as allocated_amount
+            FROM separate_account
+            WHERE childorders_id = %s AND type = 0
+        """, (child_order_id,))
+        result = cursor.fetchone()
+        allocated_amount = float(result['allocated_amount']) if result else 0
+
+        # 该子订单还需要的金额
+        needed_amount = actual_amount - allocated_amount
+
+        if needed_amount <= 0:
+            continue  # 该子订单已经分配完成
+
+        # 分配金额 = min(剩余收款金额, 子订单还需金额)
+        separate_amount = min(remaining_amount, needed_amount)
+
+        # 插入分账明细（淘宝收款，payment_type=1）
+        cursor.execute("""
+            INSERT INTO separate_account (uid, orders_id, childorders_id, payment_id, payment_type,
+                goods_id, goods_name, separate_amount, type)
+            VALUES (%s, %s, %s, %s, 1, %s, %s, %s, 0)
+        """, (student_id, order_id, child_order_id, taobao_payment_id,
+              goods_id, goods_name, separate_amount))
+
+        remaining_amount -= separate_amount
+
+    # 更新所有子订单的支付状态
+    for child_order in child_orders:
+        child_order_id = child_order['id']
+        actual_amount = float(child_order['amount_received'])
+
+        # 计算该子订单的总分账金额
+        cursor.execute("""
+            SELECT COALESCE(SUM(separate_amount), 0) as total_allocated
+            FROM separate_account
+            WHERE childorders_id = %s AND type = 0
+        """, (child_order_id,))
+        result = cursor.fetchone()
+        total_allocated = float(result['total_allocated']) if result else 0
+
+        # 根据分账金额更新子订单状态
+        if total_allocated <= 0:
+            # 无分账，保持状态10（未支付）
+            new_status = 10
+        elif total_allocated < actual_amount:
+            # 部分支付
+            new_status = 20
+        else:
+            # 已支付（分账金额 >= 实收金额）
+            new_status = 30
+
+        cursor.execute("""
+            UPDATE childorders
+            SET status = %s
+            WHERE id = %s
+        """, (new_status, child_order_id))
+
 # 获取收款列表
 @app.route('/api/payment-collections', methods=['GET'])
 def get_payment_collections():
@@ -3420,17 +3646,29 @@ def get_order_pending_amount(order_id):
         if not order:
             return jsonify({'error': '订单不存在'}), 404
 
-        # 计算该订单已有的未核验、已支付的收款金额之和
+        # 计算该订单已有的收款金额（包括常规收款和淘宝收款）
+        # 常规收款：未核验(10)和已支付(20)
         cursor.execute("""
             SELECT COALESCE(SUM(payment_amount), 0) AS paid_amount
             FROM payment_collection
             WHERE order_id = %s AND status IN (10, 20)
         """, (order_id,))
+        result1 = cursor.fetchone()
+        paid_amount1 = float(result1['paid_amount']) if result1 else 0
 
-        result = cursor.fetchone()
-        paid_amount = float(result['paid_amount']) if result else 0
+        # 淘宝收款：已下单(0)和已到账(30)
+        cursor.execute("""
+            SELECT COALESCE(SUM(payment_amount), 0) AS paid_amount
+            FROM taobao_payment
+            WHERE order_id = %s AND status IN (0, 30)
+        """, (order_id,))
+        result2 = cursor.fetchone()
+        paid_amount2 = float(result2['paid_amount']) if result2 else 0
 
-        # 待支付金额 = 实收金额 - 已付金额
+        # 总已支付金额
+        paid_amount = paid_amount1 + paid_amount2
+
+        # 待支付金额 = 实收金额 - 常规收款总额 - 淘宝收款总额
         pending_amount = float(order['amount_received']) - paid_amount
 
         return jsonify({
@@ -3482,18 +3720,30 @@ def add_payment_collection():
         if not order:
             return jsonify({'error': '订单不存在'}), 404
 
-        # 计算该订单已有的未核验、已支付的收款金额之和
+        # 计算该订单已有的收款金额（包括常规收款和淘宝收款）
+        # 常规收款：未核验(10)和已支付(20)
         cursor.execute("""
             SELECT COALESCE(SUM(payment_amount), 0) AS paid_amount
             FROM payment_collection
             WHERE order_id = %s AND status IN (10, 20)
         """, (order_id,))
+        result1 = cursor.fetchone()
+        paid_amount1 = float(result1['paid_amount']) if result1 else 0
 
-        result = cursor.fetchone()
-        paid_amount = float(result['paid_amount']) if result else 0
+        # 淘宝收款：已下单(0)和已到账(30)
+        cursor.execute("""
+            SELECT COALESCE(SUM(payment_amount), 0) AS paid_amount
+            FROM taobao_payment
+            WHERE order_id = %s AND status IN (0, 30)
+        """, (order_id,))
+        result2 = cursor.fetchone()
+        paid_amount2 = float(result2['paid_amount']) if result2 else 0
 
-        # 待支付金额
-        pending_amount = float(order['amount_received']) - paid_amount
+        # 总已支付金额
+        total_paid = paid_amount1 + paid_amount2
+
+        # 待支付金额 = 订单实收金额 - 常规收款总额 - 淘宝收款总额
+        pending_amount = float(order['amount_received']) - total_paid
 
         # 校验：付款金额不能超过待支付金额
         if float(payment_amount) > pending_amount:
@@ -3557,6 +3807,9 @@ def confirm_payment_collection(collection_id):
         # 更新订单状态
         order_id = collection['order_id']
         update_order_payment_status(cursor, order_id)
+
+        # 生成分账明细
+        generate_separate_accounts(cursor, collection_id, order_id)
 
         connection.commit()
         return jsonify({'message': '已确认到账'}), 200
@@ -3790,7 +4043,11 @@ def confirm_taobao_payment(payment_id):
         """, (payment_id,))
 
         # 更新订单状态
-        update_order_payment_status(cursor, payment['order_id'])
+        order_id = payment['order_id']
+        update_order_payment_status(cursor, order_id)
+
+        # 生成分账明细
+        generate_separate_accounts_for_taobao(cursor, payment_id, order_id)
 
         connection.commit()
 
@@ -4206,6 +4463,81 @@ def delete_taobao_unclaimed(unclaimed_id):
     except Exception as e:
         if connection:
             connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# ============ 分账明细管理 ============
+# 获取分账明细列表
+@app.route('/api/separate-accounts', methods=['GET'])
+def get_separate_accounts():
+    """获取分账明细列表，支持筛选"""
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询SQL
+        sql = """
+            SELECT
+                sa.id, sa.uid, sa.orders_id, sa.childorders_id, sa.payment_id, sa.payment_type,
+                sa.goods_id, sa.goods_name, sa.separate_amount, sa.type,
+                sa.create_time
+            FROM separate_account sa
+            WHERE 1=1
+        """
+        params = []
+
+        # 获取筛选参数
+        id_filter = request.args.get('id')
+        uid = request.args.get('uid')
+        orders_id = request.args.get('orders_id')
+        childorders_id = request.args.get('childorders_id')
+        goods_id = request.args.get('goods_id')
+        payment_type = request.args.get('payment_type')
+        type_filter = request.args.get('type')
+
+        if id_filter:
+            sql += " AND sa.id = %s"
+            params.append(id_filter)
+
+        if uid:
+            sql += " AND sa.uid = %s"
+            params.append(uid)
+
+        if orders_id:
+            sql += " AND sa.orders_id = %s"
+            params.append(orders_id)
+
+        if childorders_id:
+            sql += " AND sa.childorders_id = %s"
+            params.append(childorders_id)
+
+        if goods_id:
+            sql += " AND sa.goods_id = %s"
+            params.append(goods_id)
+
+        if payment_type is not None and payment_type != '':
+            sql += " AND sa.payment_type = %s"
+            params.append(payment_type)
+
+        if type_filter is not None and type_filter != '':
+            sql += " AND sa.type = %s"
+            params.append(type_filter)
+
+        # 按创建时间倒序排列
+        sql += " ORDER BY sa.create_time DESC"
+
+        cursor.execute(sql, params)
+        separate_accounts = cursor.fetchall()
+
+        return jsonify({'separate_accounts': separate_accounts}), 200
+
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
         if cursor:
@@ -4730,6 +5062,121 @@ def create_unclaimed_table():
 
         return jsonify({'message': 'unclaimed表创建成功'}), 200
 
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# ============ 调试接口 ============
+# 检查订单分账生成情况
+@app.route('/api/debug/order/<int:order_id>', methods=['GET'])
+def debug_order_separate_accounts(order_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        debug_info = {}
+
+        # 1. 订单信息
+        cursor.execute("SELECT * FROM orders WHERE id = %s", (order_id,))
+        debug_info['order'] = cursor.fetchone()
+
+        # 2. 子订单信息
+        cursor.execute("""
+            SELECT co.*, g.name as goods_name
+            FROM childorders co
+            LEFT JOIN goods g ON co.goodsid = g.id
+            WHERE co.parentsid = %s
+            ORDER BY co.id ASC
+        """, (order_id,))
+        debug_info['child_orders'] = cursor.fetchall()
+
+        # 3. 收款记录
+        cursor.execute("""
+            SELECT * FROM payment_collection WHERE order_id = %s ORDER BY id
+        """, (order_id,))
+        debug_info['payments'] = cursor.fetchall()
+
+        # 4. 淘宝收款记录
+        cursor.execute("""
+            SELECT * FROM taobao_payment WHERE order_id = %s ORDER BY id
+        """, (order_id,))
+        debug_info['taobao_payments'] = cursor.fetchall()
+
+        # 5. 分账明细
+        cursor.execute("""
+            SELECT * FROM separate_account WHERE orders_id = %s ORDER BY id
+        """, (order_id,))
+        debug_info['separate_accounts'] = cursor.fetchall()
+
+        # 6. 表是否存在
+        cursor.execute("SHOW TABLES LIKE 'separate_account'")
+        debug_info['table_exists'] = cursor.fetchone() is not None
+
+        return jsonify(debug_info), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 手动触发分账生成（用于修复已确认但未生成分账的收款）
+@app.route('/api/taobao-payments/<int:payment_id>/regenerate-separate-accounts', methods=['POST'])
+def regenerate_separate_accounts_for_taobao(payment_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查记录是否存在
+        cursor.execute("SELECT id, status, order_id FROM taobao_payment WHERE id = %s", (payment_id,))
+        payment = cursor.fetchone()
+
+        if not payment:
+            return jsonify({'error': '记录不存在'}), 404
+
+        # 只有已到账状态才能生成分账
+        if payment['status'] != 30:
+            return jsonify({'error': '只有已到账状态才能生成分账'}), 400
+
+        # 生成分账明细
+        order_id = payment['order_id']
+
+        # 先检查是否已存在分账记录
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM separate_account WHERE payment_id = %s
+        """, (payment_id,))
+        existing = cursor.fetchone()
+        existing_count = existing['count'] if existing else 0
+
+        generate_separate_accounts_for_taobao(cursor, payment_id, order_id)
+
+        # 检查是否生成成功
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM separate_account WHERE payment_id = %s
+        """, (payment_id,))
+        new_result = cursor.fetchone()
+        new_count = new_result['count'] if new_result else 0
+
+        connection.commit()
+
+        return jsonify({
+            'message': '分账明细已生成',
+            'existing_count': existing_count,
+            'new_count': new_count,
+            'generated': new_count - existing_count
+        }), 200
     except Exception as e:
         if connection:
             connection.rollback()

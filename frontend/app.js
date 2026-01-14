@@ -367,6 +367,20 @@ createApp({
             currentTaobaoUnclaimed: null,
             claimTaobaoOrderId: '',
             taobaoSubTab: 'paid',
+            // 分账明细数据
+            separateAccounts: [],
+            filteredSeparateAccounts: [],
+            separateAccountFilters: {
+                id: '',
+                uid: '',
+                orders_id: '',
+                childorders_id: '',
+                goods_id: '',
+                payment_type: '',
+                type: ''
+            },
+            separateAccountCurrentPage: 1,
+            loadingSeparateAccounts: false,
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -795,6 +809,15 @@ createApp({
         totalTaobaoUnclaimedPages() {
             return Math.ceil(this.filteredTaobaoUnclaimedPayments.length / 10);
         },
+        // 分账明细分页数据
+        paginatedSeparateAccounts() {
+            const start = (this.separateAccountCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredSeparateAccounts.slice(start, end);
+        },
+        totalSeparateAccountPages() {
+            return Math.ceil(this.filteredSeparateAccounts.length / 10);
+        },
         // 计算是否可以选择线上付款（预计付款日期未过）
         canSelectOnlinePayment() {
             if (!this.selectedOrderInfo || !this.selectedOrderInfo.expected_payment_time) {
@@ -965,6 +988,8 @@ createApp({
                 this.fetchContracts();
             } else if (menu === 'payment_collection') {
                 this.fetchPaymentCollections();
+            } else if (menu === 'separate_account') {
+                this.fetchSeparateAccounts();
             }
         },
         
@@ -2698,10 +2723,10 @@ createApp({
         // 获取子产品订单状态文本
         getChildOrderStatusText(status) {
             const statusMap = {
-                10: '草稿',
-                20: '审核中',
-                30: '已通过',
-                40: '已驳回',
+                0: '草稿',
+                10: '未支付',
+                20: '部分支付',
+                30: '已支付',
                 99: '已作废'
             };
             return statusMap[status] || '未知';
@@ -5169,9 +5194,14 @@ createApp({
             const selectedOrder = this.studentUnpaidOrders.find(o => o.id == this.taobaoPaymentForm.order_id);
             if (selectedOrder) {
                 this.selectedOrderInfo = selectedOrder;
-                // 计算待支付金额 = 应收金额 - 已收金额
-                const pending = parseFloat(selectedOrder.amount_received || 0) - parseFloat(selectedOrder.paid_amount || 0);
-                this.taobaoPaymentForm.pending_amount = pending.toFixed(2);
+                // 从后端API获取待支付金额（包括常规收款和淘宝收款）
+                try {
+                    const response = await axios.get(`/api/orders/${this.taobaoPaymentForm.order_id}/pending-amount`);
+                    this.taobaoPaymentForm.pending_amount = response.data.pending_amount;
+                } catch (err) {
+                    console.error('获取待支付金额失败:', err);
+                    alert('获取待支付金额失败');
+                }
             }
         },
 
@@ -5381,6 +5411,69 @@ createApp({
                 alert(err.response?.data?.error || '导入失败');
                 event.target.value = '';
             }
+        },
+
+        // ============ 分账明细管理 ============
+        // 获取分账明细列表
+        async fetchSeparateAccounts() {
+            this.loadingSeparateAccounts = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.separateAccountFilters.id) params.append('id', this.separateAccountFilters.id);
+                if (this.separateAccountFilters.uid) params.append('uid', this.separateAccountFilters.uid);
+                if (this.separateAccountFilters.orders_id) params.append('orders_id', this.separateAccountFilters.orders_id);
+                if (this.separateAccountFilters.childorders_id) params.append('childorders_id', this.separateAccountFilters.childorders_id);
+                if (this.separateAccountFilters.goods_id) params.append('goods_id', this.separateAccountFilters.goods_id);
+                if (this.separateAccountFilters.payment_type !== '') params.append('payment_type', this.separateAccountFilters.payment_type);
+                if (this.separateAccountFilters.type !== '') params.append('type', this.separateAccountFilters.type);
+
+                const response = await axios.get(`/api/separate-accounts?${params.toString()}`);
+                this.separateAccounts = response.data.separate_accounts || [];
+                this.filteredSeparateAccounts = this.separateAccounts;
+            } catch (err) {
+                console.error('获取分账明细失败:', err);
+                alert(err.response?.data?.error || '获取分账明细失败');
+            } finally {
+                this.loadingSeparateAccounts = false;
+            }
+        },
+
+        // 搜索分账明细
+        searchSeparateAccounts() {
+            this.fetchSeparateAccounts();
+            this.separateAccountCurrentPage = 1;
+        },
+
+        // 重置分账明细筛选
+        resetSeparateAccountFilters() {
+            this.separateAccountFilters = {
+                id: '',
+                uid: '',
+                orders_id: '',
+                childorders_id: '',
+                goods_id: '',
+                payment_type: '',
+                type: ''
+            };
+            this.fetchSeparateAccounts();
+            this.separateAccountCurrentPage = 1;
+        },
+
+        // 分账明细分页切换
+        changeSeparateAccountPage(page) {
+            this.separateAccountCurrentPage = page;
+        },
+
+        // 获取分账类型文本
+        getSeparateAccountTypeText(type) {
+            const map = { 0: '售卖', 1: '冲回' };
+            return map[type] || '-';
+        },
+
+        // 获取收款类型文本
+        getPaymentTypeText(paymentType) {
+            const map = { 0: '常规收款', 1: '淘宝收款' };
+            return map[paymentType] || '-';
         }
     }
 }).mount('#app');

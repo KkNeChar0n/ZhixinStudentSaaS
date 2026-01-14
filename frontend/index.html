@@ -371,10 +371,10 @@
                                     <label for="childOrderStatusFilter">订单状态</label>
                                     <select id="childOrderStatusFilter" v-model="childOrderFilters.status">
                                         <option value="">全部</option>
-                                        <option value="10">草稿</option>
-                                        <option value="20">审核中</option>
-                                        <option value="30">已通过</option>
-                                        <option value="40">已驳回</option>
+                                        <option value="0">草稿</option>
+                                        <option value="10">未支付</option>
+                                        <option value="20">部分支付</option>
+                                        <option value="30">已支付</option>
                                         <option value="99">已作废</option>
                                     </select>
                                 </div>
@@ -1225,6 +1225,107 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- 分账明细页面 -->
+                    <div v-if="activeMenu === 'separate_account'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingSeparateAccounts" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
+                        <div class="page-header">
+                            <h1>分账明细</h1>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="separateAccountIdFilter">ID</label>
+                                    <input type="number" id="separateAccountIdFilter" v-model="separateAccountFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="separateAccountUidFilter">UID</label>
+                                    <input type="number" id="separateAccountUidFilter" v-model="separateAccountFilters.uid" placeholder="请输入UID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="separateAccountOrdersIdFilter">订单ID</label>
+                                    <input type="number" id="separateAccountOrdersIdFilter" v-model="separateAccountFilters.orders_id" placeholder="请输入订单ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="separateAccountChildordersIdFilter">子订单ID</label>
+                                    <input type="number" id="separateAccountChildordersIdFilter" v-model="separateAccountFilters.childorders_id" placeholder="请输入子订单ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="separateAccountGoodsIdFilter">商品ID</label>
+                                    <input type="number" id="separateAccountGoodsIdFilter" v-model="separateAccountFilters.goods_id" placeholder="请输入商品ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="separateAccountPaymentTypeFilter">收款类型</label>
+                                    <select id="separateAccountPaymentTypeFilter" v-model="separateAccountFilters.payment_type">
+                                        <option value="">全部</option>
+                                        <option value="0">常规收款</option>
+                                        <option value="1">淘宝收款</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="separateAccountTypeFilter">类型</label>
+                                    <select id="separateAccountTypeFilter" v-model="separateAccountFilters.type">
+                                        <option value="">全部</option>
+                                        <option value="0">售卖</option>
+                                        <option value="1">冲回</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchSeparateAccounts">搜索</button>
+                                <button class="reset-btn" @click="resetSeparateAccountFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <!-- 数据表格 -->
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>UID</th>
+                                    <th>订单ID</th>
+                                    <th>子订单ID</th>
+                                    <th>收款ID</th>
+                                    <th>收款类型</th>
+                                    <th>商品ID</th>
+                                    <th>商品名称</th>
+                                    <th>分账金额</th>
+                                    <th>类型</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="sa in paginatedSeparateAccounts" :key="sa.id">
+                                    <td>{{ sa.id }}</td>
+                                    <td>{{ sa.uid }}</td>
+                                    <td>{{ sa.orders_id }}</td>
+                                    <td>{{ sa.childorders_id }}</td>
+                                    <td>{{ sa.payment_id }}</td>
+                                    <td>{{ getPaymentTypeText(sa.payment_type) }}</td>
+                                    <td>{{ sa.goods_id }}</td>
+                                    <td>{{ sa.goods_name }}</td>
+                                    <td>{{ sa.separate_amount }}</td>
+                                    <td>{{ getSeparateAccountTypeText(sa.type) }}</td>
+                                </tr>
+                                <tr v-if="paginatedSeparateAccounts.length === 0">
+                                    <td colspan="10" style="text-align: center; padding: 20px;">暂无数据</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- 分页控件 -->
+                        <div class="pagination" v-if="totalSeparateAccountPages > 1">
+                            <button @click="changeSeparateAccountPage(separateAccountCurrentPage - 1)" :disabled="separateAccountCurrentPage === 1">上一页</button>
+                            <span>第 {{ separateAccountCurrentPage }} / {{ totalSeparateAccountPages }} 页</span>
+                            <button @click="changeSeparateAccountPage(separateAccountCurrentPage + 1)" :disabled="separateAccountCurrentPage === totalSeparateAccountPages">下一页</button>
                         </div>
                     </div>
 
