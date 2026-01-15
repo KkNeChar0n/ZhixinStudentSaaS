@@ -5823,6 +5823,103 @@ def update_approval_flow_template_status(template_id):
         if connection:
             connection.close()
 
+# ==================== 权限管理 ====================
+
+# 获取权限列表
+@app.route('/api/permissions', methods=['GET'])
+def get_permissions():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = []
+        params = []
+
+        # ID筛选（精准搜索）
+        if request.args.get('id'):
+            conditions.append('p.id = %s')
+            params.append(request.args.get('id'))
+
+        # 状态筛选
+        if request.args.get('status') is not None and request.args.get('status') != '':
+            conditions.append('p.status = %s')
+            params.append(request.args.get('status'))
+
+        where_clause = ' AND '.join(conditions) if conditions else '1=1'
+
+        # 查询权限列表，关联菜单表获取菜单名称
+        cursor.execute(f"""
+            SELECT
+                p.id,
+                p.name,
+                p.menu_id,
+                m.name as menu_name,
+                p.action_id,
+                p.status,
+                p.create_time,
+                p.update_time
+            FROM permissions p
+            LEFT JOIN menu m ON p.menu_id = m.id
+            WHERE {where_clause}
+            ORDER BY p.id ASC
+        """, params)
+
+        permissions = cursor.fetchall()
+        return jsonify({'permissions': permissions}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 更新权限状态
+@app.route('/api/permissions/<int:permission_id>/status', methods=['PUT'])
+def update_permission_status(permission_id):
+    connection = None
+    cursor = None
+    try:
+        data = request.get_json()
+        new_status = data.get('status')
+
+        if new_status not in [0, 1]:
+            return jsonify({'error': '状态值必须为0或1'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查权限是否存在
+        cursor.execute('SELECT * FROM permissions WHERE id = %s', (permission_id,))
+        permission = cursor.fetchone()
+
+        if not permission:
+            return jsonify({'error': '权限不存在'}), 404
+
+        # 更新状态
+        cursor.execute("""
+            UPDATE permissions
+            SET status = %s
+            WHERE id = %s
+        """, (new_status, permission_id))
+
+        connection.commit()
+        return jsonify({'message': '权限状态更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     # 以调试模式运行
     app.run(debug=True, host='0.0.0.0', port=5001)

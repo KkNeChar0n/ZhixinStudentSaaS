@@ -9,6 +9,8 @@ createApp({
             isLoading: false,
             error: null,
             activeMenu: 'students',
+            enabledPermissions: [], // 存储启用的权限action_id列表
+            loadingPermissions: false, // 权限加载状态
             students: [],
             coaches: [],
             accounts: [],
@@ -468,6 +470,17 @@ createApp({
                 nodes: [],
                 copy_users: []
             },
+            // 权限管理数据
+            permissions: [],
+            filteredPermissions: [],
+            permissionFilters: {
+                id: ''
+            },
+            permissionCurrentPage: 1,
+            loadingPermissions: false,
+            showEnablePermissionConfirm: false,
+            showDisablePermissionConfirm: false,
+            currentPermission: null,
             // 新增学生数据
             addStudentData: {
                 name: '',
@@ -932,6 +945,15 @@ createApp({
         approvalFlowTemplateTotalPages() {
             return Math.ceil(this.filteredApprovalFlowTemplates.length / 10);
         },
+        // 权限管理分页数据
+        paginatedPermissions() {
+            const start = (this.permissionCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredPermissions.slice(start, end);
+        },
+        permissionTotalPages() {
+            return Math.ceil(this.filteredPermissions.length / 10);
+        },
         // 计算是否可以选择线上付款（预计付款日期未过）
         canSelectOnlinePayment() {
             if (!this.selectedOrderInfo || !this.selectedOrderInfo.expected_payment_time) {
@@ -1071,8 +1093,10 @@ createApp({
         },
 
         // 设置活动菜单
-        setActiveMenu(menu) {
+        async setActiveMenu(menu) {
             this.activeMenu = menu;
+            // 每次切换菜单时重新加载权限列表
+            await this.fetchEnabledPermissions();
             // 切换菜单时刷新对应页面的数据
             if (menu === 'students') {
                 this.fetchStudents();
@@ -1110,6 +1134,8 @@ createApp({
                 this.fetchApprovalFlowTypes();
             } else if (menu === 'approval_flow_template') {
                 this.fetchApprovalFlowTemplates();
+            } else if (menu === 'permissions') {
+                this.fetchPermissions();
             }
         },
         
@@ -2864,6 +2890,117 @@ createApp({
             if (page >= 1 && page <= this.approvalFlowTemplateTotalPages) {
                 this.approvalFlowTemplateCurrentPage = page;
             }
+        },
+
+        // ==================== 权限管理 ====================
+
+        // 获取权限列表
+        async fetchPermissions() {
+            this.loadingPermissions = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.permissionFilters.id) params.append('id', this.permissionFilters.id);
+
+                const response = await axios.get(`/api/permissions?${params.toString()}`, { withCredentials: true });
+                this.permissions = response.data.permissions || [];
+                this.filteredPermissions = this.permissions;
+            } catch (err) {
+                console.error('获取权限列表失败:', err);
+                alert(err.response?.data?.error || '获取权限列表失败');
+            } finally {
+                this.loadingPermissions = false;
+            }
+        },
+
+        // 搜索权限
+        searchPermissions() {
+            this.fetchPermissions();
+            this.permissionCurrentPage = 1;
+        },
+
+        // 重置权限筛选
+        resetPermissionFilters() {
+            this.permissionFilters = {
+                id: ''
+            };
+            this.fetchPermissions();
+        },
+
+        // 打开启用权限确认
+        openEnablePermissionConfirm(permission) {
+            this.currentPermission = permission;
+            this.showEnablePermissionConfirm = true;
+        },
+
+        // 打开禁用权限确认
+        openDisablePermissionConfirm(permission) {
+            this.currentPermission = permission;
+            this.showDisablePermissionConfirm = true;
+        },
+
+        // 启用权限
+        async doEnablePermission() {
+            try {
+                await axios.put(`/api/permissions/${this.currentPermission.id}/status`, {
+                    status: 0
+                }, { withCredentials: true });
+
+                alert('权限已启用');
+                this.showEnablePermissionConfirm = false;
+                this.currentPermission = null;
+                await this.fetchPermissions();
+                // 重新加载权限列表，使启用立即生效
+                await this.fetchEnabledPermissions();
+            } catch (err) {
+                console.error('启用权限失败:', err);
+                alert(err.response?.data?.error || '启用权限失败');
+            }
+        },
+
+        // 禁用权限
+        async doDisablePermission() {
+            try {
+                await axios.put(`/api/permissions/${this.currentPermission.id}/status`, {
+                    status: 1
+                }, { withCredentials: true });
+
+                alert('权限已禁用');
+                this.showDisablePermissionConfirm = false;
+                this.currentPermission = null;
+                await this.fetchPermissions();
+                // 重新加载权限列表，使禁用立即生效
+                await this.fetchEnabledPermissions();
+            } catch (err) {
+                console.error('禁用权限失败:', err);
+                alert(err.response?.data?.error || '禁用权限失败');
+            }
+        },
+
+        // 权限管理分页
+        changePermissionPage(page) {
+            if (page >= 1 && page <= this.permissionTotalPages) {
+                this.permissionCurrentPage = page;
+            }
+        },
+
+        // 获取启用的权限列表（用于按钮权限控制）
+        async fetchEnabledPermissions() {
+            this.loadingPermissions = true;
+            try {
+                const response = await axios.get('/api/permissions?status=0', { withCredentials: true });
+                this.enabledPermissions = response.data.permissions.map(p => p.action_id);
+                console.log('已加载权限列表:', this.enabledPermissions);
+            } catch (err) {
+                console.error('获取权限列表失败:', err);
+                this.enabledPermissions = [];
+            } finally {
+                this.loadingPermissions = false;
+            }
+        },
+
+        // 检查是否有某个权限
+        hasPermission(actionId) {
+            return this.enabledPermissions.includes(actionId);
         },
 
         // ==================== 属性管理功能 ====================

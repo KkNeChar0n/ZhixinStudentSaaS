@@ -67,13 +67,13 @@
                     <!-- 学生管理页面 -->
                     <div v-if="activeMenu === 'students'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingStudents" class="loading-overlay">
+                        <div v-if="loadingStudents || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
                         <div class="page-header">
                             <h1>学生管理</h1>
-                            <button class="add-btn" @click="openAddStudentModal">新增学生</button>
+                            <button v-if="hasPermission('add_student')" class="add-btn" @click="openAddStudentModal">新增学生</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -137,10 +137,10 @@
                                     <td>{{ student.coach_names }}</td>
                                     <td>{{ student.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
-                                        <button class="edit-btn" @click="openEditStudentModal(student)">编辑</button>
-                                        <button v-if="student.status === 1" class="enable-btn" @click="updateStudentStatus(student.id, 0)">启用</button>
-                                        <button v-if="student.status === 0" class="disable-btn" @click="updateStudentStatus(student.id, 1)">禁用</button>
-                                        <button class="delete-btn" @click="openDeleteConfirm(student.id, 'student')">删除</button>
+                                        <button v-if="hasPermission('edit_student')" class="edit-btn" @click="openEditStudentModal(student)">编辑</button>
+                                        <button v-if="hasPermission('enable_student') && student.status === 1" class="enable-btn" @click="updateStudentStatus(student.id, 0)">启用</button>
+                                        <button v-if="hasPermission('disable_student') && student.status === 0" class="disable-btn" @click="updateStudentStatus(student.id, 1)">禁用</button>
+                                        <button v-if="hasPermission('delete_student')" class="delete-btn" @click="openDeleteConfirm(student.id, 'student')">删除</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -159,13 +159,13 @@
                     <!-- 教练管理页面 -->
                     <div v-if="activeMenu === 'coaches'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingCoaches" class="loading-overlay">
+                        <div v-if="loadingCoaches || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
                         <div class="page-header">
                             <h1>教练管理</h1>
-                            <button class="add-btn" @click="openAddCoachModal">新增教练</button>
+                            <button v-if="hasPermission('add_coach')" class="add-btn" @click="openAddCoachModal">新增教练</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -238,10 +238,10 @@
                                     <td>{{ coach.phone }}</td>
                                     <td>{{ coach.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
-                                        <button class="edit-btn" @click="openEditCoachModal(coach)">编辑</button>
-                                        <button v-if="coach.status === 1" class="enable-btn" @click="updateCoachStatus(coach.id, 0)">启用</button>
-                                        <button v-if="coach.status === 0" class="disable-btn" @click="updateCoachStatus(coach.id, 1)">禁用</button>
-                                        <button class="delete-btn" @click="openDeleteConfirm(coach.id, 'coach')">删除</button>
+                                        <button v-if="hasPermission('edit_coach')" class="edit-btn" @click="openEditCoachModal(coach)">编辑</button>
+                                        <button v-if="hasPermission('enable_coach') && coach.status === 1" class="enable-btn" @click="updateCoachStatus(coach.id, 0)">启用</button>
+                                        <button v-if="hasPermission('disable_coach') && coach.status === 0" class="disable-btn" @click="updateCoachStatus(coach.id, 1)">禁用</button>
+                                        <button v-if="hasPermission('delete_coach')" class="delete-btn" @click="openDeleteConfirm(coach.id, 'coach')">删除</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -260,13 +260,13 @@
                     <!-- 订单管理页面 -->
                     <div v-if="activeMenu === 'orders'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingOrders" class="loading-overlay">
+                        <div v-if="loadingOrders || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
                         <div class="page-header">
                             <h1>订单管理</h1>
-                            <button class="add-btn" @click="openAddOrderDrawer">新增订单</button>
+                            <button v-if="hasPermission('add_order')" class="add-btn" @click="openAddOrderDrawer">新增订单</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -324,9 +324,9 @@
                                     <td style="font-weight: bold;">{{ order.amount_received }}</td>
                                     <td>{{ getOrderStatusText(order.status) }}</td>
                                     <td class="action-column">
-                                        <button v-if="order.status === 10" class="edit-btn" @click="openEditOrderDrawer(order)">编辑</button>
-                                        <button v-if="order.status === 10" class="delete-btn" @click="openCancelOrderConfirm(order.id)">作废</button>
-                                        <button v-if="order.status === 30 || order.status === 40" class="refund-btn" @click="openRefundDialog(order.id)">申请退费</button>
+                                        <button v-if="hasPermission('edit_order') && order.status === 10" class="edit-btn" @click="openEditOrderDrawer(order)">编辑</button>
+                                        <button v-if="hasPermission('void_order') && order.status === 10" class="delete-btn" @click="openCancelOrderConfirm(order.id)">作废</button>
+                                        <button v-if="hasPermission('apply_refund') && (order.status === 30 || order.status === 40)" class="refund-btn" @click="openRefundDialog(order.id)">申请退费</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -500,7 +500,7 @@
                     <!-- 审批流类型页面 -->
                     <div v-if="activeMenu === 'approval_flow_type'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingApprovalFlowTypes" class="loading-overlay">
+                        <div v-if="loadingApprovalFlowTypes || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
@@ -553,8 +553,8 @@
                                     <td>{{ flowType.name }}</td>
                                     <td>{{ flowType.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
-                                        <button v-if="flowType.status === 1" class="enable-btn" @click="openEnableFlowTypeConfirm(flowType)">启用</button>
-                                        <button v-if="flowType.status === 0" class="disable-btn" @click="openDisableFlowTypeConfirm(flowType)">禁用</button>
+                                        <button v-if="hasPermission('enable_approval_type') && flowType.status === 1" class="enable-btn" @click="openEnableFlowTypeConfirm(flowType)">启用</button>
+                                        <button v-if="hasPermission('disable_approval_type') && flowType.status === 0" class="disable-btn" @click="openDisableFlowTypeConfirm(flowType)">禁用</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -573,14 +573,14 @@
                     <!-- 审批流模板页面 -->
                     <div v-if="activeMenu === 'approval_flow_template'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingApprovalFlowTemplates" class="loading-overlay">
+                        <div v-if="loadingApprovalFlowTemplates || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
 
                         <div class="page-header">
                             <h1>审批流模板</h1>
-                            <button class="add-btn" @click="openAddApprovalFlowTemplateDrawer">新增审批流</button>
+                            <button v-if="hasPermission('add_approval_template')" class="add-btn" @click="openAddApprovalFlowTemplateDrawer">新增审批流</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -638,8 +638,8 @@
                                     <td>{{ template.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
                                         <button class="view-btn" @click="openViewApprovalFlowTemplateDrawer(template)">详情</button>
-                                        <button v-if="template.status === 1" class="enable-btn" @click="openEnableFlowTemplateConfirm(template)">启用</button>
-                                        <button v-if="template.status === 0" class="disable-btn" @click="openDisableFlowTemplateConfirm(template)">禁用</button>
+                                        <button v-if="hasPermission('enable_approval_template') && template.status === 1" class="enable-btn" @click="openEnableFlowTemplateConfirm(template)">启用</button>
+                                        <button v-if="hasPermission('disable_approval_template') && template.status === 0" class="disable-btn" @click="openDisableFlowTemplateConfirm(template)">禁用</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -655,17 +655,77 @@
                         </div>
                     </div>
 
+                    <!-- 权限管理页面 -->
+                    <div v-if="activeMenu === 'permissions'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingPermissions" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
+                        <div class="page-header">
+                            <h1>权限管理</h1>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="permissionIdFilter">ID</label>
+                                    <input type="number" id="permissionIdFilter" v-model="permissionFilters.id" placeholder="请输入ID">
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchPermissions">搜索</button>
+                                <button class="reset-btn" @click="resetPermissionFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>权限名称</th>
+                                    <th>所在菜单</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="permission in paginatedPermissions" :key="permission.id">
+                                    <td>{{ permission.id }}</td>
+                                    <td>{{ permission.name }}</td>
+                                    <td>{{ permission.menu_name }}</td>
+                                    <td>{{ permission.status === 0 ? '启用' : '禁用' }}</td>
+                                    <td class="action-column">
+                                        <button v-if="permission.status === 1" class="enable-btn" @click="openEnablePermissionConfirm(permission)">启用</button>
+                                        <button v-if="permission.status === 0" class="disable-btn" @click="openDisablePermissionConfirm(permission)">禁用</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- 分页控件 -->
+                        <div class="pagination" v-if="permissionTotalPages > 1">
+                            <button class="page-btn" @click="changePermissionPage(1)" :disabled="permissionCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changePermissionPage(permissionCurrentPage - 1)" :disabled="permissionCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ permissionCurrentPage }} / {{ permissionTotalPages }} 页</span>
+                            <button class="page-btn" @click="changePermissionPage(permissionCurrentPage + 1)" :disabled="permissionCurrentPage === permissionTotalPages">下一页</button>
+                            <button class="page-btn" @click="changePermissionPage(permissionTotalPages)" :disabled="permissionCurrentPage === permissionTotalPages">末页</button>
+                        </div>
+                    </div>
+
                     <!-- 活动模板页面 -->
                     <div v-if="activeMenu === 'activity_template'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingActivityTemplates" class="loading-overlay">
+                        <div v-if="loadingActivityTemplates || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
 
                         <div class="page-header">
                             <h1>活动模板</h1>
-                            <button class="add-btn" @click="openAddActivityTemplateDrawer">新增模板</button>
+                            <button v-if="hasPermission('add_activity_template')" class="add-btn" @click="openAddActivityTemplateDrawer">新增模板</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -723,8 +783,8 @@
                                     <td>{{ template.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
                                         <button class="edit-btn" @click="openActivityTemplateDetailDrawer(template)">详情</button>
-                                        <button v-if="template.status === 1" class="enable-btn" @click="updateActivityTemplateStatus(template.id, 0)">启用</button>
-                                        <button v-if="template.status === 0" class="disable-btn" @click="updateActivityTemplateStatus(template.id, 1)">禁用</button>
+                                        <button v-if="hasPermission('enable_activity_template') && template.status === 1" class="enable-btn" @click="updateActivityTemplateStatus(template.id, 0)">启用</button>
+                                        <button v-if="hasPermission('disable_activity_template') && template.status === 0" class="disable-btn" @click="updateActivityTemplateStatus(template.id, 1)">禁用</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -743,14 +803,14 @@
                     <!-- 活动管理页面 -->
                     <div v-if="activeMenu === 'activity_management'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingActivities" class="loading-overlay">
+                        <div v-if="loadingActivities || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
 
                         <div class="page-header">
                             <h1>活动管理</h1>
-                            <button class="add-btn" @click="openAddActivityDrawer">新增活动</button>
+                            <button v-if="hasPermission('add_activity')" class="add-btn" @click="openAddActivityDrawer">新增活动</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -810,9 +870,9 @@
                                     <td>{{ activity.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
                                         <button class="edit-btn" @click="openActivityDetailDrawer(activity)">详情</button>
-                                        <button v-if="activity.status === 1" class="edit-btn" @click="openEditActivityDrawer(activity)">编辑</button>
-                                        <button v-if="activity.status === 1" class="enable-btn" @click="updateActivityStatus(activity.id, 0)">启用</button>
-                                        <button v-if="activity.status === 0" class="disable-btn" @click="updateActivityStatus(activity.id, 1)">禁用</button>
+                                        <button v-if="hasPermission('edit_activity') && activity.status === 1" class="edit-btn" @click="openEditActivityDrawer(activity)">编辑</button>
+                                        <button v-if="hasPermission('enable_activity') && activity.status === 1" class="enable-btn" @click="updateActivityStatus(activity.id, 0)">启用</button>
+                                        <button v-if="hasPermission('disable_activity') && activity.status === 0" class="disable-btn" @click="updateActivityStatus(activity.id, 1)">禁用</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -831,7 +891,7 @@
                     <!-- 账号管理页面 -->
                     <div v-if="activeMenu === 'accounts'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingAccounts" class="loading-overlay">
+                        <div v-if="loadingAccounts || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
@@ -855,8 +915,8 @@
                                     <td>{{ account.password }}</td>
                                     <td>{{ account.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
-                                        <button v-if="account.status === 1" class="enable-btn" @click="enableAccount(account.id)">启用</button>
-                                        <button v-if="account.status === 0" class="disable-btn" @click="disableAccount(account.id)">禁用</button>
+                                        <button v-if="hasPermission('enable_account') && account.status === 1" class="enable-btn" @click="enableAccount(account.id)">启用</button>
+                                        <button v-if="hasPermission('disable_account') && account.status === 0" class="disable-btn" @click="disableAccount(account.id)">禁用</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -875,14 +935,14 @@
                     <!-- 合同管理页面 -->
                     <div v-if="activeMenu === 'contract_management'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingContracts" class="loading-overlay">
+                        <div v-if="loadingContracts || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
 
                         <div class="page-header">
                             <h1>合同管理</h1>
-                            <button class="add-btn" @click="openAddContractDrawer">新增合同</button>
+                            <button v-if="hasPermission('add_contract')" class="add-btn" @click="openAddContractDrawer">新增合同</button>
                         </div>
 
                         <!-- 筛选区 -->
@@ -994,14 +1054,14 @@
                     <!-- 收款管理页面 -->
                     <div v-if="activeMenu === 'payment_collection'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingPaymentCollections" class="loading-overlay">
+                        <div v-if="loadingPaymentCollections || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
 
                         <div class="page-header">
                             <h1>收款管理</h1>
-                            <button class="add-btn" @click="paymentCollectionTab === 'taobao' ? openAddTaobaoPaymentModal() : openAddPaymentCollectionModal()">新增收款</button>
+                            <button v-if="hasPermission('add_payment')" class="add-btn" @click="paymentCollectionTab === 'taobao' ? openAddTaobaoPaymentModal() : openAddPaymentCollectionModal()">新增收款</button>
                         </div>
 
                         <!-- 一级Tab -->
@@ -1126,13 +1186,13 @@
                                                 <td>{{ getCollectionStatusText(pc.status) }}</td>
                                                 <td class="action-column">
                                                     <button
-                                                        v-if="pc.status === 10"
+                                                        v-if="hasPermission('confirm_payment') && pc.status === 10"
                                                         class="edit-btn"
                                                         @click="confirmPaymentCollection(pc)">
                                                         确认到账
                                                     </button>
                                                     <button
-                                                        v-if="pc.status === 10"
+                                                        v-if="hasPermission('delete_normal_payment') && pc.status === 10"
                                                         class="delete-btn"
                                                         @click="confirmDeletePaymentCollection(pc)">
                                                         删除
@@ -1244,8 +1304,8 @@
                                                 <td>{{ unclaimed.claimer_name || '-' }}</td>
                                                 <td>{{ getUnclaimedStatusText(unclaimed.status) }}</td>
                                                 <td class="action-column">
-                                                    <button v-if="unclaimed.status === 0" class="edit-btn" @click="confirmClaimUnclaimed(unclaimed)">认领</button>
-                                                    <button v-if="unclaimed.status === 0" class="delete-btn" @click="confirmDeleteUnclaimed(unclaimed)">删除</button>
+                                                    <button v-if="hasPermission('claim_normal_payment') && unclaimed.status === 0" class="edit-btn" @click="confirmClaimUnclaimed(unclaimed)">认领</button>
+                                                    <button v-if="hasPermission('delete_normal_claim') && unclaimed.status === 0" class="delete-btn" @click="confirmDeleteUnclaimed(unclaimed)">删除</button>
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -1351,8 +1411,8 @@
                                                 <td>{{ tp.merchant_order || '-' }}</td>
                                                 <td>{{ getTaobaoStatusText(tp.status) }}</td>
                                                 <td>
-                                                    <button v-if="tp.status === 0" class="action-btn confirm-btn" @click="confirmTaobaoPayment(tp)">确认到账</button>
-                                                    <button v-if="tp.status !== 30" class="action-btn delete-btn" @click="deleteTaobaoPayment(tp)">删除</button>
+                                                    <button v-if="hasPermission('confirm_payment') && tp.status === 0" class="action-btn confirm-btn" @click="confirmTaobaoPayment(tp)">确认到账</button>
+                                                    <button v-if="hasPermission('delete_taobao_payment') && tp.status !== 30" class="action-btn delete-btn" @click="deleteTaobaoPayment(tp)">删除</button>
                                                 </td>
                                             </tr>
                                             <tr v-if="paginatedTaobaoPayments.length === 0">
@@ -1440,8 +1500,8 @@
                                                 <td>{{ getTaobaoUnclaimedStatusText(tu.status) }}</td>
                                                 <td>{{ tu.claimer || '-' }}</td>
                                                 <td class="action-column">
-                                                    <button v-if="tu.status === 10" class="edit-btn" @click="claimTaobaoUnclaimed(tu)">认领</button>
-                                                    <button v-if="tu.status === 10" class="delete-btn" @click="deleteTaobaoUnclaimed(tu)">删除</button>
+                                                    <button v-if="hasPermission('claim_taobao_payment') && tu.status === 10" class="edit-btn" @click="claimTaobaoUnclaimed(tu)">认领</button>
+                                                    <button v-if="hasPermission('delete_taobao_claim') && tu.status === 10" class="delete-btn" @click="deleteTaobaoUnclaimed(tu)">删除</button>
                                                 </td>
                                             </tr>
                                             <tr v-if="paginatedTaobaoUnclaimed.length === 0">
@@ -1565,14 +1625,14 @@
                     <!-- 属性管理页面 -->
                     <div v-if="activeMenu === 'attributes'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingAttributes" class="loading-overlay">
+                        <div v-if="loadingAttributes || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
 
                         <div class="page-header">
                             <h1>属性管理</h1>
-                            <button class="add-btn" @click="openAddAttributeModal">新增属性</button>
+                            <button v-if="hasPermission('add_attribute')" class="add-btn" @click="openAddAttributeModal">新增属性</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -1624,10 +1684,10 @@
                                     <td>{{ attribute.value_count || 0 }}</td>
                                     <td>{{ getAttributeStatusText(attribute.status) }}</td>
                                     <td class="action-column">
-                                        <button class="edit-btn" @click="openEditAttributeModal(attribute)">编辑</button>
-                                        <button class="edit-btn" @click="openAttributeValuesModal(attribute)">属性值</button>
-                                        <button v-if="attribute.status === 1" class="enable-btn" @click="openEnableAttributeConfirm(attribute.id)">启用</button>
-                                        <button v-if="attribute.status === 0" class="disable-btn" @click="openDisableAttributeConfirm(attribute.id)">禁用</button>
+                                        <button v-if="hasPermission('edit_attribute')" class="edit-btn" @click="openEditAttributeModal(attribute)">编辑</button>
+                                        <button v-if="hasPermission('edit_attribute_value')" class="edit-btn" @click="openAttributeValuesModal(attribute)">属性值</button>
+                                        <button v-if="hasPermission('enable_attribute') && attribute.status === 1" class="enable-btn" @click="openEnableAttributeConfirm(attribute.id)">启用</button>
+                                        <button v-if="hasPermission('disable_attribute') && attribute.status === 0" class="disable-btn" @click="openDisableAttributeConfirm(attribute.id)">禁用</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1646,14 +1706,14 @@
                     <!-- 类型管理页面 -->
                     <div v-if="activeMenu === 'classifies'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingClassifies" class="loading-overlay">
+                        <div v-if="loadingClassifies || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
 
                         <div class="page-header">
                             <h1>类型管理</h1>
-                            <button class="add-btn" @click="openAddClassifyModal">新增</button>
+                            <button v-if="hasPermission('add_classify')" class="add-btn" @click="openAddClassifyModal">新增</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -1703,9 +1763,9 @@
                                     <td>{{ getClassifyLevelText(classify.level) }}</td>
                                     <td>{{ getClassifyStatusText(classify.status) }}</td>
                                     <td class="action-column">
-                                        <button class="edit-btn" @click="openEditClassifyModal(classify)">编辑</button>
-                                        <button v-if="classify.status === 1" class="enable-btn" @click="openEnableClassifyConfirm(classify.id)">启用</button>
-                                        <button v-if="classify.status === 0" class="disable-btn" @click="openDisableClassifyConfirm(classify.id)">禁用</button>
+                                        <button v-if="hasPermission('edit_classify')" class="edit-btn" @click="openEditClassifyModal(classify)">编辑</button>
+                                        <button v-if="hasPermission('enable_classify') && classify.status === 1" class="enable-btn" @click="openEnableClassifyConfirm(classify.id)">启用</button>
+                                        <button v-if="hasPermission('disable_classify') && classify.status === 0" class="disable-btn" @click="openDisableClassifyConfirm(classify.id)">禁用</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1724,14 +1784,14 @@
                     <!-- 品牌管理页面 -->
                     <div v-if="activeMenu === 'brands'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingBrands" class="loading-overlay">
+                        <div v-if="loadingBrands || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
 
                         <div class="page-header">
                             <h1>品牌管理</h1>
-                            <button class="add-btn" @click="openAddBrandModal">新增</button>
+                            <button v-if="hasPermission('add_brand')" class="add-btn" @click="openAddBrandModal">新增</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -1775,9 +1835,9 @@
                                     <td>{{ brand.name }}</td>
                                     <td>{{ getBrandStatusText(brand.status) }}</td>
                                     <td class="action-column">
-                                        <button class="edit-btn" @click="openEditBrandModal(brand)">编辑</button>
-                                        <button v-if="brand.status === 1" class="enable-btn" @click="openEnableBrandConfirm(brand.id)">启用</button>
-                                        <button v-if="brand.status === 0" class="disable-btn" @click="openDisableBrandConfirm(brand.id)">禁用</button>
+                                        <button v-if="hasPermission('edit_brand')" class="edit-btn" @click="openEditBrandModal(brand)">编辑</button>
+                                        <button v-if="hasPermission('enable_brand') && brand.status === 1" class="enable-btn" @click="openEnableBrandConfirm(brand.id)">启用</button>
+                                        <button v-if="hasPermission('disable_brand') && brand.status === 0" class="disable-btn" @click="openDisableBrandConfirm(brand.id)">禁用</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1796,14 +1856,14 @@
                     <!-- 商品管理页面 -->
                     <div v-if="activeMenu === 'goods'" style="position: relative;">
                         <!-- Loading遮罩层 -->
-                        <div v-if="loadingGoods" class="loading-overlay">
+                        <div v-if="loadingGoods || loadingPermissions" class="loading-overlay">
                             <div class="loading-spinner"></div>
                             <div class="loading-text">加载中...</div>
                         </div>
 
                         <div class="page-header">
                             <h1>商品管理</h1>
-                            <button class="add-btn" @click="openAddGoodsDrawer">新增</button>
+                            <button v-if="hasPermission('add_goods')" class="add-btn" @click="openAddGoodsDrawer">新增</button>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -1871,9 +1931,9 @@
                                     </td>
                                     <td>{{ goods.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
-                                        <button class="edit-btn" @click="openEditGoodsDrawer(goods.id)">编辑</button>
-                                        <button v-if="goods.status === 1" class="enable-btn" @click="openEnableGoodsConfirm(goods.id)">启用</button>
-                                        <button v-if="goods.status === 0" class="disable-btn" @click="openDisableGoodsConfirm(goods.id)">禁用</button>
+                                        <button v-if="hasPermission('edit_goods')" class="edit-btn" @click="openEditGoodsDrawer(goods.id)">编辑</button>
+                                        <button v-if="hasPermission('enable_goods') && goods.status === 1" class="enable-btn" @click="openEnableGoodsConfirm(goods.id)">启用</button>
+                                        <button v-if="hasPermission('disable_goods') && goods.status === 0" class="disable-btn" @click="openDisableGoodsConfirm(goods.id)">禁用</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1888,6 +1948,40 @@
                             <button class="page-btn" @click="changeGoodsPage(goodsTotalPages)" :disabled="goodsCurrentPage === goodsTotalPages">末页</button>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 启用权限确认弹窗 -->
+        <div class="modal-overlay" v-if="showEnablePermissionConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认启用</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否启用该权限？</p>
+                    <p style="color: #27ae60; font-size: 14px;">启用后该权限绑定的按钮将展示于对应页面。</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showEnablePermissionConfirm = false">取消</button>
+                    <button class="confirm-btn" @click="doEnablePermission">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 禁用权限确认弹窗 -->
+        <div class="modal-overlay" v-if="showDisablePermissionConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认禁用</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否禁用该权限？</p>
+                    <p style="color: #e74c3c; font-size: 14px;">禁用后该权限绑定的按钮将隐藏于对应页面。</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="showDisablePermissionConfirm = false">取消</button>
+                    <button class="delete-btn" @click="doDisablePermission">确认</button>
                 </div>
             </div>
         </div>
