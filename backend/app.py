@@ -45,7 +45,7 @@ def login():
         cursor = connection.cursor(pymysql.cursors.DictCursor)
         
         # 查询用户
-        cursor.execute("SELECT username, status FROM useraccount WHERE username = %s AND password = %s", (username, password))
+        cursor.execute("SELECT id, username, status FROM useraccount WHERE username = %s AND password = %s", (username, password))
         user = cursor.fetchone()
 
         if user:
@@ -54,6 +54,7 @@ def login():
                 return jsonify({'error': '该账号已被禁用'}), 403
             # 登录成功，保存到会话
             session['username'] = user['username']
+            session['user_id'] = user['id']
             return jsonify({'message': '登录成功', 'username': user['username']}), 200
         else:
             return jsonify({'error': '用户名或密码错误'}), 401
@@ -78,6 +79,7 @@ def get_profile():
 @app.route('/api/logout', methods=['POST'])
 def logout():
     session.pop('username', None)
+    session.pop('user_id', None)
     return jsonify({'message': '登出成功'}), 200
 
 # API接口：获取账号列表
@@ -745,7 +747,7 @@ def create_order():
 
         order_id = cursor.lastrowid
 
-        # 创建子产品订单（包含优惠金额）
+        # 创建子订单（包含优惠金额）
         for goods in goods_list:
             goods_id = goods.get('goods_id')
             goods_total_price = float(goods.get('total_price', 0))
@@ -947,7 +949,7 @@ def cancel_order(order_id):
             WHERE id = %s
         """, (order_id,))
 
-        # 同时作废关联的子产品订单
+        # 同时作废关联的子订单
         cursor.execute("""
             UPDATE childorders
             SET status = 99
@@ -994,7 +996,7 @@ def submit_order(order_id):
             WHERE id = %s
         """, (order_id,))
 
-        # 同时更新关联的子产品订单状态为10（未支付）
+        # 同时更新关联的子订单状态为10（未支付）
         cursor.execute("""
             UPDATE childorders
             SET status = 10
@@ -1015,7 +1017,7 @@ def submit_order(order_id):
         if connection:
             connection.close()
 
-# API接口：获取子产品订单列表
+# API接口：获取子订单列表
 @app.route('/api/childorders', methods=['GET'])
 def get_childorders():
     connection = None
@@ -1024,7 +1026,7 @@ def get_childorders():
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 查询子产品订单列表，关联商品信息（包含优惠金额）
+        # 查询子订单列表，关联商品信息（包含优惠金额）
         cursor.execute("""
             SELECT
                 c.id,
@@ -5323,6 +5325,11 @@ def create_refund_order():
         if 'username' not in session:
             return jsonify({'error': '未登录'}), 401
 
+        # 获取当前用户ID（用于创建审批流）
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录或会话已过期，请重新登录'}), 401
+
         data = request.get_json()
         order_id = data.get('order_id')
         refund_items = data.get('refund_items', [])  # [{childorder_id, goods_id, goods_name, refund_amount}]
@@ -5341,6 +5348,19 @@ def create_refund_order():
 
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询是否存在启用的"退费"类型审批流模板
+        cursor.execute("""
+            SELECT t.id as template_id
+            FROM approval_flow_template t
+            INNER JOIN approval_flow_type ft ON t.approval_flow_type_id = ft.id
+            WHERE ft.name = '退费' AND t.status = 0 AND ft.status = 0
+            LIMIT 1
+        """)
+        template = cursor.fetchone()
+
+        if not template:
+            return jsonify({'error': '未找到启用的退费审批流模板，无法提交退费申请'}), 400
 
         # 获取订单信息
         cursor.execute("SELECT student_id, status FROM orders WHERE id = %s", (order_id,))
@@ -5374,8 +5394,81 @@ def create_refund_order():
             UPDATE orders SET status = 50 WHERE id = %s
         """, (order_id,))
 
+        # 5. 创建审批流实例
+        template_id = template['template_id']
+
+        # 5.1 查询模板的审批流类型
+        cursor.execute("""
+            SELECT approval_flow_type_id FROM approval_flow_template WHERE id = %s
+        """, (template_id,))
+        template_info = cursor.fetchone()
+
+        # 5.2 创建审批流主记录
+        cursor.execute("""
+            INSERT INTO approval_flow_management (
+                approval_flow_template_id,
+                approval_flow_type_id,
+                step,
+                create_user,
+                status
+            ) VALUES (%s, %s, 0, %s, 0)
+        """, (template_id, template_info['approval_flow_type_id'], current_user_id))
+        flow_id = cursor.lastrowid
+
+        # 5.3 查询模板的第一个节点
+        cursor.execute("""
+            SELECT id, name, sort, type
+            FROM approval_flow_template_node
+            WHERE template_id = %s
+            ORDER BY sort ASC
+            LIMIT 1
+        """, (template_id,))
+        first_node = cursor.fetchone()
+
+        if not first_node:
+            connection.rollback()
+            return jsonify({'error': '审批流模板没有配置节点'}), 400
+
+        # 5.4 创建第一个节点实例
+        cursor.execute("""
+            INSERT INTO approval_node_case (
+                node_id,
+                approval_flow_management_id,
+                type,
+                sort,
+                result
+            ) VALUES (%s, %s, %s, %s, NULL)
+        """, (first_node['id'], flow_id, first_node['type'], first_node['sort']))
+        node_case_id = cursor.lastrowid
+
+        # 5.5 查询该节点的审批人员
+        cursor.execute("""
+            SELECT useraccount_id
+            FROM approval_node_useraccount
+            WHERE node_id = %s
+        """, (first_node['id'],))
+        node_users = cursor.fetchall()
+
+        if not node_users:
+            connection.rollback()
+            return jsonify({'error': '第一个审批节点没有配置审批人'}), 400
+
+        # 5.6 为每个审批人创建审批记录
+        for user in node_users:
+            cursor.execute("""
+                INSERT INTO approval_node_case_user (
+                    approval_node_case_id,
+                    useraccount_id,
+                    result
+                ) VALUES (%s, %s, NULL)
+            """, (node_case_id, user['useraccount_id']))
+
         connection.commit()
-        return jsonify({'message': '退款申请提交成功', 'refund_order_id': refund_order_id}), 201
+        return jsonify({
+            'message': '退款申请提交成功，审批流已创建',
+            'refund_order_id': refund_order_id,
+            'approval_flow_id': flow_id
+        }), 201
 
     except Exception as e:
         if connection:
@@ -5843,6 +5936,11 @@ def get_permissions():
             conditions.append('p.id = %s')
             params.append(request.args.get('id'))
 
+        # 菜单ID筛选
+        if request.args.get('menu_id'):
+            conditions.append('p.menu_id = %s')
+            params.append(request.args.get('menu_id'))
+
         # 状态筛选
         if request.args.get('status') is not None and request.args.get('status') != '':
             conditions.append('p.status = %s')
@@ -5869,6 +5967,56 @@ def get_permissions():
 
         permissions = cursor.fetchall()
         return jsonify({'permissions': permissions}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取菜单列表
+@app.route('/api/menu', methods=['GET'])
+def get_menu():
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = []
+        params = []
+
+        # level筛选（基于parent_id判断级别）
+        # level=1 表示一级菜单（parent_id IS NULL）
+        # level=2 表示二级菜单（parent_id IS NOT NULL）
+        if request.args.get('level'):
+            level = request.args.get('level')
+            if level == '1':
+                conditions.append('parent_id IS NULL')
+            elif level == '2':
+                conditions.append('parent_id IS NOT NULL')
+
+        # status筛选（如果menu表没有status字段，则忽略此条件）
+        if request.args.get('status') is not None:
+            # 尝试使用status字段，如果不存在会在执行时报错
+            # 可以选择性地启用此功能
+            pass  # 暂时忽略status筛选
+
+        where_clause = ' AND '.join(conditions) if conditions else '1=1'
+
+        # 查询菜单列表
+        cursor.execute(f"""
+            SELECT id, name, route, parent_id, sort_order
+            FROM menu
+            WHERE {where_clause}
+            ORDER BY sort_order ASC, id ASC
+        """, params)
+
+        menus = cursor.fetchall()
+        return jsonify({'menus': menus}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -5909,6 +6057,968 @@ def update_permission_status(permission_id):
 
         connection.commit()
         return jsonify({'message': '权限状态更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# ==================== 审批流管理 ====================
+
+# 获取我发起的审批流列表
+@app.route('/api/approval-flows/initiated', methods=['GET'])
+def get_initiated_approval_flows():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = ['afm.create_user = %s']
+        params = [current_user_id]
+
+        # ID筛选
+        if request.args.get('id'):
+            conditions.append('afm.id = %s')
+            params.append(request.args.get('id'))
+
+        # 审批流类型筛选
+        if request.args.get('approval_flow_type_id'):
+            conditions.append('afm.approval_flow_type_id = %s')
+            params.append(request.args.get('approval_flow_type_id'))
+
+        # 状态筛选
+        if request.args.get('status') is not None and request.args.get('status') != '':
+            conditions.append('afm.status = %s')
+            params.append(request.args.get('status'))
+
+        where_clause = ' AND '.join(conditions)
+
+        # 查询审批流列表
+        cursor.execute(f"""
+            SELECT
+                afm.id,
+                afm.approval_flow_type_id,
+                aft.name as approval_flow_type_name,
+                afm.step,
+                afm.create_time,
+                afm.status,
+                afm.complete_time
+            FROM approval_flow_management afm
+            LEFT JOIN approval_flow_type aft ON afm.approval_flow_type_id = aft.id
+            WHERE {where_clause}
+            ORDER BY afm.create_time DESC
+        """, params)
+
+        flows = cursor.fetchall()
+        return jsonify({'flows': flows}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取待我审批的列表
+@app.route('/api/approval-flows/pending', methods=['GET'])
+def get_pending_approval_flows():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = ['ancu.useraccount_id = %s', 'ancu.result IS NULL', 'afm.status = 0']
+        params = [current_user_id]
+
+        # ID筛选
+        if request.args.get('id'):
+            conditions.append('ancu.id = %s')
+            params.append(request.args.get('id'))
+
+        # 审批流ID筛选
+        if request.args.get('approval_flow_id'):
+            conditions.append('afm.id = %s')
+            params.append(request.args.get('approval_flow_id'))
+
+        # 审批流类型筛选
+        if request.args.get('approval_flow_type_id'):
+            conditions.append('afm.approval_flow_type_id = %s')
+            params.append(request.args.get('approval_flow_type_id'))
+
+        where_clause = ' AND '.join(conditions)
+
+        # 查询待审批列表
+        cursor.execute(f"""
+            SELECT
+                ancu.id,
+                anc.approval_flow_management_id,
+                afm.id as approval_flow_id,
+                aft.name as approval_flow_type_name,
+                ua.username as creator_name,
+                afm.create_time,
+                anc.id as node_case_id,
+                anc.type as node_type,
+                anc.sort as node_sort
+            FROM approval_node_case_user ancu
+            INNER JOIN approval_node_case anc ON ancu.approval_node_case_id = anc.id
+            INNER JOIN approval_flow_management afm ON anc.approval_flow_management_id = afm.id
+            LEFT JOIN approval_flow_type aft ON afm.approval_flow_type_id = aft.id
+            LEFT JOIN useraccount ua ON afm.create_user = ua.id
+            WHERE {where_clause}
+            ORDER BY afm.create_time DESC
+        """, params)
+
+        flows = cursor.fetchall()
+        return jsonify({'flows': flows}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取处理完成的列表
+@app.route('/api/approval-flows/completed', methods=['GET'])
+def get_completed_approval_flows():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = ['ancu.useraccount_id = %s', 'ancu.result IS NOT NULL']
+        params = [current_user_id]
+
+        # ID筛选
+        if request.args.get('id'):
+            conditions.append('ancu.id = %s')
+            params.append(request.args.get('id'))
+
+        # 审批流ID筛选
+        if request.args.get('approval_flow_id'):
+            conditions.append('afm.id = %s')
+            params.append(request.args.get('approval_flow_id'))
+
+        # 审批流类型筛选
+        if request.args.get('approval_flow_type_id'):
+            conditions.append('afm.approval_flow_type_id = %s')
+            params.append(request.args.get('approval_flow_type_id'))
+
+        where_clause = ' AND '.join(conditions)
+
+        # 查询已处理列表
+        cursor.execute(f"""
+            SELECT
+                ancu.id,
+                anc.approval_flow_management_id,
+                afm.id as approval_flow_id,
+                aft.name as approval_flow_type_name,
+                ua.username as creator_name,
+                afm.create_time,
+                anc.type as node_type,
+                anc.sort as node_sort,
+                ancu.result,
+                ancu.handle_time
+            FROM approval_node_case_user ancu
+            INNER JOIN approval_node_case anc ON ancu.approval_node_case_id = anc.id
+            INNER JOIN approval_flow_management afm ON anc.approval_flow_management_id = afm.id
+            LEFT JOIN approval_flow_type aft ON afm.approval_flow_type_id = aft.id
+            LEFT JOIN useraccount ua ON afm.create_user = ua.id
+            WHERE {where_clause}
+            ORDER BY ancu.handle_time DESC
+        """, params)
+
+        flows = cursor.fetchall()
+        return jsonify({'flows': flows}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取抄送我的列表
+@app.route('/api/approval-flows/copied', methods=['GET'])
+def get_copied_approval_flows():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = ['acuc.useraccount_id = %s']
+        params = [current_user_id]
+
+        # ID筛选
+        if request.args.get('id'):
+            conditions.append('acuc.id = %s')
+            params.append(request.args.get('id'))
+
+        # 审批流ID筛选
+        if request.args.get('approval_flow_id'):
+            conditions.append('afm.id = %s')
+            params.append(request.args.get('approval_flow_id'))
+
+        # 审批流类型筛选
+        if request.args.get('approval_flow_type_id'):
+            conditions.append('afm.approval_flow_type_id = %s')
+            params.append(request.args.get('approval_flow_type_id'))
+
+        where_clause = ' AND '.join(conditions)
+
+        # 查询抄送列表
+        cursor.execute(f"""
+            SELECT
+                acuc.id,
+                afm.id as approval_flow_id,
+                aft.name as approval_flow_type_name,
+                acuc.copy_info,
+                ua.username as creator_name,
+                afm.create_time,
+                afm.complete_time
+            FROM approval_copy_useraccount_case acuc
+            INNER JOIN approval_flow_management afm ON acuc.approval_flow_management_id = afm.id
+            LEFT JOIN approval_flow_type aft ON afm.approval_flow_type_id = aft.id
+            LEFT JOIN useraccount ua ON afm.create_user = ua.id
+            WHERE {where_clause}
+            ORDER BY acuc.create_time DESC
+        """, params)
+
+        flows = cursor.fetchall()
+        return jsonify({'flows': flows}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取审批流详细信息（包括退费订单信息）
+@app.route('/api/approval-flows/<int:flow_id>/detail', methods=['GET'])
+def get_approval_flow_detail(flow_id):
+    connection = None
+    cursor = None
+    try:
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询审批流基本信息
+        cursor.execute("""
+            SELECT
+                afm.id,
+                afm.approval_flow_template_id,
+                afm.approval_flow_type_id,
+                aft.name as approval_flow_type_name,
+                afm.step,
+                afm.create_user,
+                ua.username as creator_name,
+                afm.create_time,
+                afm.status,
+                afm.complete_time
+            FROM approval_flow_management afm
+            LEFT JOIN approval_flow_type aft ON afm.approval_flow_type_id = aft.id
+            LEFT JOIN useraccount ua ON afm.create_user = ua.id
+            WHERE afm.id = %s
+        """, (flow_id,))
+        flow_info = cursor.fetchone()
+
+        if not flow_info:
+            return jsonify({'error': '审批流不存在'}), 404
+
+        # 查询当前用户在该审批流中的审批记录
+        cursor.execute("""
+            SELECT
+                ancu.id,
+                ancu.approval_node_case_id,
+                anc.approval_flow_management_id,
+                anc.type as node_type,
+                anc.sort as node_sort,
+                ancu.result,
+                ancu.create_time,
+                ancu.handle_time
+            FROM approval_node_case_user ancu
+            INNER JOIN approval_node_case anc ON ancu.approval_node_case_id = anc.id
+            WHERE anc.approval_flow_management_id = %s AND ancu.useraccount_id = %s
+            ORDER BY anc.sort DESC
+            LIMIT 1
+        """, (flow_id, current_user_id))
+        user_approval = cursor.fetchone()
+
+        # 查询所有节点信息（用于展示审批流程数轴）
+        cursor.execute("""
+            SELECT
+                aftn.id as template_node_id,
+                aftn.name as node_name,
+                aftn.sort,
+                aftn.type,
+                anc.id as node_case_id,
+                anc.result as node_result
+            FROM approval_flow_template_node aftn
+            LEFT JOIN approval_node_case anc ON aftn.id = anc.node_id AND anc.approval_flow_management_id = %s
+            WHERE aftn.template_id = %s
+            ORDER BY aftn.sort ASC
+        """, (flow_id, flow_info['approval_flow_template_id']))
+        all_nodes = cursor.fetchall()
+
+        # 查询关联的退费订单信息（如果是退费类型）
+        refund_order_info = None
+        if flow_info['approval_flow_type_name'] == '退费':
+            # 通过审批流创建时间查找退费订单（包含已撤销的）
+            cursor.execute("""
+                SELECT
+                    ro.id as refund_order_id,
+                    ro.order_id,
+                    ro.refund_amount,
+                    ro.submitter,
+                    ro.submit_time,
+                    ro.status,
+                    s.name as student_name,
+                    s.phone as student_phone,
+                    g.name as grade_name
+                FROM refund_order ro
+                LEFT JOIN student s ON ro.student_id = s.id
+                LEFT JOIN grade g ON s.grade_id = g.id
+                WHERE ro.submit_time >= DATE_SUB(%s, INTERVAL 5 SECOND)
+                AND ro.submit_time <= DATE_ADD(%s, INTERVAL 5 SECOND)
+                ORDER BY ro.submit_time DESC
+                LIMIT 1
+            """, (flow_info['create_time'], flow_info['create_time']))
+            refund_order_info = cursor.fetchone()
+
+            # 如果找到退费订单，查询退费明细
+            if refund_order_info:
+                # 查询退费商品明细
+                cursor.execute("""
+                    SELECT
+                        roi.goods_name,
+                        roi.refund_amount
+                    FROM refund_order_item roi
+                    WHERE roi.refund_order_id = %s
+                """, (refund_order_info['refund_order_id'],))
+                refund_order_info['items'] = cursor.fetchall()
+
+                # 查询退费途径（收款列表）
+                # 分别从常规收款和淘宝收款查询
+                cursor.execute("""
+                    SELECT
+                        rp.payment_id,
+                        rp.payment_type,
+                        rp.refund_amount,
+                        pc.payment_amount,
+                        pc.payee_entity
+                    FROM refund_payment rp
+                    LEFT JOIN payment_collection pc ON rp.payment_id = pc.id AND rp.payment_type = 0
+                    WHERE rp.refund_order_id = %s AND rp.payment_type = 0
+
+                    UNION ALL
+
+                    SELECT
+                        rp.payment_id,
+                        rp.payment_type,
+                        rp.refund_amount,
+                        tp.payment_amount,
+                        NULL as payee_entity
+                    FROM refund_payment rp
+                    LEFT JOIN taobao_payment tp ON rp.payment_id = tp.id AND rp.payment_type = 1
+                    WHERE rp.refund_order_id = %s AND rp.payment_type = 1
+
+                    ORDER BY payment_type, payment_id
+                """, (refund_order_info['refund_order_id'], refund_order_info['refund_order_id']))
+                refund_order_info['payments'] = cursor.fetchall()
+
+        # 组装返回数据
+        result = {
+            'flow_info': flow_info,
+            'user_approval': user_approval,
+            'all_nodes': all_nodes,
+            'refund_order_info': refund_order_info
+        }
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 撤销审批流
+@app.route('/api/approval-flows/<int:flow_id>/cancel', methods=['PUT'])
+def cancel_approval_flow(flow_id):
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查审批流是否存在且为当前用户创建
+        cursor.execute("""
+            SELECT afm.id, afm.status, afm.create_user, afm.create_time, aft.name as flow_type_name
+            FROM approval_flow_management afm
+            LEFT JOIN approval_flow_type aft ON afm.approval_flow_type_id = aft.id
+            WHERE afm.id = %s
+        """, (flow_id,))
+        flow = cursor.fetchone()
+
+        if not flow:
+            return jsonify({'error': '审批流不存在'}), 404
+
+        if flow['create_user'] != current_user_id:
+            return jsonify({'error': '只能撤销自己发起的审批流'}), 403
+
+        if flow['status'] != 0:
+            return jsonify({'error': '只能撤销待审批状态的审批流'}), 400
+
+        # 如果是退费类型，需要恢复关联订单的状态
+        if flow['flow_type_name'] == '退费':
+            # 通过审批流创建时间查找关联的退费订单
+            cursor.execute("""
+                SELECT ro.id, ro.order_id
+                FROM refund_order ro
+                WHERE ro.order_id IN (
+                    SELECT order_id FROM orders WHERE status = 50
+                )
+                AND ro.submit_time >= DATE_SUB(%s, INTERVAL 5 SECOND)
+                AND ro.submit_time <= DATE_ADD(%s, INTERVAL 5 SECOND)
+                ORDER BY ro.submit_time DESC
+                LIMIT 1
+            """, (flow['create_time'], flow['create_time']))
+            refund_order = cursor.fetchone()
+
+            # 如果找到关联的退费订单，删除退费数据并恢复订单状态
+            if refund_order:
+                refund_order_id = refund_order['id']
+                order_id = refund_order['order_id']
+
+                # 1. 删除退费子订单明细（恢复子订单可退金额）
+                cursor.execute("""
+                    DELETE FROM refund_order_item
+                    WHERE refund_order_id = %s
+                """, (refund_order_id,))
+
+                # 2. 删除退费收款分配（恢复收款可退金额）
+                cursor.execute("""
+                    DELETE FROM refund_payment
+                    WHERE refund_order_id = %s
+                """, (refund_order_id,))
+
+                # 3. 删除退费订单主记录
+                cursor.execute("""
+                    DELETE FROM refund_order
+                    WHERE id = %s
+                """, (refund_order_id,))
+
+                # 4. 恢复订单状态为已完成（30）
+                cursor.execute("""
+                    UPDATE orders
+                    SET status = 30
+                    WHERE id = %s
+                """, (order_id,))
+
+        # 更新审批流状态为已撤销
+        cursor.execute("""
+            UPDATE approval_flow_management
+            SET status = 99, complete_time = NOW()
+            WHERE id = %s
+        """, (flow_id,))
+
+        connection.commit()
+        return jsonify({'message': '撤销成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 审批通过
+@app.route('/api/approval-flows/approve', methods=['POST'])
+def approve_approval_flow():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        node_case_user_id = data.get('node_case_user_id')
+
+        if not node_case_user_id:
+            return jsonify({'error': '参数错误'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取节点实例用户信息
+        cursor.execute("""
+            SELECT ancu.id, ancu.approval_node_case_id, ancu.useraccount_id,
+                   anc.type as node_type, anc.approval_flow_management_id, anc.sort
+            FROM approval_node_case_user ancu
+            INNER JOIN approval_node_case anc ON ancu.approval_node_case_id = anc.id
+            WHERE ancu.id = %s AND ancu.useraccount_id = %s
+        """, (node_case_user_id, current_user_id))
+
+        node_user = cursor.fetchone()
+        if not node_user:
+            return jsonify({'error': '无权审批此节点'}), 403
+
+        node_case_id = node_user['approval_node_case_id']
+        node_type = node_user['node_type']
+        flow_id = node_user['approval_flow_management_id']
+
+        # 更新当前用户审批结果为通过
+        cursor.execute("""
+            UPDATE approval_node_case_user
+            SET result = 0, handle_time = NOW()
+            WHERE id = %s
+        """, (node_case_user_id,))
+
+        # 或签节点：任意一人通过后，删除同节点其他待审批人员的记录
+        if node_type == 1:
+            cursor.execute("""
+                DELETE FROM approval_node_case_user
+                WHERE approval_node_case_id = %s AND result IS NULL
+            """, (node_case_id,))
+
+        # 检查节点是否通过
+        node_passed = False
+        if node_type == 1:  # 或签：任意一人通过即可
+            node_passed = True
+        else:  # 会签：需要所有人通过
+            cursor.execute("""
+                SELECT COUNT(*) as total, SUM(CASE WHEN result = 0 THEN 1 ELSE 0 END) as passed
+                FROM approval_node_case_user
+                WHERE approval_node_case_id = %s
+            """, (node_case_id,))
+            result = cursor.fetchone()
+            if result['total'] == result['passed']:
+                node_passed = True
+
+        if node_passed:
+            # 更新节点实例状态为通过
+            cursor.execute("""
+                UPDATE approval_node_case
+                SET result = 0, complete_time = NOW()
+                WHERE id = %s
+            """, (node_case_id,))
+
+            # 获取模板和当前节点信息
+            cursor.execute("""
+                SELECT afm.approval_flow_template_id, anc.sort
+                FROM approval_node_case anc
+                INNER JOIN approval_flow_management afm ON anc.approval_flow_management_id = afm.id
+                WHERE anc.id = %s
+            """, (node_case_id,))
+            flow_info = cursor.fetchone()
+
+            # 查找下一个节点
+            cursor.execute("""
+                SELECT id, type, sort
+                FROM approval_flow_template_node
+                WHERE template_id = %s AND sort > %s
+                ORDER BY sort ASC
+                LIMIT 1
+            """, (flow_info['approval_flow_template_id'], flow_info['sort']))
+            next_node = cursor.fetchone()
+
+            if next_node:
+                # 创建下一个节点实例
+                cursor.execute("""
+                    INSERT INTO approval_node_case (node_id, approval_flow_management_id, type, sort)
+                    VALUES (%s, %s, %s, %s)
+                """, (next_node['id'], flow_id, next_node['type'], next_node['sort']))
+                new_node_case_id = cursor.lastrowid
+
+                # 更新审批流step
+                cursor.execute("""
+                    UPDATE approval_flow_management
+                    SET step = %s
+                    WHERE id = %s
+                """, (next_node['sort'], flow_id))
+
+                # 获取下一个节点的审批人员
+                cursor.execute("""
+                    SELECT useraccount_id
+                    FROM approval_node_useraccount
+                    WHERE node_id = %s
+                """, (next_node['id'],))
+                node_users = cursor.fetchall()
+
+                # 为每个审批人创建记录
+                for user in node_users:
+                    cursor.execute("""
+                        INSERT INTO approval_node_case_user (approval_node_case_id, useraccount_id)
+                        VALUES (%s, %s)
+                    """, (new_node_case_id, user['useraccount_id']))
+            else:
+                # 没有下一个节点，审批流通过
+                cursor.execute("""
+                    UPDATE approval_flow_management
+                    SET status = 10, complete_time = NOW()
+                    WHERE id = %s
+                """, (flow_id,))
+
+                # 创建抄送记录
+                cursor.execute("""
+                    SELECT afm.approval_flow_template_id, afm.approval_flow_type_id, afm.create_time, aft.name as flow_type_name
+                    FROM approval_flow_management afm
+                    LEFT JOIN approval_flow_type aft ON afm.approval_flow_type_id = aft.id
+                    WHERE afm.id = %s
+                """, (flow_id,))
+                template_info = cursor.fetchone()
+
+                # 获取抄送人
+                cursor.execute("""
+                    SELECT useraccount_id
+                    FROM approval_copy_useraccount
+                    WHERE approval_flow_template_id = %s
+                """, (template_info['approval_flow_template_id'],))
+                copy_users = cursor.fetchall()
+
+                # 根据审批流类型生成抄送信息
+                copy_info = "审批流已通过"
+                if template_info['flow_type_name'] == '退费':
+                    # 查询关联的退费订单和学生信息
+                    cursor.execute("""
+                        SELECT ro.order_id, o.student_id as uid, s.name as student_name
+                        FROM refund_order ro
+                        LEFT JOIN orders o ON ro.order_id = o.id
+                        LEFT JOIN student s ON ro.student_id = s.id
+                        WHERE ro.submit_time >= DATE_SUB(%s, INTERVAL 5 SECOND)
+                        AND ro.submit_time <= DATE_ADD(%s, INTERVAL 5 SECOND)
+                        ORDER BY ro.submit_time DESC
+                        LIMIT 1
+                    """, (template_info['create_time'], template_info['create_time']))
+                    refund_info = cursor.fetchone()
+                    if refund_info and refund_info['uid'] and refund_info['student_name']:
+                        copy_info = f"【{refund_info['uid']}】【{refund_info['student_name']}】的退费审批已通过"
+
+                for user in copy_users:
+                    cursor.execute("""
+                        INSERT INTO approval_copy_useraccount_case
+                        (approval_flow_management_id, useraccount_id, copy_info)
+                        VALUES (%s, %s, %s)
+                    """, (flow_id, user['useraccount_id'], copy_info))
+
+        connection.commit()
+        return jsonify({'message': '审批通过'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 审批驳回
+@app.route('/api/approval-flows/reject', methods=['POST'])
+def reject_approval_flow():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        node_case_user_id = data.get('node_case_user_id')
+
+        if not node_case_user_id:
+            return jsonify({'error': '参数错误'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取节点实例用户信息
+        cursor.execute("""
+            SELECT ancu.id, ancu.approval_node_case_id, ancu.useraccount_id,
+                   anc.type as node_type, anc.approval_flow_management_id
+            FROM approval_node_case_user ancu
+            INNER JOIN approval_node_case anc ON ancu.approval_node_case_id = anc.id
+            WHERE ancu.id = %s AND ancu.useraccount_id = %s
+        """, (node_case_user_id, current_user_id))
+
+        node_user = cursor.fetchone()
+        if not node_user:
+            return jsonify({'error': '无权审批此节点'}), 403
+
+        node_case_id = node_user['approval_node_case_id']
+        node_type = node_user['node_type']
+        flow_id = node_user['approval_flow_management_id']
+
+        # 更新当前用户审批结果为驳回
+        cursor.execute("""
+            UPDATE approval_node_case_user
+            SET result = 1, handle_time = NOW()
+            WHERE id = %s
+        """, (node_case_user_id,))
+
+        # 会签节点：任意一人驳回后，删除同节点其他待审批人员的记录
+        if node_type == 0:
+            cursor.execute("""
+                DELETE FROM approval_node_case_user
+                WHERE approval_node_case_id = %s AND result IS NULL
+            """, (node_case_id,))
+
+        # 检查节点是否驳回
+        node_rejected = False
+        if node_type == 0:  # 会签：任意一人驳回即驳回
+            node_rejected = True
+        else:  # 或签：需要所有人驳回
+            cursor.execute("""
+                SELECT COUNT(*) as total, SUM(CASE WHEN result = 1 THEN 1 ELSE 0 END) as rejected
+                FROM approval_node_case_user
+                WHERE approval_node_case_id = %s
+            """, (node_case_id,))
+            result = cursor.fetchone()
+            if result['total'] == result['rejected']:
+                node_rejected = True
+
+        if node_rejected:
+            # 更新节点实例状态为驳回
+            cursor.execute("""
+                UPDATE approval_node_case
+                SET result = 1, complete_time = NOW()
+                WHERE id = %s
+            """, (node_case_id,))
+
+            # 查询审批流信息，判断是否需要回滚订单状态
+            cursor.execute("""
+                SELECT afm.id, afm.create_time, aft.name as flow_type_name
+                FROM approval_flow_management afm
+                LEFT JOIN approval_flow_type aft ON afm.approval_flow_type_id = aft.id
+                WHERE afm.id = %s
+            """, (flow_id,))
+            flow = cursor.fetchone()
+
+            # 如果是退费类型，需要恢复关联订单的状态
+            if flow and flow['flow_type_name'] == '退费':
+                # 通过审批流创建时间查找关联的退费订单
+                cursor.execute("""
+                    SELECT ro.id, ro.order_id
+                    FROM refund_order ro
+                    WHERE ro.order_id IN (
+                        SELECT order_id FROM orders WHERE status = 50
+                    )
+                    AND ro.submit_time >= DATE_SUB(%s, INTERVAL 5 SECOND)
+                    AND ro.submit_time <= DATE_ADD(%s, INTERVAL 5 SECOND)
+                    ORDER BY ro.submit_time DESC
+                    LIMIT 1
+                """, (flow['create_time'], flow['create_time']))
+                refund_order = cursor.fetchone()
+
+                # 如果找到关联的退费订单，删除退费数据并恢复订单状态
+                if refund_order:
+                    refund_order_id = refund_order['id']
+                    order_id = refund_order['order_id']
+
+                    # 1. 删除退费子订单明细（恢复子订单可退金额）
+                    cursor.execute("""
+                        DELETE FROM refund_order_item
+                        WHERE refund_order_id = %s
+                    """, (refund_order_id,))
+
+                    # 2. 删除退费收款分配（恢复收款可退金额）
+                    cursor.execute("""
+                        DELETE FROM refund_payment
+                        WHERE refund_order_id = %s
+                    """, (refund_order_id,))
+
+                    # 3. 删除退费订单主记录
+                    cursor.execute("""
+                        DELETE FROM refund_order
+                        WHERE id = %s
+                    """, (refund_order_id,))
+
+                    # 4. 恢复订单状态为已完成（30）
+                    cursor.execute("""
+                        UPDATE orders
+                        SET status = 30
+                        WHERE id = %s
+                    """, (order_id,))
+
+            # 更新审批流状态为已驳回
+            cursor.execute("""
+                UPDATE approval_flow_management
+                SET status = 20, complete_time = NOW()
+                WHERE id = %s
+            """, (flow_id,))
+
+        connection.commit()
+        return jsonify({'message': '审批已驳回'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 从模板创建审批流实例
+@app.route('/api/approval-flows/create-from-template', methods=['POST'])
+def create_approval_flow_from_template():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        template_id = data.get('template_id')
+        refund_order_id = data.get('refund_order_id')  # 可选，用于关联退费订单
+
+        if not template_id:
+            return jsonify({'error': '模板ID不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 1. 查询模板信息
+        cursor.execute("""
+            SELECT id, approval_flow_type_id, status
+            FROM approval_flow_template
+            WHERE id = %s
+        """, (template_id,))
+        template = cursor.fetchone()
+
+        if not template:
+            return jsonify({'error': '审批流模板不存在'}), 404
+
+        if template['status'] != 0:
+            return jsonify({'error': '该审批流模板未启用'}), 400
+
+        # 2. 创建审批流主记录
+        cursor.execute("""
+            INSERT INTO approval_flow_management (
+                approval_flow_template_id,
+                approval_flow_type_id,
+                step,
+                create_user,
+                status
+            ) VALUES (%s, %s, 0, %s, 0)
+        """, (template_id, template['approval_flow_type_id'], current_user_id))
+        flow_id = cursor.lastrowid
+
+        # 3. 查询模板的第一个节点（sort最小的节点）
+        cursor.execute("""
+            SELECT id, name, sort, type
+            FROM approval_flow_template_node
+            WHERE template_id = %s
+            ORDER BY sort ASC
+            LIMIT 1
+        """, (template_id,))
+        first_node = cursor.fetchone()
+
+        if not first_node:
+            connection.rollback()
+            return jsonify({'error': '审批流模板没有配置节点'}), 400
+
+        # 4. 创建第一个节点实例
+        cursor.execute("""
+            INSERT INTO approval_node_case (
+                node_id,
+                approval_flow_management_id,
+                type,
+                sort,
+                result
+            ) VALUES (%s, %s, %s, %s, NULL)
+        """, (first_node['id'], flow_id, first_node['type'], first_node['sort']))
+        node_case_id = cursor.lastrowid
+
+        # 5. 查询该节点的审批人员
+        cursor.execute("""
+            SELECT useraccount_id
+            FROM approval_node_useraccount
+            WHERE node_id = %s
+        """, (first_node['id'],))
+        node_users = cursor.fetchall()
+
+        if not node_users:
+            connection.rollback()
+            return jsonify({'error': '第一个审批节点没有配置审批人'}), 400
+
+        # 6. 为每个审批人创建审批记录
+        for user in node_users:
+            cursor.execute("""
+                INSERT INTO approval_node_case_user (
+                    approval_node_case_id,
+                    useraccount_id,
+                    result
+                ) VALUES (%s, %s, NULL)
+            """, (node_case_id, user['useraccount_id']))
+
+        # 7. 如果有退费订单ID，关联退费订单（可选，未来扩展）
+        # 这里可以添加一个字段来存储业务关联关系
+
+        connection.commit()
+        return jsonify({
+            'message': '审批流创建成功',
+            'approval_flow_id': flow_id
+        }), 201
 
     except Exception as e:
         if connection:

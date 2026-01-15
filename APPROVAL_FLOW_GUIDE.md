@@ -14,8 +14,8 @@
 | status | tinyint | 状态：0-启用，1-禁用 |
 
 **内置数据：**
-- 挽单（status=0）
-- 退费（status=0）
+- 退费（status=0）- 当前使用
+- 挽单（status=0）- 预留，暂不使用
 
 ### 2. approval_flow_template（审批流模板）
 | 字段名 | 类型 | 说明 |
@@ -66,8 +66,8 @@
 {
   "approval_flow_types": [
     {
-      "id": 1,
-      "name": "挽单",
+      "id": 2,
+      "name": "退费",
       "status": 0,
       "create_time": "2026-01-14 10:00:00",
       "update_time": "2026-01-14 10:00:00"

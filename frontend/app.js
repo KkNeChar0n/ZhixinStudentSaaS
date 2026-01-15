@@ -40,7 +40,7 @@ createApp({
                 uid: '',
                 status: ''
             },
-            // 子产品订单筛选条件
+            // 子订单筛选条件
             childOrderFilters: {
                 id: '',
                 parentsid: '',
@@ -82,7 +82,7 @@ createApp({
             filteredClassifies: [],
             filteredBrands: [],
             filteredGoods: [],
-            // 子产品订单原始数据
+            // 子订单原始数据
             childOrders: [],
             // 分页数据
             pageSize: 10,
@@ -104,6 +104,7 @@ createApp({
             showAddOrderDrawer: false,
             showAddOrderGoodsModal: false,
             showEditOrderDrawer: false,
+            orderDrawerReadOnly: false, // 订单抽屉是否为只读模式（详情）
             showEditOrderGoodsModal: false,
             showCancelOrderConfirm: false,
             showSubmitOrderConfirm: false,
@@ -470,12 +471,56 @@ createApp({
                 nodes: [],
                 copy_users: []
             },
+            // 审批流管理数据
+            approvalFlowManagementTab: 'initiated', // 当前激活的tab：initiated, pending, completed, copied
+            // 我发起的
+            initiatedFlows: [],
+            initiatedFlowFilters: {
+                id: '',
+                approval_flow_type_id: '',
+                status: ''
+            },
+            initiatedFlowCurrentPage: 1,
+            loadingInitiatedFlows: false,
+            showCancelFlowConfirm: false,
+            currentFlow: null,
+            // 待我审批
+            pendingFlows: [],
+            pendingFlowFilters: {
+                id: '',
+                approval_flow_id: '',
+                approval_flow_type_id: ''
+            },
+            pendingFlowCurrentPage: 1,
+            loadingPendingFlows: false,
+            showApprovalDetailDrawer: false,
+            currentApprovalDetail: null,
+            // 处理完成
+            completedFlows: [],
+            completedFlowFilters: {
+                id: '',
+                approval_flow_id: '',
+                approval_flow_type_id: ''
+            },
+            completedFlowCurrentPage: 1,
+            loadingCompletedFlows: false,
+            // 抄送我的
+            copiedFlows: [],
+            copiedFlowFilters: {
+                id: '',
+                approval_flow_id: '',
+                approval_flow_type_id: ''
+            },
+            copiedFlowCurrentPage: 1,
+            loadingCopiedFlows: false,
             // 权限管理数据
             permissions: [],
             filteredPermissions: [],
             permissionFilters: {
-                id: ''
+                id: '',
+                menu_id: ''
             },
+            secondLevelMenus: [],
             permissionCurrentPage: 1,
             loadingPermissions: false,
             showEnablePermissionConfirm: false,
@@ -722,7 +767,7 @@ createApp({
         orderTotalPages() {
             return Math.ceil(this.filteredOrders.length / this.pageSize);
         },
-        // 子产品订单分页数据
+        // 子订单分页数据
         paginatedChildOrders() {
             const start = (this.childOrderCurrentPage - 1) * this.pageSize;
             const end = start + this.pageSize;
@@ -945,6 +990,39 @@ createApp({
         approvalFlowTemplateTotalPages() {
             return Math.ceil(this.filteredApprovalFlowTemplates.length / 10);
         },
+        // 审批流管理分页数据
+        paginatedInitiatedFlows() {
+            const start = (this.initiatedFlowCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.initiatedFlows.slice(start, end);
+        },
+        initiatedFlowTotalPages() {
+            return Math.ceil(this.initiatedFlows.length / 10);
+        },
+        paginatedPendingFlows() {
+            const start = (this.pendingFlowCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.pendingFlows.slice(start, end);
+        },
+        pendingFlowTotalPages() {
+            return Math.ceil(this.pendingFlows.length / 10);
+        },
+        paginatedCompletedFlows() {
+            const start = (this.completedFlowCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.completedFlows.slice(start, end);
+        },
+        completedFlowTotalPages() {
+            return Math.ceil(this.completedFlows.length / 10);
+        },
+        paginatedCopiedFlows() {
+            const start = (this.copiedFlowCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.copiedFlows.slice(start, end);
+        },
+        copiedFlowTotalPages() {
+            return Math.ceil(this.copiedFlows.length / 10);
+        },
         // 权限管理分页数据
         paginatedPermissions() {
             const start = (this.permissionCurrentPage - 1) * 10;
@@ -1134,8 +1212,22 @@ createApp({
                 this.fetchApprovalFlowTypes();
             } else if (menu === 'approval_flow_template') {
                 this.fetchApprovalFlowTemplates();
+            } else if (menu === 'approval_flow_management') {
+                // 加载审批流类型列表用于筛选
+                this.fetchApprovalFlowTypes();
+                // 根据当前tab加载对应数据
+                if (this.approvalFlowManagementTab === 'initiated') {
+                    this.fetchInitiatedFlows();
+                } else if (this.approvalFlowManagementTab === 'pending') {
+                    this.fetchPendingFlows();
+                } else if (this.approvalFlowManagementTab === 'completed') {
+                    this.fetchCompletedFlows();
+                } else if (this.approvalFlowManagementTab === 'copied') {
+                    this.fetchCopiedFlows();
+                }
             } else if (menu === 'permissions') {
                 this.fetchPermissions();
+                this.fetchSecondLevelMenus();
             }
         },
         
@@ -2038,8 +2130,15 @@ createApp({
             }
         },
 
+        // 打开订单详情抽屉（只读）
+        async openOrderDetailDrawer(order) {
+            this.orderDrawerReadOnly = true;
+            await this.openEditOrderDrawer(order);
+        },
+
         // 打开编辑订单抽屉
         async openEditOrderDrawer(order) {
+            this.orderDrawerReadOnly = false;
             // 获取启用的商品列表
             try {
                 const response = await axios.get('/api/goods/active-for-order', { withCredentials: true });
@@ -2892,6 +2991,248 @@ createApp({
             }
         },
 
+        // ==================== 审批流管理 ====================
+
+        // 获取我发起的审批流列表
+        async fetchInitiatedFlows() {
+            this.loadingInitiatedFlows = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.initiatedFlowFilters.id) params.append('id', this.initiatedFlowFilters.id);
+                if (this.initiatedFlowFilters.approval_flow_type_id) params.append('approval_flow_type_id', this.initiatedFlowFilters.approval_flow_type_id);
+                if (this.initiatedFlowFilters.status !== '') params.append('status', this.initiatedFlowFilters.status);
+
+                const response = await axios.get(`/api/approval-flows/initiated?${params.toString()}`, { withCredentials: true });
+                this.initiatedFlows = response.data.flows || [];
+            } catch (err) {
+                console.error('获取我发起的审批流失败:', err);
+                alert(err.response?.data?.error || '获取审批流列表失败');
+            } finally {
+                this.loadingInitiatedFlows = false;
+            }
+        },
+
+        // 搜索我发起的审批流
+        searchInitiatedFlows() {
+            this.initiatedFlowCurrentPage = 1;
+            this.fetchInitiatedFlows();
+        },
+
+        // 重置我发起的筛选条件
+        resetInitiatedFlowFilters() {
+            this.initiatedFlowFilters = { id: '', approval_flow_type_id: '', status: '' };
+            this.fetchInitiatedFlows();
+        },
+
+        // 更改我发起的页码
+        changeInitiatedFlowPage(page) {
+            this.initiatedFlowCurrentPage = page;
+        },
+
+        // 打开撤销确认弹窗
+        openCancelFlowConfirm(flow) {
+            this.currentFlow = flow;
+            this.showCancelFlowConfirm = true;
+        },
+
+        // 关闭撤销确认弹窗
+        closeCancelFlowConfirm() {
+            this.showCancelFlowConfirm = false;
+            this.currentFlow = null;
+        },
+
+        // 撤销审批流
+        async doCancelFlow() {
+            try {
+                await axios.put(`/api/approval-flows/${this.currentFlow.id}/cancel`, {}, { withCredentials: true });
+                alert('撤销成功');
+                this.closeCancelFlowConfirm();
+                this.fetchInitiatedFlows();
+            } catch (err) {
+                console.error('撤销失败:', err);
+                alert(err.response?.data?.error || '撤销失败');
+            }
+        },
+
+        // 获取状态文本
+        getFlowStatusText(status) {
+            const statusMap = {
+                0: '待审批',
+                10: '已通过',
+                20: '已驳回',
+                99: '已撤销'
+            };
+            return statusMap[status] || '未知';
+        },
+
+        // 获取待我审批的列表
+        async fetchPendingFlows() {
+            this.loadingPendingFlows = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.pendingFlowFilters.id) params.append('id', this.pendingFlowFilters.id);
+                if (this.pendingFlowFilters.approval_flow_id) params.append('approval_flow_id', this.pendingFlowFilters.approval_flow_id);
+                if (this.pendingFlowFilters.approval_flow_type_id) params.append('approval_flow_type_id', this.pendingFlowFilters.approval_flow_type_id);
+
+                const response = await axios.get(`/api/approval-flows/pending?${params.toString()}`, { withCredentials: true });
+                this.pendingFlows = response.data.flows || [];
+            } catch (err) {
+                console.error('获取待我审批列表失败:', err);
+                alert(err.response?.data?.error || '获取列表失败');
+            } finally {
+                this.loadingPendingFlows = false;
+            }
+        },
+
+        // 搜索待我审批
+        searchPendingFlows() {
+            this.pendingFlowCurrentPage = 1;
+            this.fetchPendingFlows();
+        },
+
+        // 重置待我审批筛选条件
+        resetPendingFlowFilters() {
+            this.pendingFlowFilters = { id: '', approval_flow_id: '', approval_flow_type_id: '' };
+            this.fetchPendingFlows();
+        },
+
+        // 更改待我审批页码
+        changePendingFlowPage(page) {
+            this.pendingFlowCurrentPage = page;
+        },
+
+        // 打开审批详情
+        async openApprovalDetail(flow) {
+            try {
+                // 调用详情API获取完整信息
+                const response = await axios.get(`/api/approval-flows/${flow.approval_flow_management_id}/detail`, { withCredentials: true });
+                this.currentApprovalDetail = {
+                    ...flow,
+                    ...response.data.user_approval,
+                    flow_info: response.data.flow_info,
+                    all_nodes: response.data.all_nodes,
+                    refund_order_info: response.data.refund_order_info
+                };
+                this.showApprovalDetailDrawer = true;
+            } catch (err) {
+                console.error('获取审批详情失败:', err);
+                alert(err.response?.data?.error || '获取审批详情失败');
+            }
+        },
+
+        // 关闭审批详情
+        closeApprovalDetail() {
+            this.showApprovalDetailDrawer = false;
+            this.currentApprovalDetail = null;
+        },
+
+        // 审批通过
+        async approveFlow() {
+            try {
+                await axios.post('/api/approval-flows/approve', {
+                    node_case_user_id: this.currentApprovalDetail.id
+                }, { withCredentials: true });
+                alert('审批通过');
+                this.closeApprovalDetail();
+                this.fetchPendingFlows();
+            } catch (err) {
+                console.error('审批失败:', err);
+                alert(err.response?.data?.error || '审批失败');
+            }
+        },
+
+        // 审批驳回
+        async rejectFlow() {
+            try {
+                await axios.post('/api/approval-flows/reject', {
+                    node_case_user_id: this.currentApprovalDetail.id
+                }, { withCredentials: true });
+                alert('审批已驳回');
+                this.closeApprovalDetail();
+                this.fetchPendingFlows();
+            } catch (err) {
+                console.error('驳回失败:', err);
+                alert(err.response?.data?.error || '驳回失败');
+            }
+        },
+
+        // 获取处理完成的列表
+        async fetchCompletedFlows() {
+            this.loadingCompletedFlows = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.completedFlowFilters.id) params.append('id', this.completedFlowFilters.id);
+                if (this.completedFlowFilters.approval_flow_id) params.append('approval_flow_id', this.completedFlowFilters.approval_flow_id);
+                if (this.completedFlowFilters.approval_flow_type_id) params.append('approval_flow_type_id', this.completedFlowFilters.approval_flow_type_id);
+
+                const response = await axios.get(`/api/approval-flows/completed?${params.toString()}`, { withCredentials: true });
+                this.completedFlows = response.data.flows || [];
+            } catch (err) {
+                console.error('获取处理完成列表失败:', err);
+                alert(err.response?.data?.error || '获取列表失败');
+            } finally {
+                this.loadingCompletedFlows = false;
+            }
+        },
+
+        // 搜索处理完成
+        searchCompletedFlows() {
+            this.completedFlowCurrentPage = 1;
+            this.fetchCompletedFlows();
+        },
+
+        // 重置处理完成筛选条件
+        resetCompletedFlowFilters() {
+            this.completedFlowFilters = { id: '', approval_flow_id: '', approval_flow_type_id: '' };
+            this.fetchCompletedFlows();
+        },
+
+        // 更改处理完成页码
+        changeCompletedFlowPage(page) {
+            this.completedFlowCurrentPage = page;
+        },
+
+        // 获取审批结果文本
+        getApprovalResultText(result) {
+            return result === 0 ? '通过' : '驳回';
+        },
+
+        // 获取抄送我的列表
+        async fetchCopiedFlows() {
+            this.loadingCopiedFlows = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.copiedFlowFilters.id) params.append('id', this.copiedFlowFilters.id);
+                if (this.copiedFlowFilters.approval_flow_id) params.append('approval_flow_id', this.copiedFlowFilters.approval_flow_id);
+                if (this.copiedFlowFilters.approval_flow_type_id) params.append('approval_flow_type_id', this.copiedFlowFilters.approval_flow_type_id);
+
+                const response = await axios.get(`/api/approval-flows/copied?${params.toString()}`, { withCredentials: true });
+                this.copiedFlows = response.data.flows || [];
+            } catch (err) {
+                console.error('获取抄送列表失败:', err);
+                alert(err.response?.data?.error || '获取列表失败');
+            } finally {
+                this.loadingCopiedFlows = false;
+            }
+        },
+
+        // 搜索抄送我的
+        searchCopiedFlows() {
+            this.copiedFlowCurrentPage = 1;
+            this.fetchCopiedFlows();
+        },
+
+        // 重置抄送我的筛选条件
+        resetCopiedFlowFilters() {
+            this.copiedFlowFilters = { id: '', approval_flow_id: '', approval_flow_type_id: '' };
+            this.fetchCopiedFlows();
+        },
+
+        // 更改抄送我的页码
+        changeCopiedFlowPage(page) {
+            this.copiedFlowCurrentPage = page;
+        },
+
         // ==================== 权限管理 ====================
 
         // 获取权限列表
@@ -2900,6 +3241,7 @@ createApp({
             try {
                 const params = new URLSearchParams();
                 if (this.permissionFilters.id) params.append('id', this.permissionFilters.id);
+                if (this.permissionFilters.menu_id) params.append('menu_id', this.permissionFilters.menu_id);
 
                 const response = await axios.get(`/api/permissions?${params.toString()}`, { withCredentials: true });
                 this.permissions = response.data.permissions || [];
@@ -2921,9 +3263,20 @@ createApp({
         // 重置权限筛选
         resetPermissionFilters() {
             this.permissionFilters = {
-                id: ''
+                id: '',
+                menu_id: ''
             };
             this.fetchPermissions();
+        },
+
+        // 获取二级菜单列表
+        async fetchSecondLevelMenus() {
+            try {
+                const response = await axios.get('/api/menu?level=2', { withCredentials: true });
+                this.secondLevelMenus = response.data.menus || [];
+            } catch (err) {
+                console.error('获取菜单列表失败:', err);
+            }
         },
 
         // 打开启用权限确认
@@ -3533,9 +3886,9 @@ createApp({
             }
         },
 
-        // ==================== 子产品订单管理方法 ====================
+        // ==================== 子订单管理方法 ====================
 
-        // 获取子产品订单数据
+        // 获取子订单数据
         async fetchChildOrders() {
             this.loadingChildOrders = true;
             try {
@@ -3543,14 +3896,14 @@ createApp({
                 this.childOrders = response.data.childorders;
                 this.filteredChildOrders = this.childOrders;
             } catch (err) {
-                console.error('获取子产品订单数据失败:', err);
-                this.error = '获取子产品订单数据失败';
+                console.error('获取子订单数据失败:', err);
+                this.error = '获取子订单数据失败';
             } finally {
                 this.loadingChildOrders = false;
             }
         },
 
-        // 搜索子产品订单
+        // 搜索子订单
         searchChildOrders() {
             this.filteredChildOrders = this.childOrders.filter(order => {
                 let match = true;
@@ -3571,7 +3924,7 @@ createApp({
             this.childOrderCurrentPage = 1;
         },
 
-        // 重置子产品订单筛选
+        // 重置子订单筛选
         resetChildOrderFilters() {
             this.childOrderFilters = {
                 id: '',
@@ -3583,7 +3936,7 @@ createApp({
             this.childOrderCurrentPage = 1;
         },
 
-        // 获取子产品订单状态文本
+        // 获取子订单状态文本
         getChildOrderStatusText(status) {
             const statusMap = {
                 0: '草稿',
@@ -3595,7 +3948,7 @@ createApp({
             return statusMap[status] || '未知';
         },
 
-        // 子产品订单分页
+        // 子订单分页
         changeChildOrderPage(page) {
             if (page >= 1 && page <= this.childOrderTotalPages) {
                 this.childOrderCurrentPage = page;

@@ -326,6 +326,7 @@
                                     <td class="action-column">
                                         <button v-if="hasPermission('edit_order') && order.status === 10" class="edit-btn" @click="openEditOrderDrawer(order)">编辑</button>
                                         <button v-if="hasPermission('void_order') && order.status === 10" class="delete-btn" @click="openCancelOrderConfirm(order.id)">作废</button>
+                                        <button v-if="[20, 30, 40, 50].includes(order.status)" class="view-btn" @click="openOrderDetailDrawer(order)">详情</button>
                                         <button v-if="hasPermission('apply_refund') && (order.status === 30 || order.status === 40)" class="refund-btn" @click="openRefundDialog(order.id)">申请退费</button>
                                     </td>
                                 </tr>
@@ -342,7 +343,7 @@
                         </div>
                     </div>
 
-                    <!-- 子产品订单页面 -->
+                    <!-- 子订单页面 -->
                     <div v-if="activeMenu === 'childorders'" style="position: relative;">
                         <!-- Loading遮罩层 -->
                         <div v-if="loadingChildOrders" class="loading-overlay">
@@ -351,7 +352,7 @@
                         </div>
 
                         <div class="page-header">
-                            <h1>子产品订单</h1>
+                            <h1>子订单</h1>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -414,7 +415,7 @@
                             </tbody>
                         </table>
 
-                        <!-- 子产品订单分页控件 -->
+                        <!-- 子订单分页控件 -->
                         <div class="pagination" v-if="childOrderTotalPages > 1">
                             <button class="page-btn" @click="changeChildOrderPage(1)" :disabled="childOrderCurrentPage === 1">首页</button>
                             <button class="page-btn" @click="changeChildOrderPage(childOrderCurrentPage - 1)" :disabled="childOrderCurrentPage === 1">上一页</button>
@@ -674,6 +675,13 @@
                                     <label for="permissionIdFilter">ID</label>
                                     <input type="number" id="permissionIdFilter" v-model="permissionFilters.id" placeholder="请输入ID">
                                 </div>
+                                <div class="filter-item">
+                                    <label for="permissionMenuFilter">所在菜单</label>
+                                    <select id="permissionMenuFilter" v-model="permissionFilters.menu_id">
+                                        <option value="">全部</option>
+                                        <option v-for="menu in secondLevelMenus" :key="menu.id" :value="menu.id">{{ menu.name }}</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="filter-actions">
                                 <button class="search-btn" @click="searchPermissions">搜索</button>
@@ -712,6 +720,303 @@
                             <span class="page-info">第 {{ permissionCurrentPage }} / {{ permissionTotalPages }} 页</span>
                             <button class="page-btn" @click="changePermissionPage(permissionCurrentPage + 1)" :disabled="permissionCurrentPage === permissionTotalPages">下一页</button>
                             <button class="page-btn" @click="changePermissionPage(permissionTotalPages)" :disabled="permissionCurrentPage === permissionTotalPages">末页</button>
+                        </div>
+                    </div>
+
+                    <!-- 审批流管理页面 -->
+                    <div v-if="activeMenu === 'approval_flow_management'" style="position: relative;">
+                        <div class="page-header">
+                            <h1>审批流管理</h1>
+                        </div>
+
+                        <!-- Tab导航 -->
+                        <div class="tab-nav">
+                            <button class="tab-btn" :class="{active: approvalFlowManagementTab === 'initiated'}" @click="approvalFlowManagementTab = 'initiated'; fetchInitiatedFlows();">我发起的</button>
+                            <button class="tab-btn" :class="{active: approvalFlowManagementTab === 'pending'}" @click="approvalFlowManagementTab = 'pending'; fetchPendingFlows();">待我审批</button>
+                            <button class="tab-btn" :class="{active: approvalFlowManagementTab === 'completed'}" @click="approvalFlowManagementTab = 'completed'; fetchCompletedFlows();">处理完成</button>
+                            <button class="tab-btn" :class="{active: approvalFlowManagementTab === 'copied'}" @click="approvalFlowManagementTab = 'copied'; fetchCopiedFlows();">抄送我的</button>
+                        </div>
+
+                        <!-- 我发起的 Tab -->
+                        <div v-if="approvalFlowManagementTab === 'initiated'" style="position: relative;">
+                            <!-- Loading遮罩层 -->
+                            <div v-if="loadingInitiatedFlows" class="loading-overlay">
+                                <div class="loading-spinner"></div>
+                                <div class="loading-text">加载中...</div>
+                            </div>
+
+                            <!-- 筛选表单 -->
+                            <div class="filter-form">
+                                <div class="filter-row">
+                                    <div class="filter-item">
+                                        <label for="initiatedFlowIdFilter">ID</label>
+                                        <input type="number" id="initiatedFlowIdFilter" v-model="initiatedFlowFilters.id" placeholder="请输入ID">
+                                    </div>
+                                    <div class="filter-item">
+                                        <label for="initiatedFlowTypeFilter">审批流类型</label>
+                                        <select id="initiatedFlowTypeFilter" v-model="initiatedFlowFilters.approval_flow_type_id">
+                                            <option value="">全部</option>
+                                            <option v-for="type in approvalFlowTypes" :key="type.id" :value="type.id">{{ type.name }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="filter-item">
+                                        <label for="initiatedFlowStatusFilter">状态</label>
+                                        <select id="initiatedFlowStatusFilter" v-model="initiatedFlowFilters.status">
+                                            <option value="">全部</option>
+                                            <option value="0">待审批</option>
+                                            <option value="10">已通过</option>
+                                            <option value="20">已驳回</option>
+                                            <option value="99">已撤销</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="filter-actions">
+                                    <button class="search-btn" @click="searchInitiatedFlows">搜索</button>
+                                    <button class="reset-btn" @click="resetInitiatedFlowFilters">重置</button>
+                                </div>
+                            </div>
+
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>审批流类型</th>
+                                        <th>当前节点步骤</th>
+                                        <th>创建时间</th>
+                                        <th>状态</th>
+                                        <th>完成时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="flow in paginatedInitiatedFlows" :key="flow.id">
+                                        <td>{{ flow.id }}</td>
+                                        <td>{{ flow.approval_flow_type_name }}</td>
+                                        <td>{{ flow.step }}</td>
+                                        <td>{{ flow.create_time }}</td>
+                                        <td>{{ getFlowStatusText(flow.status) }}</td>
+                                        <td>{{ flow.complete_time || '-' }}</td>
+                                        <td class="action-column">
+                                            <button v-if="flow.status === 0" class="delete-btn" @click="openCancelFlowConfirm(flow)">撤销</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <!-- 分页控件 -->
+                            <div class="pagination" v-if="initiatedFlowTotalPages > 1">
+                                <button class="page-btn" @click="changeInitiatedFlowPage(1)" :disabled="initiatedFlowCurrentPage === 1">首页</button>
+                                <button class="page-btn" @click="changeInitiatedFlowPage(initiatedFlowCurrentPage - 1)" :disabled="initiatedFlowCurrentPage === 1">上一页</button>
+                                <span class="page-info">第 {{ initiatedFlowCurrentPage }} / {{ initiatedFlowTotalPages }} 页</span>
+                                <button class="page-btn" @click="changeInitiatedFlowPage(initiatedFlowCurrentPage + 1)" :disabled="initiatedFlowCurrentPage === initiatedFlowTotalPages">下一页</button>
+                                <button class="page-btn" @click="changeInitiatedFlowPage(initiatedFlowTotalPages)" :disabled="initiatedFlowCurrentPage === initiatedFlowTotalPages">末页</button>
+                            </div>
+                        </div>
+
+                        <!-- 待我审批 Tab -->
+                        <div v-if="approvalFlowManagementTab === 'pending'" style="position: relative;">
+                            <!-- Loading遮罩层 -->
+                            <div v-if="loadingPendingFlows" class="loading-overlay">
+                                <div class="loading-spinner"></div>
+                                <div class="loading-text">加载中...</div>
+                            </div>
+
+                            <!-- 筛选表单 -->
+                            <div class="filter-form">
+                                <div class="filter-row">
+                                    <div class="filter-item">
+                                        <label for="pendingFlowIdFilter">ID</label>
+                                        <input type="number" id="pendingFlowIdFilter" v-model="pendingFlowFilters.id" placeholder="请输入ID">
+                                    </div>
+                                    <div class="filter-item">
+                                        <label for="pendingFlowFlowIdFilter">审批流ID</label>
+                                        <input type="number" id="pendingFlowFlowIdFilter" v-model="pendingFlowFilters.approval_flow_id" placeholder="请输入审批流ID">
+                                    </div>
+                                    <div class="filter-item">
+                                        <label for="pendingFlowTypeFilter">审批流类型</label>
+                                        <select id="pendingFlowTypeFilter" v-model="pendingFlowFilters.approval_flow_type_id">
+                                            <option value="">全部</option>
+                                            <option v-for="type in approvalFlowTypes" :key="type.id" :value="type.id">{{ type.name }}</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="filter-actions">
+                                    <button class="search-btn" @click="searchPendingFlows">搜索</button>
+                                    <button class="reset-btn" @click="resetPendingFlowFilters">重置</button>
+                                </div>
+                            </div>
+
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>审批流ID</th>
+                                        <th>审批流类型</th>
+                                        <th>节点类型</th>
+                                        <th>节点排序</th>
+                                        <th>创建时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="flow in paginatedPendingFlows" :key="flow.id">
+                                        <td>{{ flow.id }}</td>
+                                        <td>{{ flow.approval_flow_management_id }}</td>
+                                        <td>{{ flow.approval_flow_type_name }}</td>
+                                        <td>{{ flow.node_type === 0 ? '会签' : '或签' }}</td>
+                                        <td>{{ flow.node_sort }}</td>
+                                        <td>{{ flow.create_time }}</td>
+                                        <td class="action-column">
+                                            <button class="view-btn" @click="openApprovalDetail(flow)">详情</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <!-- 分页控件 -->
+                            <div class="pagination" v-if="pendingFlowTotalPages > 1">
+                                <button class="page-btn" @click="changePendingFlowPage(1)" :disabled="pendingFlowCurrentPage === 1">首页</button>
+                                <button class="page-btn" @click="changePendingFlowPage(pendingFlowCurrentPage - 1)" :disabled="pendingFlowCurrentPage === 1">上一页</button>
+                                <span class="page-info">第 {{ pendingFlowCurrentPage }} / {{ pendingFlowTotalPages }} 页</span>
+                                <button class="page-btn" @click="changePendingFlowPage(pendingFlowCurrentPage + 1)" :disabled="pendingFlowCurrentPage === pendingFlowTotalPages">下一页</button>
+                                <button class="page-btn" @click="changePendingFlowPage(pendingFlowTotalPages)" :disabled="pendingFlowCurrentPage === pendingFlowTotalPages">末页</button>
+                            </div>
+                        </div>
+
+                        <!-- 处理完成 Tab -->
+                        <div v-if="approvalFlowManagementTab === 'completed'" style="position: relative;">
+                            <!-- Loading遮罩层 -->
+                            <div v-if="loadingCompletedFlows" class="loading-overlay">
+                                <div class="loading-spinner"></div>
+                                <div class="loading-text">加载中...</div>
+                            </div>
+
+                            <!-- 筛选表单 -->
+                            <div class="filter-form">
+                                <div class="filter-row">
+                                    <div class="filter-item">
+                                        <label for="completedFlowIdFilter">ID</label>
+                                        <input type="number" id="completedFlowIdFilter" v-model="completedFlowFilters.id" placeholder="请输入ID">
+                                    </div>
+                                    <div class="filter-item">
+                                        <label for="completedFlowFlowIdFilter">审批流ID</label>
+                                        <input type="number" id="completedFlowFlowIdFilter" v-model="completedFlowFilters.approval_flow_id" placeholder="请输入审批流ID">
+                                    </div>
+                                    <div class="filter-item">
+                                        <label for="completedFlowTypeFilter">审批流类型</label>
+                                        <select id="completedFlowTypeFilter" v-model="completedFlowFilters.approval_flow_type_id">
+                                            <option value="">全部</option>
+                                            <option v-for="type in approvalFlowTypes" :key="type.id" :value="type.id">{{ type.name }}</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="filter-actions">
+                                    <button class="search-btn" @click="searchCompletedFlows">搜索</button>
+                                    <button class="reset-btn" @click="resetCompletedFlowFilters">重置</button>
+                                </div>
+                            </div>
+
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>审批流ID</th>
+                                        <th>审批流类型</th>
+                                        <th>节点类型</th>
+                                        <th>节点排序</th>
+                                        <th>审批结果</th>
+                                        <th>处理时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="flow in paginatedCompletedFlows" :key="flow.id">
+                                        <td>{{ flow.id }}</td>
+                                        <td>{{ flow.approval_flow_management_id }}</td>
+                                        <td>{{ flow.approval_flow_type_name }}</td>
+                                        <td>{{ flow.node_type === 0 ? '会签' : '或签' }}</td>
+                                        <td>{{ flow.node_sort }}</td>
+                                        <td>{{ getApprovalResultText(flow.result) }}</td>
+                                        <td>{{ flow.handle_time }}</td>
+                                        <td class="action-column">
+                                            <button class="view-btn" @click="openApprovalDetail(flow)">详情</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <!-- 分页控件 -->
+                            <div class="pagination" v-if="completedFlowTotalPages > 1">
+                                <button class="page-btn" @click="changeCompletedFlowPage(1)" :disabled="completedFlowCurrentPage === 1">首页</button>
+                                <button class="page-btn" @click="changeCompletedFlowPage(completedFlowCurrentPage - 1)" :disabled="completedFlowCurrentPage === 1">上一页</button>
+                                <span class="page-info">第 {{ completedFlowCurrentPage }} / {{ completedFlowTotalPages }} 页</span>
+                                <button class="page-btn" @click="changeCompletedFlowPage(completedFlowCurrentPage + 1)" :disabled="completedFlowCurrentPage === completedFlowTotalPages">下一页</button>
+                                <button class="page-btn" @click="changeCompletedFlowPage(completedFlowTotalPages)" :disabled="completedFlowCurrentPage === completedFlowTotalPages">末页</button>
+                            </div>
+                        </div>
+
+                        <!-- 抄送我的 Tab -->
+                        <div v-if="approvalFlowManagementTab === 'copied'" style="position: relative;">
+                            <!-- Loading遮罩层 -->
+                            <div v-if="loadingCopiedFlows" class="loading-overlay">
+                                <div class="loading-spinner"></div>
+                                <div class="loading-text">加载中...</div>
+                            </div>
+
+                            <!-- 筛选表单 -->
+                            <div class="filter-form">
+                                <div class="filter-row">
+                                    <div class="filter-item">
+                                        <label for="copiedFlowIdFilter">ID</label>
+                                        <input type="number" id="copiedFlowIdFilter" v-model="copiedFlowFilters.id" placeholder="请输入ID">
+                                    </div>
+                                    <div class="filter-item">
+                                        <label for="copiedFlowFlowIdFilter">审批流ID</label>
+                                        <input type="number" id="copiedFlowFlowIdFilter" v-model="copiedFlowFilters.approval_flow_id" placeholder="请输入审批流ID">
+                                    </div>
+                                    <div class="filter-item">
+                                        <label for="copiedFlowTypeFilter">审批流类型</label>
+                                        <select id="copiedFlowTypeFilter" v-model="copiedFlowFilters.approval_flow_type_id">
+                                            <option value="">全部</option>
+                                            <option v-for="type in approvalFlowTypes" :key="type.id" :value="type.id">{{ type.name }}</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="filter-actions">
+                                    <button class="search-btn" @click="searchCopiedFlows">搜索</button>
+                                    <button class="reset-btn" @click="resetCopiedFlowFilters">重置</button>
+                                </div>
+                            </div>
+
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>审批流ID</th>
+                                        <th>审批流类型</th>
+                                        <th>抄送信息</th>
+                                        <th>创建时间</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="flow in paginatedCopiedFlows" :key="flow.id">
+                                        <td>{{ flow.id }}</td>
+                                        <td>{{ flow.approval_flow_id }}</td>
+                                        <td>{{ flow.approval_flow_type_name }}</td>
+                                        <td>{{ flow.copy_info }}</td>
+                                        <td>{{ flow.create_time }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <!-- 分页控件 -->
+                            <div class="pagination" v-if="copiedFlowTotalPages > 1">
+                                <button class="page-btn" @click="changeCopiedFlowPage(1)" :disabled="copiedFlowCurrentPage === 1">首页</button>
+                                <button class="page-btn" @click="changeCopiedFlowPage(copiedFlowCurrentPage - 1)" :disabled="copiedFlowCurrentPage === 1">上一页</button>
+                                <span class="page-info">第 {{ copiedFlowCurrentPage }} / {{ copiedFlowTotalPages }} 页</span>
+                                <button class="page-btn" @click="changeCopiedFlowPage(copiedFlowCurrentPage + 1)" :disabled="copiedFlowCurrentPage === copiedFlowTotalPages">下一页</button>
+                                <button class="page-btn" @click="changeCopiedFlowPage(copiedFlowTotalPages)" :disabled="copiedFlowCurrentPage === copiedFlowTotalPages">末页</button>
+                            </div>
                         </div>
                     </div>
 
@@ -2327,7 +2632,7 @@
         <div class="drawer-overlay" v-if="showEditOrderDrawer" @click="closeEditOrderDrawer">
             <div class="drawer" @click.stop>
                 <div class="drawer-header">
-                    <h3>编辑订单</h3>
+                    <h3>{{ orderDrawerReadOnly ? '订单详情' : '编辑订单' }}</h3>
                     <button class="close-btn" @click="closeEditOrderDrawer">&times;</button>
                 </div>
                 <div class="drawer-body">
@@ -2344,7 +2649,7 @@
                     <div class="form-group-row">
                         <div class="form-group-col">
                             <label for="editOrderExpectedPaymentTime">预计付款时间</label>
-                            <input type="datetime-local" id="editOrderExpectedPaymentTime" v-model="editOrderData.expected_payment_time" @change="onEditExpectedPaymentTimeChange">
+                            <input type="datetime-local" id="editOrderExpectedPaymentTime" v-model="editOrderData.expected_payment_time" @change="onEditExpectedPaymentTimeChange" :disabled="orderDrawerReadOnly">
                         </div>
                         <div class="form-group-col">
                             <label>参加活动</label>
@@ -2366,7 +2671,7 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label>选择商品 <span class="required">*</span></label>
+                        <label>选择商品 <span class="required" v-if="!orderDrawerReadOnly">*</span></label>
                         <table class="included-goods-table" v-if="editSelectedOrderGoods.length > 0">
                             <thead>
                                 <tr>
@@ -2375,7 +2680,7 @@
                                     <th>标准售价</th>
                                     <th>商品总价</th>
                                     <th>组合售卖</th>
-                                    <th>操作</th>
+                                    <th v-if="!orderDrawerReadOnly">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2385,19 +2690,22 @@
                                     <td>{{ goods.price }}</td>
                                     <td>{{ goods.total_price }}</td>
                                     <td>{{ goods.isgroup == 0 ? '是' : '否' }}</td>
-                                    <td>
+                                    <td v-if="!orderDrawerReadOnly">
                                         <button type="button" class="delete-btn" @click="removeEditOrderGoods(index)">删除</button>
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
-                        <button type="button" class="add-included-btn" @click="openEditOrderGoodsModal">+ 新增商品</button>
+                        <button v-if="!orderDrawerReadOnly" type="button" class="add-included-btn" @click="openEditOrderGoodsModal">+ 新增商品</button>
                     </div>
                 </div>
                 <div class="drawer-footer">
-                    <button class="cancel-btn" @click="closeEditOrderDrawer">取消</button>
-                    <button class="save-btn" @click="saveEditOrder">保存</button>
-                    <button class="save-btn" @click="confirmSubmitOrder">提交</button>
+                    <button v-if="orderDrawerReadOnly" class="cancel-btn" @click="closeEditOrderDrawer">关闭</button>
+                    <template v-else>
+                        <button class="cancel-btn" @click="closeEditOrderDrawer">取消</button>
+                        <button class="save-btn" @click="saveEditOrder">保存</button>
+                        <button class="save-btn" @click="confirmSubmitOrder">提交</button>
+                    </template>
                 </div>
             </div>
         </div>
@@ -4580,6 +4888,170 @@
                 <div class="drawer-footer">
                     <button class="cancel-btn" @click="closeRefundDialog">取消</button>
                     <button class="save-btn" @click="submitRefundApplication">提交</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 撤销审批流确认弹窗 -->
+        <div class="modal-overlay" v-if="showCancelFlowConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>确认撤销</h3>
+                    <button class="close-btn" @click="closeCancelFlowConfirm">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>是否确认撤销该审批流？撤销后将无法恢复。</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeCancelFlowConfirm">取消</button>
+                    <button class="delete-btn" @click="doCancelFlow">确认撤销</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 审批详情抽屉 -->
+        <div class="drawer-overlay" v-if="showApprovalDetailDrawer" @click="closeApprovalDetail">
+            <div class="drawer" @click.stop>
+                <div class="drawer-header">
+                    <h3>审批详情</h3>
+                    <button class="close-btn" @click="closeApprovalDetail">&times;</button>
+                </div>
+                <div class="drawer-body" v-if="currentApprovalDetail">
+                    <!-- 第一行：ID和审批流ID -->
+                    <div class="form-group-row">
+                        <div class="form-group">
+                            <label>ID</label>
+                            <input type="text" :value="currentApprovalDetail.id" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>审批流ID</label>
+                            <input type="text" :value="currentApprovalDetail.approval_flow_management_id" readonly>
+                        </div>
+                    </div>
+
+                    <!-- 第二行：审批流类型、发起人、发起时间 -->
+                    <div class="form-group-row">
+                        <div class="form-group">
+                            <label>审批流类型</label>
+                            <input type="text" :value="currentApprovalDetail.approval_flow_type_name" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>发起人</label>
+                            <input type="text" :value="currentApprovalDetail.flow_info?.creator_name" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>发起时间</label>
+                            <input type="text" :value="currentApprovalDetail.create_time" readonly>
+                        </div>
+                    </div>
+
+                    <!-- 第三行：审批流程数轴 -->
+                    <div style="margin: 30px 0;">
+                        <label style="display: block; margin-bottom: 15px; font-weight: bold; color: #333;">审批流程</label>
+                        <div style="display: flex; align-items: center; position: relative; padding: 0 20px;">
+                            <!-- 连接线 -->
+                            <div style="position: absolute; top: 15px; left: 30px; right: 30px; height: 2px; background-color: #e8e8e8; z-index: 1;"></div>
+
+                            <!-- 节点 -->
+                            <div v-for="(node, index) in currentApprovalDetail.all_nodes" :key="node.template_node_id"
+                                 style="flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; z-index: 2;">
+                                <!-- 节点圆点 -->
+                                <div :style="{
+                                    width: '30px',
+                                    height: '30px',
+                                    borderRadius: '50%',
+                                    backgroundColor: node.node_result === 0 ? '#52c41a' : (node.node_result === 1 ? '#f56c6c' : (node.node_case_id && node.node_result === null ? '#1890ff' : '#bfbfbf')),
+                                    border: '3px solid white',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'white',
+                                    fontSize: '12px',
+                                    fontWeight: 'bold'
+                                }">
+                                    {{ index + 1 }}
+                                </div>
+                                <!-- 节点名称 -->
+                                <div style="margin-top: 8px; font-size: 12px; text-align: center; color: #666;">
+                                    {{ node.node_name }}
+                                </div>
+                                <!-- 节点状态 -->
+                                <div style="margin-top: 4px; font-size: 11px; text-align: center;"
+                                     :style="{ color: node.node_result === 0 ? '#52c41a' : (node.node_result === 1 ? '#f56c6c' : (node.node_case_id && node.node_result === null ? '#1890ff' : '#bfbfbf')) }">
+                                    {{ node.node_result === 0 ? '已通过' : (node.node_result === 1 ? '已驳回' : (node.node_case_id && node.node_result === null ? '审批中' : '未开始')) }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 第四行：审批内容（退费类型） -->
+                    <div v-if="currentApprovalDetail.refund_order_info" style="margin-top: 20px;">
+                        <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #333;">审批内容</label>
+
+                        <!-- 退费基本信息 -->
+                        <div class="form-group-row">
+                            <div class="form-group">
+                                <label>退费ID</label>
+                                <input type="text" :value="currentApprovalDetail.refund_order_info.refund_order_id" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label>退费金额</label>
+                                <input type="text" :value="'￥' + currentApprovalDetail.refund_order_info.refund_amount" readonly style="color: #f56c6c; font-weight: bold;">
+                            </div>
+                        </div>
+
+                        <!-- 退费商品（待退费区） -->
+                        <div class="form-group" v-if="currentApprovalDetail.refund_order_info.items && currentApprovalDetail.refund_order_info.items.length > 0">
+                            <label>退费商品</label>
+                            <table class="data-table" style="margin-top: 5px;">
+                                <thead>
+                                    <tr>
+                                        <th>商品名称</th>
+                                        <th style="width: 150px; text-align: right;">退费金额</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in currentApprovalDetail.refund_order_info.items" :key="item.goods_name">
+                                        <td>{{ item.goods_name }}</td>
+                                        <td style="text-align: right;">￥{{ item.refund_amount }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 退费途径（收款列表） -->
+                        <div class="form-group" v-if="currentApprovalDetail.refund_order_info.payments && currentApprovalDetail.refund_order_info.payments.length > 0">
+                            <label>退费途径</label>
+                            <table class="data-table" style="margin-top: 5px;">
+                                <thead>
+                                    <tr>
+                                        <th>收款ID</th>
+                                        <th>收款类型</th>
+                                        <th>收款主体</th>
+                                        <th style="width: 120px; text-align: right;">原收款金额</th>
+                                        <th style="width: 120px; text-align: right;">退费金额</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="payment in currentApprovalDetail.refund_order_info.payments" :key="payment.payment_id">
+                                        <td>{{ payment.payment_id }}</td>
+                                        <td>{{ payment.payment_type === 0 ? '常规收款' : '淘宝收款' }}</td>
+                                        <td>{{ payment.payee_entity === null ? '-' : (payment.payee_entity === 0 ? '北京' : '西安') }}</td>
+                                        <td style="text-align: right;">￥{{ payment.payment_amount }}</td>
+                                        <td style="text-align: right; color: #f56c6c; font-weight: bold;">￥{{ payment.refund_amount }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="drawer-footer" v-if="currentApprovalDetail && currentApprovalDetail.result === null">
+                    <button class="cancel-btn" @click="rejectFlow">驳回</button>
+                    <button class="save-btn" @click="approveFlow">通过</button>
+                </div>
+                <div class="drawer-footer" v-else>
+                    <button class="cancel-btn" @click="closeApprovalDetail">关闭</button>
                 </div>
             </div>
         </div>
