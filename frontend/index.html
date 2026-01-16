@@ -498,6 +498,88 @@
                         </div>
                     </div>
 
+                    <!-- 子退费订单页面 -->
+                    <div v-if="activeMenu === 'refund_childorders'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingRefundChildOrders" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
+                        <div class="page-header">
+                            <h1>子退费订单</h1>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="refundChildOrderIdFilter">ID</label>
+                                    <input type="number" id="refundChildOrderIdFilter" v-model="refundChildOrderFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="refundChildOrderUidFilter">UID</label>
+                                    <input type="number" id="refundChildOrderUidFilter" v-model="refundChildOrderFilters.student_id" placeholder="请输入UID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="refundChildOrderOrderIdFilter">订单ID</label>
+                                    <input type="number" id="refundChildOrderOrderIdFilter" v-model="refundChildOrderFilters.order_id" placeholder="请输入订单ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="refundChildOrderGoodsIdFilter">商品ID</label>
+                                    <input type="number" id="refundChildOrderGoodsIdFilter" v-model="refundChildOrderFilters.goods_id" placeholder="请输入商品ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="refundChildOrderStatusFilter">状态</label>
+                                    <select id="refundChildOrderStatusFilter" v-model="refundChildOrderFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">退费中</option>
+                                        <option value="10">已通过</option>
+                                        <option value="20">已驳回</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchRefundChildOrders">搜索</button>
+                                <button class="reset-btn" @click="resetRefundChildOrderFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>UID</th>
+                                    <th>订单ID</th>
+                                    <th>商品ID</th>
+                                    <th>商品名称</th>
+                                    <th>退费金额</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="item in paginatedRefundChildOrders" :key="item.id">
+                                    <td>{{ item.id }}</td>
+                                    <td>{{ item.uid }}</td>
+                                    <td>{{ item.order_id }}</td>
+                                    <td>{{ item.goods_id }}</td>
+                                    <td>{{ item.goods_name }}</td>
+                                    <td style="font-weight: bold; color: #e74c3c;">{{ item.refund_amount }}</td>
+                                    <td>{{ getRefundOrderStatusText(item.status) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- 子退费订单分页控件 -->
+                        <div class="pagination" v-if="refundChildOrderTotalPages > 1">
+                            <button class="page-btn" @click="changeRefundChildOrderPage(1)" :disabled="refundChildOrderCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeRefundChildOrderPage(refundChildOrderCurrentPage - 1)" :disabled="refundChildOrderCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ refundChildOrderCurrentPage }} / {{ refundChildOrderTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeRefundChildOrderPage(refundChildOrderCurrentPage + 1)" :disabled="refundChildOrderCurrentPage === refundChildOrderTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeRefundChildOrderPage(refundChildOrderTotalPages)" :disabled="refundChildOrderCurrentPage === refundChildOrderTotalPages">末页</button>
+                        </div>
+                    </div>
+
                     <!-- 审批流类型页面 -->
                     <div v-if="activeMenu === 'approval_flow_type'" style="position: relative;">
                         <!-- Loading遮罩层 -->
@@ -996,6 +1078,7 @@
                                         <th>审批流类型</th>
                                         <th>抄送信息</th>
                                         <th>创建时间</th>
+                                        <th>操作</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1005,6 +1088,9 @@
                                         <td>{{ flow.approval_flow_type_name }}</td>
                                         <td>{{ flow.copy_info }}</td>
                                         <td>{{ flow.create_time }}</td>
+                                        <td class="action-column">
+                                            <button class="view-btn" @click="openApprovalDetail(flow)">详情</button>
+                                        </td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1924,6 +2010,169 @@
                             <button @click="changeSeparateAccountPage(separateAccountCurrentPage - 1)" :disabled="separateAccountCurrentPage === 1">上一页</button>
                             <span>第 {{ separateAccountCurrentPage }} / {{ totalSeparateAccountPages }} 页</span>
                             <button @click="changeSeparateAccountPage(separateAccountCurrentPage + 1)" :disabled="separateAccountCurrentPage === totalSeparateAccountPages">下一页</button>
+                        </div>
+                    </div>
+
+                    <!-- 退费管理页面 -->
+                    <div v-if="activeMenu === 'refund_management'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingRegularRefunds || loadingTaobaoRefunds" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
+                        <div class="page-header">
+                            <h1>退费管理</h1>
+                        </div>
+
+                        <!-- Tab导航 -->
+                        <div class="tab-container">
+                            <div class="tab-navigation">
+                                <button class="tab-btn" :class="{active: refundManagementTab === 'regular'}" @click="refundManagementTab = 'regular'; fetchRegularRefunds()">常规退费</button>
+                                <button class="tab-btn" :class="{active: refundManagementTab === 'taobao'}" @click="refundManagementTab = 'taobao'; fetchTaobaoRefunds()">淘宝退费</button>
+                            </div>
+
+                            <!-- 常规退费 Tab -->
+                            <div v-if="refundManagementTab === 'regular'" class="tab-content">
+                                <!-- 筛选表单 -->
+                                <div class="filter-form">
+                                    <div class="filter-row">
+                                        <div class="filter-item">
+                                            <label for="regularRefundIdFilter">ID</label>
+                                            <input type="number" id="regularRefundIdFilter" v-model="regularRefundFilters.id" placeholder="请输入ID">
+                                        </div>
+                                        <div class="filter-item">
+                                            <label for="regularRefundUidFilter">UID</label>
+                                            <input type="number" id="regularRefundUidFilter" v-model="regularRefundFilters.student_id" placeholder="请输入UID">
+                                        </div>
+                                        <div class="filter-item">
+                                            <label for="regularRefundOrderIdFilter">退费ID</label>
+                                            <input type="number" id="regularRefundOrderIdFilter" v-model="regularRefundFilters.refund_order_id" placeholder="请输入退费ID">
+                                        </div>
+                                        <div class="filter-item">
+                                            <label for="regularRefundPayerFilter">付款方</label>
+                                            <input type="text" id="regularRefundPayerFilter" v-model="regularRefundFilters.payer" placeholder="请输入付款方">
+                                        </div>
+                                        <div class="filter-item">
+                                            <label for="regularRefundStatusFilter">状态</label>
+                                            <select id="regularRefundStatusFilter" v-model="regularRefundFilters.status">
+                                                <option value="">全部</option>
+                                                <option value="0">退费中</option>
+                                                <option value="10">已通过</option>
+                                                <option value="20">已驳回</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="filter-actions">
+                                        <button class="search-btn" @click="searchRegularRefunds">搜索</button>
+                                        <button class="reset-btn" @click="resetRegularRefundFilters">重置</button>
+                                    </div>
+                                </div>
+
+                                <!-- 数据表格 -->
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>UID</th>
+                                            <th>退费ID</th>
+                                            <th>付款方</th>
+                                            <th>银行账户</th>
+                                            <th>退费金额</th>
+                                            <th>状态</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="item in paginatedRegularRefunds" :key="item.id">
+                                            <td>{{ item.id }}</td>
+                                            <td>{{ item.uid }}</td>
+                                            <td>{{ item.refund_order_id }}</td>
+                                            <td>{{ item.payer || '-' }}</td>
+                                            <td>{{ item.bank_account || '-' }}</td>
+                                            <td style="font-weight: bold; color: #e74c3c;">{{ item.refund_amount }}</td>
+                                            <td>{{ getRefundOrderStatusText(item.status) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <!-- 分页控件 -->
+                                <div class="pagination" v-if="regularRefundTotalPages > 1">
+                                    <button class="page-btn" @click="changeRegularRefundPage(1)" :disabled="regularRefundCurrentPage === 1">首页</button>
+                                    <button class="page-btn" @click="changeRegularRefundPage(regularRefundCurrentPage - 1)" :disabled="regularRefundCurrentPage === 1">上一页</button>
+                                    <span class="page-info">第 {{ regularRefundCurrentPage }} / {{ regularRefundTotalPages }} 页</span>
+                                    <button class="page-btn" @click="changeRegularRefundPage(regularRefundCurrentPage + 1)" :disabled="regularRefundCurrentPage === regularRefundTotalPages">下一页</button>
+                                    <button class="page-btn" @click="changeRegularRefundPage(regularRefundTotalPages)" :disabled="regularRefundCurrentPage === regularRefundTotalPages">末页</button>
+                                </div>
+                            </div>
+
+                            <!-- 淘宝退费 Tab -->
+                            <div v-if="refundManagementTab === 'taobao'" class="tab-content">
+                                <!-- 筛选表单 -->
+                                <div class="filter-form">
+                                    <div class="filter-row">
+                                        <div class="filter-item">
+                                            <label for="taobaoRefundIdFilter">ID</label>
+                                            <input type="number" id="taobaoRefundIdFilter" v-model="taobaoRefundFilters.id" placeholder="请输入ID">
+                                        </div>
+                                        <div class="filter-item">
+                                            <label for="taobaoRefundUidFilter">UID</label>
+                                            <input type="number" id="taobaoRefundUidFilter" v-model="taobaoRefundFilters.student_id" placeholder="请输入UID">
+                                        </div>
+                                        <div class="filter-item">
+                                            <label for="taobaoRefundOrderIdFilter">退费ID</label>
+                                            <input type="number" id="taobaoRefundOrderIdFilter" v-model="taobaoRefundFilters.refund_order_id" placeholder="请输入退费ID">
+                                        </div>
+                                        <div class="filter-item">
+                                            <label for="taobaoRefundStatusFilter">状态</label>
+                                            <select id="taobaoRefundStatusFilter" v-model="taobaoRefundFilters.status">
+                                                <option value="">全部</option>
+                                                <option value="0">退费中</option>
+                                                <option value="10">已通过</option>
+                                                <option value="20">已驳回</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="filter-actions">
+                                        <button class="search-btn" @click="searchTaobaoRefunds">搜索</button>
+                                        <button class="reset-btn" @click="resetTaobaoRefundFilters">重置</button>
+                                    </div>
+                                </div>
+
+                                <!-- 数据表格 -->
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>UID</th>
+                                            <th>退费ID</th>
+                                            <th>支付宝账号</th>
+                                            <th>支付宝名称</th>
+                                            <th>退费金额</th>
+                                            <th>状态</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="item in paginatedTaobaoRefunds" :key="item.id">
+                                            <td>{{ item.id }}</td>
+                                            <td>{{ item.uid }}</td>
+                                            <td>{{ item.refund_order_id }}</td>
+                                            <td>{{ item.alipay_account }}</td>
+                                            <td>{{ item.alipay_name }}</td>
+                                            <td style="font-weight: bold; color: #e74c3c;">{{ item.refund_amount }}</td>
+                                            <td>{{ getRefundOrderStatusText(item.status) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <!-- 分页控件 -->
+                                <div class="pagination" v-if="taobaoRefundTotalPages > 1">
+                                    <button class="page-btn" @click="changeTaobaoRefundPage(1)" :disabled="taobaoRefundCurrentPage === 1">首页</button>
+                                    <button class="page-btn" @click="changeTaobaoRefundPage(taobaoRefundCurrentPage - 1)" :disabled="taobaoRefundCurrentPage === 1">上一页</button>
+                                    <span class="page-info">第 {{ taobaoRefundCurrentPage }} / {{ taobaoRefundTotalPages }} 页</span>
+                                    <button class="page-btn" @click="changeTaobaoRefundPage(taobaoRefundCurrentPage + 1)" :disabled="taobaoRefundCurrentPage === taobaoRefundTotalPages">下一页</button>
+                                    <button class="page-btn" @click="changeTaobaoRefundPage(taobaoRefundTotalPages)" :disabled="taobaoRefundCurrentPage === taobaoRefundTotalPages">末页</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -4743,6 +4992,55 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- 退费信息补充 -->
+                    <div v-if="refundOrderDetail.taobao_supplement || (refundOrderDetail.regular_supplements && refundOrderDetail.regular_supplements.length > 0)" class="refund-section">
+                        <h4>退费信息补充</h4>
+
+                        <!-- 淘宝退费 -->
+                        <div v-if="refundOrderDetail.taobao_supplement">
+                            <h5 style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">淘宝退费</h5>
+                            <div class="form-group-row">
+                                <div class="form-group-col">
+                                    <label>支付宝账号</label>
+                                    <input type="text" :value="refundOrderDetail.taobao_supplement.alipay_account" readonly class="readonly-input">
+                                </div>
+                                <div class="form-group-col">
+                                    <label>支付宝名称</label>
+                                    <input type="text" :value="refundOrderDetail.taobao_supplement.alipay_name" readonly class="readonly-input">
+                                </div>
+                                <div class="form-group-col">
+                                    <label>退费金额</label>
+                                    <input type="text" :value="'￥' + refundOrderDetail.taobao_supplement.refund_amount" readonly class="readonly-input" style="font-weight: bold; color: #e74c3c;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 常规退费 -->
+                        <div v-if="refundOrderDetail.regular_supplements && refundOrderDetail.regular_supplements.length > 0" :style="{marginTop: refundOrderDetail.taobao_supplement ? '15px' : '0'}">
+                            <h5 style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">常规退费</h5>
+                            <div v-for="(item, index) in refundOrderDetail.regular_supplements" :key="index" style="margin-bottom: 15px; padding: 10px; border: 1px solid #e0e0e0; border-radius: 4px;">
+                                <div style="margin-bottom: 8px; font-weight: 600; color: #666; font-size: 13px;">
+                                    <span>{{ item.payee_entity === 0 ? '北京' : '西安' }}</span>
+                                    <span style="margin-left: 10px;">{{ item.is_corporate_transfer === 1 ? '对公转账' : '非对公转账' }}</span>
+                                </div>
+                                <div class="form-group-row">
+                                    <div class="form-group-col">
+                                        <label>付款方</label>
+                                        <input type="text" :value="item.payer || '-'" readonly class="readonly-input">
+                                    </div>
+                                    <div class="form-group-col">
+                                        <label>银行账户</label>
+                                        <input type="text" :value="item.bank_account || '-'" readonly class="readonly-input">
+                                    </div>
+                                    <div class="form-group-col">
+                                        <label>退款金额</label>
+                                        <input type="text" :value="'￥' + item.refund_amount" readonly class="readonly-input" style="font-weight: bold; color: #e74c3c;">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="drawer-footer">
                     <button class="cancel-btn" @click="closeRefundOrderDetail">关闭</button>
@@ -4855,6 +5153,7 @@
                             <h4>收款列表</h4>
                             <div class="section-actions">
                                 <span class="unallocated-amount">待分配金额: {{ refundForm.unallocated_amount.toFixed(2) }}</span>
+                                <button class="apply-btn" @click="applyRefundSupplement">应用</button>
                             </div>
                         </div>
                         <table class="data-table">
@@ -4883,6 +5182,55 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- 退费信息补充区 -->
+                    <div class="refund-section" v-if="refundForm.supplement_generated">
+                        <h4>退费信息补充</h4>
+
+                        <!-- 淘宝退费 -->
+                        <div v-if="refundForm.taobao_supplement" style="margin-bottom: 20px;">
+                            <h5 style="margin-bottom: 10px;">淘宝退费</h5>
+                            <div class="form-group-row">
+                                <div class="form-group-col">
+                                    <label>支付宝账号 <span style="color: red;">*</span></label>
+                                    <input type="text" v-model="refundForm.taobao_supplement.alipay_account" required>
+                                </div>
+                                <div class="form-group-col">
+                                    <label>支付宝名称 <span style="color: red;">*</span></label>
+                                    <input type="text" v-model="refundForm.taobao_supplement.alipay_name" required>
+                                </div>
+                                <div class="form-group-col">
+                                    <label>退费金额</label>
+                                    <input type="number" :value="refundForm.taobao_supplement.refund_amount.toFixed(2)" readonly class="readonly-input">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 常规退费 -->
+                        <div v-if="refundForm.regular_supplements && refundForm.regular_supplements.length > 0">
+                            <h5 style="margin-bottom: 10px;">常规退费</h5>
+                            <div v-for="(item, index) in refundForm.regular_supplements" :key="index" style="margin-bottom: 15px; padding: 10px; border: 1px solid #e0e0e0; border-radius: 4px;">
+                                <div style="margin-bottom: 8px; font-weight: 600; color: #666; font-size: 13px;">
+                                    <span>{{ item.payee_entity === 0 ? '北京' : '西安' }}</span>
+                                    <span style="margin-left: 10px;">{{ item.is_corporate_transfer === 1 ? '对公转账' : '非对公转账' }}</span>
+                                </div>
+                                <div class="form-group-row">
+                                    <div class="form-group-col">
+                                        <label>付款方 {{ item.payer_readonly ? '' : '<span style="color: red;">*</span>' }}</label>
+                                        <input type="text" v-model="item.payer" :readonly="item.payer_readonly" :class="{'readonly-input': item.payer_readonly}">
+                                    </div>
+                                    <div class="form-group-col">
+                                        <label>银行账户</label>
+                                        <input type="text" v-model="item.bank_account">
+                                    </div>
+                                    <div class="form-group-col">
+                                        <label>退款金额</label>
+                                        <input type="number" :value="item.refund_amount.toFixed(2)" readonly class="readonly-input">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="drawer-footer">
@@ -5043,6 +5391,55 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+
+                        <!-- 退费信息补充 -->
+                        <div v-if="currentApprovalDetail.refund_order_info.taobao_supplement || (currentApprovalDetail.refund_order_info.regular_supplements && currentApprovalDetail.refund_order_info.regular_supplements.length > 0)" style="margin-top: 20px;">
+                            <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #333;">退费信息补充</label>
+
+                            <!-- 淘宝退费 -->
+                            <div v-if="currentApprovalDetail.refund_order_info.taobao_supplement">
+                                <h5 style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">淘宝退费</h5>
+                                <div class="form-group-row">
+                                    <div class="form-group-col">
+                                        <label>支付宝账号</label>
+                                        <input type="text" :value="currentApprovalDetail.refund_order_info.taobao_supplement.alipay_account" readonly class="readonly-input">
+                                    </div>
+                                    <div class="form-group-col">
+                                        <label>支付宝名称</label>
+                                        <input type="text" :value="currentApprovalDetail.refund_order_info.taobao_supplement.alipay_name" readonly class="readonly-input">
+                                    </div>
+                                    <div class="form-group-col">
+                                        <label>退费金额</label>
+                                        <input type="text" :value="'￥' + currentApprovalDetail.refund_order_info.taobao_supplement.refund_amount" readonly class="readonly-input" style="font-weight: bold; color: #e74c3c;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 常规退费 -->
+                            <div v-if="currentApprovalDetail.refund_order_info.regular_supplements && currentApprovalDetail.refund_order_info.regular_supplements.length > 0" :style="{marginTop: currentApprovalDetail.refund_order_info.taobao_supplement ? '15px' : '0'}">
+                                <h5 style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">常规退费</h5>
+                                <div v-for="(item, index) in currentApprovalDetail.refund_order_info.regular_supplements" :key="index" style="margin-bottom: 15px; padding: 10px; border: 1px solid #e0e0e0; border-radius: 4px;">
+                                    <div style="margin-bottom: 8px; font-weight: 600; color: #666; font-size: 13px;">
+                                        <span>{{ item.payee_entity === 0 ? '北京' : '西安' }}</span>
+                                        <span style="margin-left: 10px;">{{ item.is_corporate_transfer === 1 ? '对公转账' : '非对公转账' }}</span>
+                                    </div>
+                                    <div class="form-group-row">
+                                        <div class="form-group-col">
+                                            <label>付款方</label>
+                                            <input type="text" :value="item.payer || '-'" readonly class="readonly-input">
+                                        </div>
+                                        <div class="form-group-col">
+                                            <label>银行账户</label>
+                                            <input type="text" :value="item.bank_account || '-'" readonly class="readonly-input">
+                                        </div>
+                                        <div class="form-group-col">
+                                            <label>退款金额</label>
+                                            <input type="text" :value="'￥' + item.refund_amount" readonly class="readonly-input" style="font-weight: bold; color: #e74c3c;">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -396,7 +396,10 @@ createApp({
                 selected_refunds: [],
                 payments: [],
                 refund_total: 0,
-                unallocated_amount: 0
+                unallocated_amount: 0,
+                supplement_generated: false,
+                taobao_supplement: null,
+                regular_supplements: []
             },
             // 退款订单管理
             refundOrders: [],
@@ -423,6 +426,43 @@ createApp({
                 refund_items: [],
                 refund_payments: []
             },
+            // 子退费订单数据
+            refundChildOrders: [],
+            filteredRefundChildOrders: [],
+            refundChildOrderFilters: {
+                id: '',
+                student_id: '',
+                order_id: '',
+                goods_id: '',
+                status: ''
+            },
+            refundChildOrderCurrentPage: 1,
+            loadingRefundChildOrders: false,
+            // 退费管理数据
+            refundManagementTab: 'regular',
+            // 常规退费数据
+            regularRefunds: [],
+            filteredRegularRefunds: [],
+            regularRefundFilters: {
+                id: '',
+                student_id: '',
+                refund_order_id: '',
+                payer: '',
+                status: ''
+            },
+            regularRefundCurrentPage: 1,
+            loadingRegularRefunds: false,
+            // 淘宝退费数据
+            taobaoRefunds: [],
+            filteredTaobaoRefunds: [],
+            taobaoRefundFilters: {
+                id: '',
+                student_id: '',
+                refund_order_id: '',
+                status: ''
+            },
+            taobaoRefundCurrentPage: 1,
+            loadingTaobaoRefunds: false,
             // 审批流类型数据
             approvalFlowTypes: [],
             filteredApprovalFlowTypes: [],
@@ -972,6 +1012,33 @@ createApp({
         refundOrderTotalPages() {
             return Math.ceil(this.filteredRefundOrders.length / 10);
         },
+        // 子退费订单分页数据
+        paginatedRefundChildOrders() {
+            const start = (this.refundChildOrderCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredRefundChildOrders.slice(start, end);
+        },
+        refundChildOrderTotalPages() {
+            return Math.ceil(this.filteredRefundChildOrders.length / 10);
+        },
+        // 常规退费分页数据
+        paginatedRegularRefunds() {
+            const start = (this.regularRefundCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredRegularRefunds.slice(start, end);
+        },
+        regularRefundTotalPages() {
+            return Math.ceil(this.filteredRegularRefunds.length / 10);
+        },
+        // 淘宝退费分页数据
+        paginatedTaobaoRefunds() {
+            const start = (this.taobaoRefundCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredTaobaoRefunds.slice(start, end);
+        },
+        taobaoRefundTotalPages() {
+            return Math.ceil(this.filteredTaobaoRefunds.length / 10);
+        },
         // 审批流类型分页数据
         paginatedApprovalFlowTypes() {
             const start = (this.approvalFlowTypeCurrentPage - 1) * 10;
@@ -1208,6 +1275,14 @@ createApp({
                 this.fetchSeparateAccounts();
             } else if (menu === 'refund_orders') {
                 this.fetchRefundOrders();
+            } else if (menu === 'refund_childorders') {
+                this.fetchRefundChildOrders();
+            } else if (menu === 'refund_management') {
+                if (this.refundManagementTab === 'regular') {
+                    this.fetchRegularRefunds();
+                } else {
+                    this.fetchTaobaoRefunds();
+                }
             } else if (menu === 'approval_flow_type') {
                 this.fetchApprovalFlowTypes();
             } else if (menu === 'approval_flow_template') {
@@ -2408,7 +2483,10 @@ createApp({
                         refund_amount: 0
                     })),
                     refund_total: 0,
-                    unallocated_amount: 0
+                    unallocated_amount: 0,
+                    supplement_generated: false,
+                    taobao_supplement: null,
+                    regular_supplements: []
                 };
 
                 this.showRefundDialog = true;
@@ -2431,7 +2509,10 @@ createApp({
                 selected_refunds: [],
                 payments: [],
                 refund_total: 0,
-                unallocated_amount: 0
+                unallocated_amount: 0,
+                supplement_generated: false,
+                taobao_supplement: null,
+                regular_supplements: []
             };
         },
 
@@ -2504,6 +2585,162 @@ createApp({
             this.calculateUnallocatedAmount();
         },
 
+        // 应用退费信息补充
+        applyRefundSupplement() {
+            // 校验待分配金额是否为0
+            if (Math.abs(this.refundForm.unallocated_amount) > 0.01) {
+                alert('请重新调整退费路径');
+                return;
+            }
+
+            // 重置退费信息补充
+            this.refundForm.taobao_supplement = null;
+            this.refundForm.regular_supplements = [];
+
+            // 筛选有退费金额的收款
+            const paymentsWithRefund = this.refundForm.payments.filter(p => p.refund_amount > 0);
+
+            // 1. 处理淘宝退费
+            const taobaoPayments = paymentsWithRefund.filter(p => p.payment_type === 1);
+            if (taobaoPayments.length > 0) {
+                const totalTaobaoRefund = taobaoPayments.reduce((sum, p) => sum + parseFloat(p.refund_amount), 0);
+                this.refundForm.taobao_supplement = {
+                    alipay_account: '',
+                    alipay_name: '',
+                    refund_amount: totalTaobaoRefund
+                };
+            }
+
+            // 2. 处理常规退费
+            const regularPayments = paymentsWithRefund.filter(p => p.payment_type === 0);
+            if (regularPayments.length > 0) {
+                const results = [];
+
+                // 先检查所有收款是否都有payee_entity
+                console.log('=== 常规收款数据 ===');
+                regularPayments.forEach(p => {
+                    console.log(`收款ID=${p.payment_id}, payee_entity=${p.payee_entity}, payer=${p.payer}, is_corporate_transfer=${p.is_corporate_transfer}, refund_amount=${p.refund_amount}`);
+                });
+
+                // 按收款主体分组（必须先按主体分组）
+                const entityGroups = {};
+                for (const payment of regularPayments) {
+                    const entity = payment.payee_entity; // 0=北京, 1=西安
+
+                    // 检查payee_entity是否有效
+                    if (entity === null || entity === undefined) {
+                        console.error(`收款ID=${payment.payment_id}的payee_entity为空！`);
+                        alert(`收款ID=${payment.payment_id}的收款主体为空，无法生成退费补充信息`);
+                        return;
+                    }
+
+                    if (!entityGroups[entity]) {
+                        entityGroups[entity] = [];
+                    }
+                    entityGroups[entity].push(payment);
+                }
+
+                console.log('=== 按主体分组结果 ===');
+                for (const entity in entityGroups) {
+                    console.log(`主体${entity}: ${entityGroups[entity].length}条收款`);
+                }
+
+                // 处理每个主体
+                for (const entity in entityGroups) {
+                    const entityPayments = entityGroups[entity];
+
+                    // 分离对公转账和非对公转账
+                    const corporatePayments = entityPayments.filter(p => p.is_corporate_transfer === 1);
+                    const nonCorporatePayments = entityPayments.filter(p => p.is_corporate_transfer === 0);
+
+                    // 2.1 处理对公转账 - 按付款方分组
+                    const corporateGroups = {};
+                    for (const payment of corporatePayments) {
+                        const payer = payment.payer || '';
+                        if (!corporateGroups[payer]) {
+                            corporateGroups[payer] = [];
+                        }
+                        corporateGroups[payer].push(payment);
+                    }
+
+                    for (const payer in corporateGroups) {
+                        const group = corporateGroups[payer];
+                        const totalRefund = group.reduce((sum, p) => sum + parseFloat(p.refund_amount), 0);
+                        results.push({
+                            payee_entity: parseInt(entity),
+                            is_corporate_transfer: 1,
+                            payer: payer || null,
+                            payer_readonly: true,
+                            bank_account: '',
+                            refund_amount: totalRefund
+                        });
+                    }
+
+                    // 2.2 处理非对公转账
+                    const nonCorporateWithPayer = nonCorporatePayments.filter(p => p.payer);
+                    const nonCorporateWithoutPayer = nonCorporatePayments.filter(p => !p.payer);
+
+                    // 2.2.1 处理有付款方的 - 按付款方分组
+                    const nonCorpPayerGroups = {};
+                    for (const payment of nonCorporateWithPayer) {
+                        const payer = payment.payer;
+                        if (!nonCorpPayerGroups[payer]) {
+                            nonCorpPayerGroups[payer] = [];
+                        }
+                        nonCorpPayerGroups[payer].push(payment);
+                    }
+
+                    for (const payer in nonCorpPayerGroups) {
+                        const group = nonCorpPayerGroups[payer];
+                        const totalRefund = group.reduce((sum, p) => sum + parseFloat(p.refund_amount), 0);
+                        results.push({
+                            payee_entity: parseInt(entity),
+                            is_corporate_transfer: 0,
+                            payer: payer,
+                            payer_readonly: true,
+                            bank_account: '',
+                            refund_amount: totalRefund
+                        });
+                    }
+
+                    // 2.2.2 处理无付款方的
+                    if (nonCorporateWithoutPayer.length > 0) {
+                        const emptyPayerTotal = nonCorporateWithoutPayer.reduce((sum, p) => sum + parseFloat(p.refund_amount), 0);
+
+                        // 检查同主体下是否有有付款方的非对公转账
+                        const hasNonCorpWithPayer = nonCorporateWithPayer.length > 0;
+
+                        if (hasNonCorpWithPayer) {
+                            // 合并到该主体下第一条有付款方的非对公转账记录
+                            const targetRecord = results.find(r =>
+                                r.payee_entity === parseInt(entity) &&
+                                r.is_corporate_transfer === 0 &&
+                                r.payer
+                            );
+                            if (targetRecord) {
+                                targetRecord.refund_amount += emptyPayerTotal;
+                            }
+                        } else {
+                            // 独立成组，付款方和银行账户都可编辑
+                            results.push({
+                                payee_entity: parseInt(entity),
+                                is_corporate_transfer: 0,
+                                payer: '',
+                                payer_readonly: false,
+                                bank_account: '',
+                                refund_amount: emptyPayerTotal
+                            });
+                        }
+                    }
+                }
+
+                this.refundForm.regular_supplements = results;
+            }
+
+            // 标记为已生成
+            this.refundForm.supplement_generated = true;
+        },
+
         // 提交退款申请
         async submitRefundApplication() {
             // 校验
@@ -2526,6 +2763,32 @@ createApp({
                 return;
             }
 
+            // 校验退费信息补充（如果已生成）
+            if (this.refundForm.supplement_generated) {
+                // 校验淘宝退费
+                if (this.refundForm.taobao_supplement) {
+                    if (!this.refundForm.taobao_supplement.alipay_account) {
+                        alert('支付宝账号不能为空');
+                        return;
+                    }
+                    if (!this.refundForm.taobao_supplement.alipay_name) {
+                        alert('支付宝名称不能为空');
+                        return;
+                    }
+                }
+
+                // 校验常规退费
+                if (this.refundForm.regular_supplements && this.refundForm.regular_supplements.length > 0) {
+                    for (const item of this.refundForm.regular_supplements) {
+                        // 如果付款方可编辑，则必须填写
+                        if (!item.payer_readonly && !item.payer) {
+                            alert('付款方不能为空');
+                            return;
+                        }
+                    }
+                }
+            }
+
             try {
                 const requestData = {
                     order_id: this.refundForm.order_id,
@@ -2543,6 +2806,16 @@ createApp({
                             refund_amount: p.refund_amount.toFixed(2)
                         }))
                 };
+
+                // 添加退费信息补充
+                if (this.refundForm.supplement_generated) {
+                    if (this.refundForm.taobao_supplement) {
+                        requestData.taobao_supplement = this.refundForm.taobao_supplement;
+                    }
+                    if (this.refundForm.regular_supplements && this.refundForm.regular_supplements.length > 0) {
+                        requestData.regular_supplements = this.refundForm.regular_supplements;
+                    }
+                }
 
                 const response = await axios.post('/api/refund-orders', requestData, { withCredentials: true });
 
@@ -2611,7 +2884,9 @@ createApp({
                     submit_time: data.refund_order.submit_time,
                     status: data.refund_order.status,
                     refund_items: data.refund_items || [],
-                    refund_payments: data.refund_payments || []
+                    refund_payments: data.refund_payments || [],
+                    taobao_supplement: data.taobao_supplement || null,
+                    regular_supplements: data.regular_supplements || []
                 };
 
                 this.showRefundOrderDetail = true;
@@ -2647,14 +2922,157 @@ createApp({
             }
         },
 
+        // ==================== 子退费订单管理 ====================
+
+        // 获取子退费订单列表
+        async fetchRefundChildOrders() {
+            this.loadingRefundChildOrders = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.refundChildOrderFilters.id) params.append('id', this.refundChildOrderFilters.id);
+                if (this.refundChildOrderFilters.student_id) params.append('student_id', this.refundChildOrderFilters.student_id);
+                if (this.refundChildOrderFilters.order_id) params.append('order_id', this.refundChildOrderFilters.order_id);
+                if (this.refundChildOrderFilters.goods_id) params.append('goods_id', this.refundChildOrderFilters.goods_id);
+                if (this.refundChildOrderFilters.status !== '') params.append('status', this.refundChildOrderFilters.status);
+
+                const response = await axios.get(`/api/refund-childorders?${params.toString()}`, { withCredentials: true });
+                this.refundChildOrders = response.data.refund_childorders || [];
+                this.filteredRefundChildOrders = this.refundChildOrders;
+            } catch (err) {
+                console.error('获取子退费订单列表失败:', err);
+                alert(err.response?.data?.error || '获取列表失败');
+            } finally {
+                this.loadingRefundChildOrders = false;
+            }
+        },
+
+        // 搜索子退费订单
+        searchRefundChildOrders() {
+            this.refundChildOrderCurrentPage = 1;
+            this.fetchRefundChildOrders();
+        },
+
+        // 重置子退费订单筛选条件
+        resetRefundChildOrderFilters() {
+            this.refundChildOrderFilters = {
+                id: '',
+                student_id: '',
+                order_id: '',
+                goods_id: '',
+                status: ''
+            };
+            this.fetchRefundChildOrders();
+        },
+
+        // 更改子退费订单页码
+        changeRefundChildOrderPage(page) {
+            if (page >= 1 && page <= this.refundChildOrderTotalPages) {
+                this.refundChildOrderCurrentPage = page;
+            }
+        },
+
         // 获取退款订单状态文本
         getRefundOrderStatusText(status) {
             const statusMap = {
-                0: '待审批',
+                0: '退费中',
                 10: '已通过',
                 20: '已驳回'
             };
             return statusMap[status] || '未知';
+        },
+
+        // ==================== 退费管理 ====================
+
+        // 获取常规退费列表
+        async fetchRegularRefunds() {
+            this.loadingRegularRefunds = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.regularRefundFilters.id) params.append('id', this.regularRefundFilters.id);
+                if (this.regularRefundFilters.student_id) params.append('student_id', this.regularRefundFilters.student_id);
+                if (this.regularRefundFilters.refund_order_id) params.append('refund_order_id', this.regularRefundFilters.refund_order_id);
+                if (this.regularRefundFilters.payer) params.append('payer', this.regularRefundFilters.payer);
+                if (this.regularRefundFilters.status !== '') params.append('status', this.regularRefundFilters.status);
+
+                const response = await axios.get(`/api/refund-regular-supplements?${params.toString()}`, { withCredentials: true });
+                this.regularRefunds = response.data.regular_supplements || [];
+                this.filteredRegularRefunds = this.regularRefunds;
+            } catch (err) {
+                console.error('获取常规退费列表失败:', err);
+                alert(err.response?.data?.error || '获取列表失败');
+            } finally {
+                this.loadingRegularRefunds = false;
+            }
+        },
+
+        // 搜索常规退费
+        searchRegularRefunds() {
+            this.regularRefundCurrentPage = 1;
+            this.fetchRegularRefunds();
+        },
+
+        // 重置常规退费筛选条件
+        resetRegularRefundFilters() {
+            this.regularRefundFilters = {
+                id: '',
+                student_id: '',
+                refund_order_id: '',
+                payer: '',
+                status: ''
+            };
+            this.fetchRegularRefunds();
+        },
+
+        // 更改常规退费页码
+        changeRegularRefundPage(page) {
+            if (page >= 1 && page <= this.regularRefundTotalPages) {
+                this.regularRefundCurrentPage = page;
+            }
+        },
+
+        // 获取淘宝退费列表
+        async fetchTaobaoRefunds() {
+            this.loadingTaobaoRefunds = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.taobaoRefundFilters.id) params.append('id', this.taobaoRefundFilters.id);
+                if (this.taobaoRefundFilters.student_id) params.append('student_id', this.taobaoRefundFilters.student_id);
+                if (this.taobaoRefundFilters.refund_order_id) params.append('refund_order_id', this.taobaoRefundFilters.refund_order_id);
+                if (this.taobaoRefundFilters.status !== '') params.append('status', this.taobaoRefundFilters.status);
+
+                const response = await axios.get(`/api/refund-taobao-supplements?${params.toString()}`, { withCredentials: true });
+                this.taobaoRefunds = response.data.taobao_supplements || [];
+                this.filteredTaobaoRefunds = this.taobaoRefunds;
+            } catch (err) {
+                console.error('获取淘宝退费列表失败:', err);
+                alert(err.response?.data?.error || '获取列表失败');
+            } finally {
+                this.loadingTaobaoRefunds = false;
+            }
+        },
+
+        // 搜索淘宝退费
+        searchTaobaoRefunds() {
+            this.taobaoRefundCurrentPage = 1;
+            this.fetchTaobaoRefunds();
+        },
+
+        // 重置淘宝退费筛选条件
+        resetTaobaoRefundFilters() {
+            this.taobaoRefundFilters = {
+                id: '',
+                student_id: '',
+                refund_order_id: '',
+                status: ''
+            };
+            this.fetchTaobaoRefunds();
+        },
+
+        // 更改淘宝退费页码
+        changeTaobaoRefundPage(page) {
+            if (page >= 1 && page <= this.taobaoRefundTotalPages) {
+                this.taobaoRefundCurrentPage = page;
+            }
         },
 
         // ==================== 审批流类型管理 ====================

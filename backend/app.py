@@ -5266,6 +5266,8 @@ def get_order_refund_info(order_id):
                 0 as payment_type,
                 pc.payment_amount,
                 pc.payee_entity,
+                pc.payer,
+                CASE WHEN pc.payment_method = 9 THEN 1 ELSE 0 END as is_corporate_transfer,
                 COALESCE(SUM(rp.refund_amount), 0) as refunded_amount
             FROM payment_collection pc
             LEFT JOIN refund_payment rp ON pc.id = rp.payment_id AND rp.payment_type = 0
@@ -5334,6 +5336,8 @@ def create_refund_order():
         order_id = data.get('order_id')
         refund_items = data.get('refund_items', [])  # [{childorder_id, goods_id, goods_name, refund_amount}]
         refund_payments = data.get('refund_payments', [])  # [{payment_id, payment_type, refund_amount}]
+        taobao_supplement = data.get('taobao_supplement')  # {alipay_account, alipay_name, refund_amount}
+        regular_supplements = data.get('regular_supplements', [])  # [{payer, bank_account, refund_amount}]
 
         if not order_id or not refund_items or not refund_payments:
             return jsonify({'error': '参数不完整'}), 400
@@ -5378,8 +5382,8 @@ def create_refund_order():
         # 2. 创建退款子订单明细
         for item in refund_items:
             cursor.execute("""
-                INSERT INTO refund_order_item (refund_order_id, childorder_id, goods_id, goods_name, refund_amount)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO refund_order_item (refund_order_id, childorder_id, goods_id, goods_name, refund_amount, status)
+                VALUES (%s, %s, %s, %s, %s, 0)
             """, (refund_order_id, item['childorder_id'], item['goods_id'], item['goods_name'], item['refund_amount']))
 
         # 3. 创建退款收款分配记录
@@ -5388,6 +5392,21 @@ def create_refund_order():
                 INSERT INTO refund_payment (refund_order_id, payment_id, payment_type, refund_amount)
                 VALUES (%s, %s, %s, %s)
             """, (refund_order_id, payment['payment_id'], payment['payment_type'], payment['refund_amount']))
+
+        # 3.5 保存退费信息补充
+        # 保存淘宝退费信息
+        if taobao_supplement:
+            cursor.execute("""
+                INSERT INTO refund_taobao_supplement (refund_order_id, student_id, alipay_account, alipay_name, refund_amount, status)
+                VALUES (%s, %s, %s, %s, %s, 0)
+            """, (refund_order_id, order['student_id'], taobao_supplement['alipay_account'], taobao_supplement['alipay_name'], taobao_supplement['refund_amount']))
+
+        # 保存常规退费信息
+        for supplement in regular_supplements:
+            cursor.execute("""
+                INSERT INTO refund_regular_supplement (refund_order_id, student_id, payee_entity, is_corporate_transfer, payer, bank_account, payer_readonly, refund_amount, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)
+            """, (refund_order_id, order['student_id'], supplement.get('payee_entity'), supplement.get('is_corporate_transfer'), supplement.get('payer'), supplement.get('bank_account'), supplement.get('payer_readonly', 1), supplement['refund_amount']))
 
         # 4. 更新订单状态为50（退费中）
         cursor.execute("""
@@ -5564,11 +5583,237 @@ def get_refund_order_detail(refund_order_id):
         """, (refund_order_id,))
         refund_payments = cursor.fetchall()
 
+        # 获取淘宝退费信息补充
+        cursor.execute("""
+            SELECT * FROM refund_taobao_supplement WHERE refund_order_id = %s
+        """, (refund_order_id,))
+        taobao_supplement = cursor.fetchone()
+
+        # 获取常规退费信息补充
+        cursor.execute("""
+            SELECT * FROM refund_regular_supplement WHERE refund_order_id = %s
+        """, (refund_order_id,))
+        regular_supplements = cursor.fetchall()
+
         return jsonify({
             'refund_order': refund_order,
             'refund_items': refund_items,
-            'refund_payments': refund_payments
+            'refund_payments': refund_payments,
+            'taobao_supplement': taobao_supplement,
+            'regular_supplements': regular_supplements
         }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取子退费订单列表
+@app.route('/api/refund-childorders', methods=['GET'])
+def get_refund_childorders():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = []
+        params = []
+
+        # ID筛选
+        if request.args.get('id'):
+            conditions.append('roi.id = %s')
+            params.append(request.args.get('id'))
+
+        # UID筛选
+        if request.args.get('student_id'):
+            conditions.append('ro.student_id = %s')
+            params.append(request.args.get('student_id'))
+
+        # 订单ID筛选
+        if request.args.get('order_id'):
+            conditions.append('ro.order_id = %s')
+            params.append(request.args.get('order_id'))
+
+        # 商品ID筛选
+        if request.args.get('goods_id'):
+            conditions.append('roi.goods_id = %s')
+            params.append(request.args.get('goods_id'))
+
+        # 状态筛选
+        if request.args.get('status'):
+            conditions.append('roi.status = %s')
+            params.append(request.args.get('status'))
+
+        where_clause = ' AND '.join(conditions) if conditions else '1=1'
+
+        # 查询子退费订单列表
+        cursor.execute(f"""
+            SELECT
+                roi.id,
+                ro.student_id as uid,
+                ro.order_id,
+                roi.goods_id,
+                roi.goods_name,
+                roi.refund_amount,
+                roi.status,
+                roi.create_time
+            FROM refund_order_item roi
+            INNER JOIN refund_order ro ON roi.refund_order_id = ro.id
+            WHERE {where_clause}
+            ORDER BY roi.create_time DESC
+        """, params)
+
+        refund_childorders = cursor.fetchall()
+        return jsonify({'refund_childorders': refund_childorders}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取常规退费列表
+@app.route('/api/refund-regular-supplements', methods=['GET'])
+def get_refund_regular_supplements():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = []
+        params = []
+
+        # ID筛选
+        if request.args.get('id'):
+            conditions.append('rrs.id = %s')
+            params.append(request.args.get('id'))
+
+        # UID筛选
+        if request.args.get('student_id'):
+            conditions.append('rrs.student_id = %s')
+            params.append(request.args.get('student_id'))
+
+        # 退费ID筛选
+        if request.args.get('refund_order_id'):
+            conditions.append('rrs.refund_order_id = %s')
+            params.append(request.args.get('refund_order_id'))
+
+        # 付款方筛选（模糊搜索）
+        if request.args.get('payer'):
+            conditions.append('rrs.payer LIKE %s')
+            params.append(f"%{request.args.get('payer')}%")
+
+        # 状态筛选
+        if request.args.get('status'):
+            conditions.append('rrs.status = %s')
+            params.append(request.args.get('status'))
+
+        where_clause = ' AND '.join(conditions) if conditions else '1=1'
+
+        # 查询常规退费列表
+        cursor.execute(f"""
+            SELECT
+                rrs.id,
+                rrs.student_id as uid,
+                rrs.refund_order_id,
+                rrs.payer,
+                rrs.bank_account,
+                rrs.refund_amount,
+                rrs.status,
+                rrs.create_time
+            FROM refund_regular_supplement rrs
+            WHERE {where_clause}
+            ORDER BY rrs.create_time DESC
+        """, params)
+
+        regular_supplements = cursor.fetchall()
+        return jsonify({'regular_supplements': regular_supplements}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取淘宝退费列表
+@app.route('/api/refund-taobao-supplements', methods=['GET'])
+def get_refund_taobao_supplements():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = []
+        params = []
+
+        # ID筛选
+        if request.args.get('id'):
+            conditions.append('rts.id = %s')
+            params.append(request.args.get('id'))
+
+        # UID筛选
+        if request.args.get('student_id'):
+            conditions.append('rts.student_id = %s')
+            params.append(request.args.get('student_id'))
+
+        # 退费ID筛选
+        if request.args.get('refund_order_id'):
+            conditions.append('rts.refund_order_id = %s')
+            params.append(request.args.get('refund_order_id'))
+
+        # 状态筛选
+        if request.args.get('status'):
+            conditions.append('rts.status = %s')
+            params.append(request.args.get('status'))
+
+        where_clause = ' AND '.join(conditions) if conditions else '1=1'
+
+        # 查询淘宝退费列表
+        cursor.execute(f"""
+            SELECT
+                rts.id,
+                rts.student_id as uid,
+                rts.refund_order_id,
+                rts.alipay_account,
+                rts.alipay_name,
+                rts.refund_amount,
+                rts.status,
+                rts.create_time
+            FROM refund_taobao_supplement rts
+            WHERE {where_clause}
+            ORDER BY rts.create_time DESC
+        """, params)
+
+        taobao_supplements = cursor.fetchall()
+        return jsonify({'taobao_supplements': taobao_supplements}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -6307,6 +6552,7 @@ def get_copied_approval_flows():
             SELECT
                 acuc.id,
                 afm.id as approval_flow_id,
+                acuc.approval_flow_management_id,
                 aft.name as approval_flow_type_name,
                 acuc.copy_info,
                 ua.username as creator_name,
@@ -6467,6 +6713,18 @@ def get_approval_flow_detail(flow_id):
                     ORDER BY payment_type, payment_id
                 """, (refund_order_info['refund_order_id'], refund_order_info['refund_order_id']))
                 refund_order_info['payments'] = cursor.fetchall()
+
+                # 查询淘宝退费信息补充
+                cursor.execute("""
+                    SELECT * FROM refund_taobao_supplement WHERE refund_order_id = %s
+                """, (refund_order_info['refund_order_id'],))
+                refund_order_info['taobao_supplement'] = cursor.fetchone()
+
+                # 查询常规退费信息补充
+                cursor.execute("""
+                    SELECT * FROM refund_regular_supplement WHERE refund_order_id = %s
+                """, (refund_order_info['refund_order_id'],))
+                refund_order_info['regular_supplements'] = cursor.fetchall()
 
         # 组装返回数据
         result = {
@@ -6735,7 +6993,7 @@ def approve_approval_flow():
                 if template_info['flow_type_name'] == '退费':
                     # 查询关联的退费订单和学生信息
                     cursor.execute("""
-                        SELECT ro.order_id, o.student_id as uid, s.name as student_name
+                        SELECT ro.id as refund_order_id, ro.order_id, o.student_id as uid, s.name as student_name
                         FROM refund_order ro
                         LEFT JOIN orders o ON ro.order_id = o.id
                         LEFT JOIN student s ON ro.student_id = s.id
@@ -6745,8 +7003,37 @@ def approve_approval_flow():
                         LIMIT 1
                     """, (template_info['create_time'], template_info['create_time']))
                     refund_info = cursor.fetchone()
-                    if refund_info and refund_info['uid'] and refund_info['student_name']:
-                        copy_info = f"【{refund_info['uid']}】【{refund_info['student_name']}】的退费审批已通过"
+                    if refund_info:
+                        # 更新退费订单状态为已通过（10）
+                        cursor.execute("""
+                            UPDATE refund_order
+                            SET status = 10
+                            WHERE id = %s
+                        """, (refund_info['refund_order_id'],))
+
+                        # 更新退费子订单状态为已通过（10）
+                        cursor.execute("""
+                            UPDATE refund_order_item
+                            SET status = 10
+                            WHERE refund_order_id = %s
+                        """, (refund_info['refund_order_id'],))
+
+                        # 更新淘宝退费补充信息状态为已通过（10）
+                        cursor.execute("""
+                            UPDATE refund_taobao_supplement
+                            SET status = 10
+                            WHERE refund_order_id = %s
+                        """, (refund_info['refund_order_id'],))
+
+                        # 更新常规退费补充信息状态为已通过（10）
+                        cursor.execute("""
+                            UPDATE refund_regular_supplement
+                            SET status = 10
+                            WHERE refund_order_id = %s
+                        """, (refund_info['refund_order_id'],))
+
+                        if refund_info['uid'] and refund_info['student_name']:
+                            copy_info = f"【{refund_info['uid']}】【{refund_info['student_name']}】的退费审批已通过"
 
                 for user in copy_users:
                     cursor.execute("""
@@ -6866,14 +7153,15 @@ def reject_approval_flow():
                 """, (flow['create_time'], flow['create_time']))
                 refund_order = cursor.fetchone()
 
-                # 如果找到关联的退费订单，删除退费数据并恢复订单状态
+                # 如果找到关联的退费订单，恢复订单状态并更新退费订单状态
                 if refund_order:
                     refund_order_id = refund_order['id']
                     order_id = refund_order['order_id']
 
-                    # 1. 删除退费子订单明细（恢复子订单可退金额）
+                    # 1. 更新退费子订单状态为已驳回（20）
                     cursor.execute("""
-                        DELETE FROM refund_order_item
+                        UPDATE refund_order_item
+                        SET status = 20
                         WHERE refund_order_id = %s
                     """, (refund_order_id,))
 
@@ -6883,9 +7171,23 @@ def reject_approval_flow():
                         WHERE refund_order_id = %s
                     """, (refund_order_id,))
 
-                    # 3. 删除退费订单主记录
+                    # 2.5. 更新退费补充信息状态为已驳回（20）
                     cursor.execute("""
-                        DELETE FROM refund_order
+                        UPDATE refund_taobao_supplement
+                        SET status = 20
+                        WHERE refund_order_id = %s
+                    """, (refund_order_id,))
+
+                    cursor.execute("""
+                        UPDATE refund_regular_supplement
+                        SET status = 20
+                        WHERE refund_order_id = %s
+                    """, (refund_order_id,))
+
+                    # 3. 更新退费订单状态为已驳回（20）
+                    cursor.execute("""
+                        UPDATE refund_order
+                        SET status = 20
                         WHERE id = %s
                     """, (refund_order_id,))
 
