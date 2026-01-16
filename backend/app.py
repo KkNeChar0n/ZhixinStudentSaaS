@@ -3279,15 +3279,26 @@ def update_order_payment_status(cursor, order_id):
 
     amount_received = float(order['amount_received'])
 
-    # 计算该订单状态为未核验(10)和已支付(20)的收款金额之和
+    # 计算该订单的常规收款金额之和（状态为未核验10和已支付20）
     cursor.execute("""
         SELECT COALESCE(SUM(payment_amount), 0) AS total_paid
         FROM payment_collection
         WHERE order_id = %s AND status IN (10, 20)
     """, (order_id,))
-
     result = cursor.fetchone()
-    total_paid = float(result['total_paid']) if result else 0
+    regular_paid = float(result['total_paid']) if result else 0
+
+    # 计算该订单的淘宝收款金额之和（状态为已到账30）
+    cursor.execute("""
+        SELECT COALESCE(SUM(payment_amount), 0) AS total_paid
+        FROM taobao_payment
+        WHERE order_id = %s AND status = 30
+    """, (order_id,))
+    result = cursor.fetchone()
+    taobao_paid = float(result['total_paid']) if result else 0
+
+    # 总收款金额 = 常规收款 + 淘宝收款
+    total_paid = regular_paid + taobao_paid
 
     # 根据收款金额确定订单状态
     if total_paid == 0:
@@ -5258,7 +5269,39 @@ def get_order_refund_info(order_id):
         for co in child_orders:
             co['available_refund'] = float(co['amount_received']) - float(co['refunded_amount'])
 
-        # 4. 获取收款列表及可退金额
+        return jsonify({
+            'order': {
+                'id': order['id'],
+                'student_id': order['student_id'],
+                'student_name': order['student_name'],
+                'grade': order['grade'],
+                'gender': order['gender'],
+                'status': order['status']
+            },
+            'child_orders': child_orders
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 应用退费项目，获取收款列表（含分账金额）
+@app.route('/api/orders/<int:order_id>/refund-payments', methods=['POST'])
+def get_refund_payments(order_id):
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        data = request.get_json()
+        refund_items = data.get('refund_items', [])  # [{childorder_id, refund_amount}]
+
+        # 1. 获取收款列表及可退金额
         # 常规收款
         cursor.execute("""
             SELECT
@@ -5283,6 +5326,8 @@ def get_order_refund_info(order_id):
                 1 as payment_type,
                 tp.payment_amount,
                 NULL as payee_entity,
+                NULL as payer,
+                NULL as is_corporate_transfer,
                 COALESCE(SUM(rp.refund_amount), 0) as refunded_amount
             FROM taobao_payment tp
             LEFT JOIN refund_payment rp ON tp.id = rp.payment_id AND rp.payment_type = 1
@@ -5296,17 +5341,42 @@ def get_order_refund_info(order_id):
         for payment in all_payments:
             payment['available_refund'] = float(payment['payment_amount']) - float(payment['refunded_amount'])
 
+        # 2. 提取待退费子订单ID列表
+        childorder_ids = [item.get('childorder_id') for item in refund_items if item.get('childorder_id')]
+
+        # 3. 为每个收款计算与待退费子订单关联的分账金额
+        if childorder_ids:
+            for payment in all_payments:
+                # 构建IN子句的占位符
+                placeholders = ','.join(['%s'] * len(childorder_ids))
+
+                # 查询该收款与待退费子订单关联的分账明细金额之和
+                cursor.execute(f"""
+                    SELECT COALESCE(SUM(separate_amount), 0) as total_separate_amount
+                    FROM separate_account
+                    WHERE payment_id = %s AND payment_type = %s AND childorders_id IN ({placeholders})
+                """, (payment['payment_id'], payment['payment_type'], *childorder_ids))
+                result = cursor.fetchone()
+                payment['separate_amount'] = float(result['total_separate_amount'])
+        else:
+            # 没有待退费项时，分账金额为0
+            for payment in all_payments:
+                payment['separate_amount'] = 0.0
+
+        # 4. 计算每个子订单的总分账金额（用于提交时校验）
+        childorder_separate_amounts = {}
+        for childorder_id in childorder_ids:
+            cursor.execute("""
+                SELECT COALESCE(SUM(separate_amount), 0) as total_separate_amount
+                FROM separate_account
+                WHERE childorders_id = %s
+            """, (childorder_id,))
+            result = cursor.fetchone()
+            childorder_separate_amounts[childorder_id] = float(result['total_separate_amount'])
+
         return jsonify({
-            'order': {
-                'id': order['id'],
-                'student_id': order['student_id'],
-                'student_name': order['student_name'],
-                'grade': order['grade'],
-                'gender': order['gender'],
-                'status': order['status']
-            },
-            'child_orders': child_orders,
-            'payments': all_payments
+            'payments': all_payments,
+            'childorder_separate_amounts': childorder_separate_amounts
         }), 200
 
     except Exception as e:

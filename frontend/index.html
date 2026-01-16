@@ -425,7 +425,7 @@
                         </div>
                     </div>
 
-                    <!-- 退款订单页面 -->
+                    <!-- 退费订单页面 -->
                     <div v-if="activeMenu === 'refund_orders'" style="position: relative;">
                         <!-- Loading遮罩层 -->
                         <div v-if="loadingRefundOrders" class="loading-overlay">
@@ -434,7 +434,7 @@
                         </div>
 
                         <div class="page-header">
-                            <h1>退款订单</h1>
+                            <h1>退费订单</h1>
                         </div>
 
                         <!-- 筛选表单 -->
@@ -488,7 +488,7 @@
                             </tbody>
                         </table>
 
-                        <!-- 退款订单分页控件 -->
+                        <!-- 退费订单分页控件 -->
                         <div class="pagination" v-if="refundOrderTotalPages > 1">
                             <button class="page-btn" @click="changeRefundOrderPage(1)" :disabled="refundOrderCurrentPage === 1">首页</button>
                             <button class="page-btn" @click="changeRefundOrderPage(refundOrderCurrentPage - 1)" :disabled="refundOrderCurrentPage === 1">上一页</button>
@@ -2007,9 +2007,11 @@
 
                         <!-- 分页控件 -->
                         <div class="pagination" v-if="totalSeparateAccountPages > 1">
-                            <button @click="changeSeparateAccountPage(separateAccountCurrentPage - 1)" :disabled="separateAccountCurrentPage === 1">上一页</button>
-                            <span>第 {{ separateAccountCurrentPage }} / {{ totalSeparateAccountPages }} 页</span>
-                            <button @click="changeSeparateAccountPage(separateAccountCurrentPage + 1)" :disabled="separateAccountCurrentPage === totalSeparateAccountPages">下一页</button>
+                            <button class="page-btn" @click="changeSeparateAccountPage(1)" :disabled="separateAccountCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeSeparateAccountPage(separateAccountCurrentPage - 1)" :disabled="separateAccountCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ separateAccountCurrentPage }} / {{ totalSeparateAccountPages }} 页</span>
+                            <button class="page-btn" @click="changeSeparateAccountPage(separateAccountCurrentPage + 1)" :disabled="separateAccountCurrentPage === totalSeparateAccountPages">下一页</button>
+                            <button class="page-btn" @click="changeSeparateAccountPage(totalSeparateAccountPages)" :disabled="separateAccountCurrentPage === totalSeparateAccountPages">末页</button>
                         </div>
                     </div>
 
@@ -3048,12 +3050,12 @@
                     </div>
                 </div>
                 <div class="drawer-footer">
-                    <button v-if="orderDrawerReadOnly" class="cancel-btn" @click="closeEditOrderDrawer">关闭</button>
-                    <template v-else>
+                    <template v-if="editOrderData.status === 10">
                         <button class="cancel-btn" @click="closeEditOrderDrawer">取消</button>
                         <button class="save-btn" @click="saveEditOrder">保存</button>
                         <button class="save-btn" @click="confirmSubmitOrder">提交</button>
                     </template>
+                    <button v-else class="cancel-btn" @click="closeEditOrderDrawer">关闭</button>
                 </div>
             </div>
         </div>
@@ -4983,11 +4985,11 @@
             </div>
         </div>
 
-        <!-- 退款订单详情弹窗 -->
+        <!-- 退费订单详情弹窗 -->
         <div class="drawer-overlay" v-if="showRefundOrderDetail" @click="closeRefundOrderDetail">
             <div class="drawer drawer-large" @click.stop>
                 <div class="drawer-header">
-                    <h3>退款订单详情</h3>
+                    <h3>退费订单详情</h3>
                     <button class="close-btn" @click="closeRefundOrderDetail">&times;</button>
                 </div>
                 <div class="drawer-body">
@@ -5006,7 +5008,7 @@
                         <h4>基本信息</h4>
                         <div class="form-group-row">
                             <div class="form-group-col">
-                                <label>退款订单ID</label>
+                                <label>退费订单ID</label>
                                 <input type="text" :value="refundOrderDetail.id" readonly class="readonly-input">
                             </div>
                             <div class="form-group-col">
@@ -5255,7 +5257,7 @@
                                 <button class="apply-btn" @click="applyRefundSupplement">应用</button>
                             </div>
                         </div>
-                        <table class="data-table">
+                        <table class="data-table" v-if="refundForm.payments.length > 0">
                             <thead>
                                 <tr>
                                     <th>收款ID</th>
@@ -5263,6 +5265,7 @@
                                     <th>收款金额</th>
                                     <th>收款主体</th>
                                     <th>可退金额</th>
+                                    <th>分账金额</th>
                                     <th>退费金额</th>
                                 </tr>
                             </thead>
@@ -5273,6 +5276,7 @@
                                     <td>{{ payment.payment_amount }}</td>
                                     <td>{{ payment.payee_entity === 0 ? '北京' : '西安' }}</td>
                                     <td>{{ payment.available_refund.toFixed(2) }}</td>
+                                    <td>{{ (payment.separate_amount || 0).toFixed(2) }}</td>
                                     <td>
                                         <input type="number" v-model.number="payment.refund_amount"
                                                :max="payment.available_refund" min="0" step="0.01"
@@ -5281,6 +5285,7 @@
                                 </tr>
                             </tbody>
                         </table>
+                        <p v-else class="empty-message">请先在待退费区填写退费金额并点击应用</p>
                     </div>
 
                     <!-- 退费信息补充区 -->

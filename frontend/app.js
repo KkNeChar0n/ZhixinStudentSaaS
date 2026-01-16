@@ -2285,7 +2285,8 @@ createApp({
                 expected_payment_time: formatDateForInput(order.expected_payment_time),
                 participating_activities: '',
                 activity_ids: [],
-                discount_amount: parseFloat(order.discount_amount) || 0
+                discount_amount: parseFloat(order.discount_amount) || 0,
+                status: order.status
             };
 
             // 如果有预计付款时间，加载活动信息（仅显示，不重新计算优惠）
@@ -2319,7 +2320,8 @@ createApp({
                 expected_payment_time: '',
                 participating_activities: '',
                 activity_ids: [],
-                discount_amount: 0
+                discount_amount: 0,
+                status: ''
             };
             this.editSelectedOrderGoods = [];
             this.editChildDiscounts = {};
@@ -2494,7 +2496,7 @@ createApp({
                 const response = await axios.get(`/api/orders/${orderId}/refund-info`, { withCredentials: true });
                 const data = response.data;
 
-                // 初始化退款表单数据
+                // 初始化退款表单数据（不再初始化payments）
                 this.refundForm = {
                     order_id: orderId,
                     student_id: data.order.student_id,
@@ -2503,15 +2505,13 @@ createApp({
                     gender: data.order.gender,
                     child_orders: data.child_orders || [],
                     selected_refunds: [],
-                    payments: (data.payments || []).map(p => ({
-                        ...p,
-                        refund_amount: 0
-                    })),
+                    payments: [],  // 不再立即获取收款列表
                     refund_total: 0,
                     unallocated_amount: 0,
                     supplement_generated: false,
                     taobao_supplement: null,
-                    regular_supplements: []
+                    regular_supplements: [],
+                    childorder_separate_amounts: {}  // 新增：子订单分账金额
                 };
 
                 this.showRefundDialog = true;
@@ -2537,7 +2537,8 @@ createApp({
                 unallocated_amount: 0,
                 supplement_generated: false,
                 taobao_supplement: null,
-                regular_supplements: []
+                regular_supplements: [],
+                childorder_separate_amounts: {}
             };
         },
 
@@ -2579,14 +2580,40 @@ createApp({
         },
 
         // 应用退费总额
-        applyRefundTotal() {
+        async applyRefundTotal() {
             // 计算退费总额
             this.refundForm.refund_total = this.refundForm.selected_refunds.reduce((sum, item) => {
                 return sum + (parseFloat(item.refund_amount) || 0);
             }, 0);
 
-            // 更新待分配金额
-            this.calculateUnallocatedAmount();
+            // 调用后端API获取收款列表和分账金额
+            try {
+                const refund_items = this.refundForm.selected_refunds.map(item => ({
+                    childorder_id: item.childorder_id,
+                    refund_amount: item.refund_amount
+                }));
+
+                const response = await axios.post(
+                    `/api/orders/${this.refundForm.order_id}/refund-payments`,
+                    { refund_items },
+                    { withCredentials: true }
+                );
+
+                // 更新收款列表
+                this.refundForm.payments = (response.data.payments || []).map(p => ({
+                    ...p,
+                    refund_amount: 0
+                }));
+
+                // 保存分账金额数据
+                this.refundForm.childorder_separate_amounts = response.data.childorder_separate_amounts || {};
+
+                // 更新待分配金额
+                this.calculateUnallocatedAmount();
+            } catch (err) {
+                console.error('获取收款列表失败:', err);
+                alert(err.response?.data?.error || '获取收款列表失败');
+            }
         },
 
         // 计算待分配金额
@@ -2786,6 +2813,24 @@ createApp({
             if (Math.abs(this.refundForm.unallocated_amount) > 0.01) {
                 alert('待分配金额必须为0，请调整收款列表中的退费金额');
                 return;
+            }
+
+            // 检查退费金额是否超出分账金额
+            let hasExceededSeparateAmount = false;
+            for (const item of this.refundForm.selected_refunds) {
+                const separateAmount = this.refundForm.childorder_separate_amounts[item.childorder_id] || 0;
+                if (parseFloat(item.refund_amount) > separateAmount) {
+                    hasExceededSeparateAmount = true;
+                    break;
+                }
+            }
+
+            // 如果超出分账金额，显示特殊提示
+            if (hasExceededSeparateAmount) {
+                const confirmed = confirm('注意：本次提交会重新分配购买顺序！\n\n确认要提交吗？');
+                if (!confirmed) {
+                    return;
+                }
             }
 
             // 校验退费信息补充（如果已生成）
