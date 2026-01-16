@@ -463,6 +463,20 @@ createApp({
             },
             taobaoRefundCurrentPage: 1,
             loadingTaobaoRefunds: false,
+            // 退费明细数据
+            refundPaymentDetails: [],
+            filteredRefundPaymentDetails: [],
+            refundPaymentDetailFilters: {
+                id: '',
+                student_id: '',
+                order_id: '',
+                refund_order_id: '',
+                payment_id: '',
+                payment_type: '',
+                status: ''
+            },
+            refundPaymentDetailCurrentPage: 1,
+            loadingRefundPaymentDetails: false,
             // 审批流类型数据
             approvalFlowTypes: [],
             filteredApprovalFlowTypes: [],
@@ -1039,6 +1053,15 @@ createApp({
         taobaoRefundTotalPages() {
             return Math.ceil(this.filteredTaobaoRefunds.length / 10);
         },
+        // 退费明细分页数据
+        paginatedRefundPaymentDetails() {
+            const start = (this.refundPaymentDetailCurrentPage - 1) * 10;
+            const end = start + 10;
+            return this.filteredRefundPaymentDetails.slice(start, end);
+        },
+        refundPaymentDetailTotalPages() {
+            return Math.ceil(this.filteredRefundPaymentDetails.length / 10);
+        },
         // 审批流类型分页数据
         paginatedApprovalFlowTypes() {
             const start = (this.approvalFlowTypeCurrentPage - 1) * 10;
@@ -1283,6 +1306,8 @@ createApp({
                 } else {
                     this.fetchTaobaoRefunds();
                 }
+            } else if (menu === 'refund_payment_detail') {
+                this.fetchRefundPaymentDetails();
             } else if (menu === 'approval_flow_type') {
                 this.fetchApprovalFlowTypes();
             } else if (menu === 'approval_flow_template') {
@@ -3073,6 +3098,80 @@ createApp({
             if (page >= 1 && page <= this.taobaoRefundTotalPages) {
                 this.taobaoRefundCurrentPage = page;
             }
+        },
+
+        // ==================== 退费明细管理 ====================
+
+        // 获取退费明细列表
+        async fetchRefundPaymentDetails() {
+            this.loadingRefundPaymentDetails = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.refundPaymentDetailFilters.id) params.append('id', this.refundPaymentDetailFilters.id);
+                if (this.refundPaymentDetailFilters.student_id) params.append('student_id', this.refundPaymentDetailFilters.student_id);
+                if (this.refundPaymentDetailFilters.order_id) params.append('order_id', this.refundPaymentDetailFilters.order_id);
+                if (this.refundPaymentDetailFilters.refund_order_id) params.append('refund_order_id', this.refundPaymentDetailFilters.refund_order_id);
+                if (this.refundPaymentDetailFilters.payment_id) params.append('payment_id', this.refundPaymentDetailFilters.payment_id);
+                if (this.refundPaymentDetailFilters.payment_type !== '') params.append('payment_type', this.refundPaymentDetailFilters.payment_type);
+                if (this.refundPaymentDetailFilters.status !== '') params.append('status', this.refundPaymentDetailFilters.status);
+
+                const response = await axios.get(`/api/refund-payment-details?${params.toString()}`, { withCredentials: true });
+                this.refundPaymentDetails = response.data.refund_payment_details || [];
+                this.filteredRefundPaymentDetails = this.refundPaymentDetails;
+            } catch (err) {
+                console.error('获取退费明细列表失败:', err);
+                alert(err.response?.data?.error || '获取列表失败');
+            } finally {
+                this.loadingRefundPaymentDetails = false;
+            }
+        },
+
+        // 搜索退费明细
+        searchRefundPaymentDetails() {
+            this.refundPaymentDetailCurrentPage = 1;
+            this.fetchRefundPaymentDetails();
+        },
+
+        // 重置退费明细筛选条件
+        resetRefundPaymentDetailFilters() {
+            this.refundPaymentDetailFilters = {
+                id: '',
+                student_id: '',
+                order_id: '',
+                refund_order_id: '',
+                payment_id: '',
+                payment_type: '',
+                status: ''
+            };
+            this.fetchRefundPaymentDetails();
+        },
+
+        // 更改退费明细页码
+        changeRefundPaymentDetailPage(page) {
+            if (page >= 1 && page <= this.refundPaymentDetailTotalPages) {
+                this.refundPaymentDetailCurrentPage = page;
+            }
+        },
+
+        // 获取收款类型文本
+        getPaymentTypeText(type) {
+            const types = {
+                0: '常规收款',
+                1: '淘宝收款'
+            };
+            return types[type] || '未知';
+        },
+
+        // 获取收款主体文本
+        getPayeeEntityText(entity) {
+            if (entity === null || entity === undefined) {
+                return '-';
+            }
+            const entities = {
+                0: '北京',
+                1: '西安'
+            };
+            return entities[entity] || '-';
         },
 
         // ==================== 审批流类型管理 ====================

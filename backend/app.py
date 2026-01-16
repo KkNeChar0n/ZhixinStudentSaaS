@@ -5823,6 +5823,95 @@ def get_refund_taobao_supplements():
         if connection:
             connection.close()
 
+# 获取退费明细列表
+@app.route('/api/refund-payment-details', methods=['GET'])
+def get_refund_payment_details():
+    connection = None
+    cursor = None
+    try:
+        # 从session获取当前登录用户ID
+        current_user_id = session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = []
+        params = []
+
+        # ID筛选
+        if request.args.get('id'):
+            conditions.append('rp.id = %s')
+            params.append(request.args.get('id'))
+
+        # UID筛选
+        if request.args.get('student_id'):
+            conditions.append('ro.student_id = %s')
+            params.append(request.args.get('student_id'))
+
+        # 订单ID筛选
+        if request.args.get('order_id'):
+            conditions.append('ro.order_id = %s')
+            params.append(request.args.get('order_id'))
+
+        # 退款ID筛选
+        if request.args.get('refund_order_id'):
+            conditions.append('rp.refund_order_id = %s')
+            params.append(request.args.get('refund_order_id'))
+
+        # 收款ID筛选
+        if request.args.get('payment_id'):
+            conditions.append('rp.payment_id = %s')
+            params.append(request.args.get('payment_id'))
+
+        # 收款类型筛选
+        if request.args.get('payment_type'):
+            conditions.append('rp.payment_type = %s')
+            params.append(request.args.get('payment_type'))
+
+        # 状态筛选
+        if request.args.get('status'):
+            conditions.append('ro.status = %s')
+            params.append(request.args.get('status'))
+
+        where_clause = ' AND '.join(conditions) if conditions else '1=1'
+
+        # 查询退费明细列表
+        cursor.execute(f"""
+            SELECT
+                rp.id,
+                ro.student_id as uid,
+                ro.order_id,
+                rp.refund_order_id,
+                rp.payment_id,
+                rp.payment_type,
+                CASE
+                    WHEN rp.payment_type = 0 THEN pc.payee_entity
+                    ELSE NULL
+                END as payee_entity,
+                rp.refund_amount,
+                ro.status,
+                rp.create_time
+            FROM refund_payment rp
+            INNER JOIN refund_order ro ON rp.refund_order_id = ro.id
+            LEFT JOIN payment_collection pc ON rp.payment_type = 0 AND rp.payment_id = pc.id
+            WHERE {where_clause}
+            ORDER BY rp.create_time DESC
+        """, params)
+
+        refund_payment_details = cursor.fetchall()
+        return jsonify({'refund_payment_details': refund_payment_details}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 # ==================== 审批流类型管理 ====================
 
 # 获取审批流类型列表

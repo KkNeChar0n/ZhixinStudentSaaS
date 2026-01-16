@@ -2176,6 +2176,105 @@
                         </div>
                     </div>
 
+                    <!-- 退费明细页面 -->
+                    <div v-if="activeMenu === 'refund_payment_detail'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingRefundPaymentDetails" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
+                        <div class="page-header">
+                            <h1>退费明细</h1>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="refundPaymentDetailIdFilter">ID</label>
+                                    <input type="number" id="refundPaymentDetailIdFilter" v-model="refundPaymentDetailFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="refundPaymentDetailUidFilter">UID</label>
+                                    <input type="number" id="refundPaymentDetailUidFilter" v-model="refundPaymentDetailFilters.student_id" placeholder="请输入UID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="refundPaymentDetailOrderIdFilter">订单ID</label>
+                                    <input type="number" id="refundPaymentDetailOrderIdFilter" v-model="refundPaymentDetailFilters.order_id" placeholder="请输入订单ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="refundPaymentDetailRefundOrderIdFilter">退款ID</label>
+                                    <input type="number" id="refundPaymentDetailRefundOrderIdFilter" v-model="refundPaymentDetailFilters.refund_order_id" placeholder="请输入退款ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="refundPaymentDetailPaymentIdFilter">收款ID</label>
+                                    <input type="number" id="refundPaymentDetailPaymentIdFilter" v-model="refundPaymentDetailFilters.payment_id" placeholder="请输入收款ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="refundPaymentDetailPaymentTypeFilter">收款类型</label>
+                                    <select id="refundPaymentDetailPaymentTypeFilter" v-model="refundPaymentDetailFilters.payment_type">
+                                        <option value="">全部</option>
+                                        <option value="0">常规收款</option>
+                                        <option value="1">淘宝收款</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="refundPaymentDetailStatusFilter">状态</label>
+                                    <select id="refundPaymentDetailStatusFilter" v-model="refundPaymentDetailFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">退费中</option>
+                                        <option value="10">已通过</option>
+                                        <option value="20">已驳回</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="searchRefundPaymentDetails">搜索</button>
+                                <button class="reset-btn" @click="resetRefundPaymentDetailFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <!-- 数据表格 -->
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>UID</th>
+                                    <th>订单ID</th>
+                                    <th>退款ID</th>
+                                    <th>收款ID</th>
+                                    <th>收款类型</th>
+                                    <th>收款主体</th>
+                                    <th>退费金额</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="item in paginatedRefundPaymentDetails" :key="item.id">
+                                    <td>{{ item.id }}</td>
+                                    <td>{{ item.uid }}</td>
+                                    <td>{{ item.order_id }}</td>
+                                    <td>{{ item.refund_order_id }}</td>
+                                    <td>{{ item.payment_id }}</td>
+                                    <td>{{ getPaymentTypeText(item.payment_type) }}</td>
+                                    <td>{{ getPayeeEntityText(item.payee_entity) }}</td>
+                                    <td style="font-weight: bold; color: #e74c3c;">{{ item.refund_amount }}</td>
+                                    <td>{{ getRefundOrderStatusText(item.status) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- 分页控件 -->
+                        <div class="pagination" v-if="refundPaymentDetailTotalPages > 1">
+                            <button class="page-btn" @click="changeRefundPaymentDetailPage(1)" :disabled="refundPaymentDetailCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeRefundPaymentDetailPage(refundPaymentDetailCurrentPage - 1)" :disabled="refundPaymentDetailCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ refundPaymentDetailCurrentPage }} / {{ refundPaymentDetailTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeRefundPaymentDetailPage(refundPaymentDetailCurrentPage + 1)" :disabled="refundPaymentDetailCurrentPage === refundPaymentDetailTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeRefundPaymentDetailPage(refundPaymentDetailTotalPages)" :disabled="refundPaymentDetailCurrentPage === refundPaymentDetailTotalPages">末页</button>
+                        </div>
+                    </div>
+
                     <!-- 属性管理页面 -->
                     <div v-if="activeMenu === 'attributes'" style="position: relative;">
                         <!-- Loading遮罩层 -->
