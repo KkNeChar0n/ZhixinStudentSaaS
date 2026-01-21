@@ -811,7 +811,26 @@ createApp({
             },
             permissionsTree: [],
             selectedRolePermissions: [],
-            availablePermissions: []
+            availablePermissions: [],
+            // 菜单管理数据
+            menuManagementList: [],
+            filteredMenuManagementList: [],
+            menuManagementFilters: {
+                id: '',
+                name: '',
+                status: ''
+            },
+            menuManagementCurrentPage: 1,
+            loadingMenuManagement: false,
+            showEditMenuModal: false,
+            showEnableMenuConfirm: false,
+            showDisableMenuConfirm: false,
+            currentMenu: null,
+            editMenuData: {
+                id: '',
+                name: '',
+                sort_order: ''
+            }
         };
     },
     computed: {
@@ -1216,6 +1235,15 @@ createApp({
         },
         roleTotalPages() {
             return Math.ceil(this.filteredRoles.length / this.pageSize);
+        },
+        // 菜单管理分页数据
+        paginatedMenuManagement() {
+            const start = (this.menuManagementCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredMenuManagementList.slice(start, end);
+        },
+        menuManagementTotalPages() {
+            return Math.ceil(this.filteredMenuManagementList.length / this.pageSize);
         }
     },
     mounted() {
@@ -1368,6 +1396,8 @@ createApp({
                 this.fetchSecondLevelMenus();
             } else if (menu === 'roles') {
                 this.fetchRoles();
+            } else if (menu === 'menu_management') {
+                this.fetchMenuManagement();
             }
         },
         
@@ -7632,6 +7662,191 @@ createApp({
 
         // 获取角色状态文本
         getRoleStatusText(status) {
+            return status === 0 ? '启用' : '禁用';
+        },
+
+        // ==================== 菜单管理相关方法 ====================
+
+        // 获取菜单管理列表
+        async fetchMenuManagement() {
+            this.loadingMenuManagement = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.menuManagementFilters.id) params.append('id', this.menuManagementFilters.id);
+                if (this.menuManagementFilters.name) params.append('name', this.menuManagementFilters.name);
+                if (this.menuManagementFilters.status !== '') params.append('status', this.menuManagementFilters.status);
+
+                const response = await fetch(`/api/menu-management?${params.toString()}`, {
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '获取菜单列表失败');
+                }
+                const data = await response.json();
+                this.menuManagementList = data.menus || [];
+                this.filteredMenuManagementList = this.menuManagementList;
+            } catch (error) {
+                this.error = error.message;
+                alert('获取菜单列表失败：' + error.message);
+            } finally {
+                this.loadingMenuManagement = false;
+            }
+        },
+
+        // 筛选菜单
+        filterMenuManagement() {
+            this.fetchMenuManagement();
+            this.menuManagementCurrentPage = 1;
+        },
+
+        // 重置菜单筛选
+        resetMenuManagementFilters() {
+            this.menuManagementFilters = {
+                id: '',
+                name: '',
+                status: ''
+            };
+            this.fetchMenuManagement();
+            this.menuManagementCurrentPage = 1;
+        },
+
+        // 打开编辑菜单弹窗
+        openEditMenuModal(menu) {
+            this.editMenuData = {
+                id: menu.id,
+                name: menu.name,
+                sort_order: menu.sort_order
+            };
+            this.currentMenu = menu;
+            this.showEditMenuModal = true;
+        },
+
+        // 关闭编辑菜单弹窗
+        closeEditMenuModal() {
+            this.showEditMenuModal = false;
+            this.currentMenu = null;
+        },
+
+        // 提交编辑菜单
+        async submitEditMenu() {
+            if (!this.editMenuData.name) {
+                alert('请输入菜单名称');
+                return;
+            }
+
+            if (this.editMenuData.sort_order === '') {
+                alert('请输入排序');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/menu-management/${this.editMenuData.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        name: this.editMenuData.name,
+                        sort_order: parseInt(this.editMenuData.sort_order)
+                    })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '更新菜单失败');
+                }
+
+                alert('菜单更新成功');
+                this.closeEditMenuModal();
+                this.fetchMenuManagement();
+            } catch (error) {
+                alert('更新菜单失败：' + error.message);
+            }
+        },
+
+        // 打开启用菜单确认
+        openEnableMenuConfirm(menu) {
+            this.currentMenu = menu;
+            this.showEnableMenuConfirm = true;
+        },
+
+        // 关闭启用菜单确认
+        closeEnableMenuConfirm() {
+            this.showEnableMenuConfirm = false;
+            this.currentMenu = null;
+        },
+
+        // 确认启用菜单
+        async confirmEnableMenu() {
+            try {
+                const response = await fetch(`/api/menu-management/${this.currentMenu.id}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ status: 0 })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '启用菜单失败');
+                }
+
+                alert('菜单已启用');
+                this.closeEnableMenuConfirm();
+                this.fetchMenuManagement();
+            } catch (error) {
+                alert('启用菜单失败：' + error.message);
+            }
+        },
+
+        // 打开禁用菜单确认
+        openDisableMenuConfirm(menu) {
+            this.currentMenu = menu;
+            this.showDisableMenuConfirm = true;
+        },
+
+        // 关闭禁用菜单确认
+        closeDisableMenuConfirm() {
+            this.showDisableMenuConfirm = false;
+            this.currentMenu = null;
+        },
+
+        // 确认禁用菜单
+        async confirmDisableMenu() {
+            try {
+                const response = await fetch(`/api/menu-management/${this.currentMenu.id}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ status: 1 })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '禁用菜单失败');
+                }
+
+                alert('菜单已禁用');
+                this.closeDisableMenuConfirm();
+                this.fetchMenuManagement();
+            } catch (error) {
+                alert('禁用菜单失败：' + error.message);
+            }
+        },
+
+        // 菜单管理分页切换
+        changeMenuManagementPage(page) {
+            this.menuManagementCurrentPage = page;
+        },
+
+        // 获取菜单状态文本
+        getMenuStatusText(status) {
             return status === 0 ? '启用' : '禁用';
         }
     }

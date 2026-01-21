@@ -885,6 +885,84 @@
                         </div>
                     </div>
 
+                    <!-- 菜单管理页面 -->
+                    <div v-if="activeMenu === 'menu_management'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingMenuManagement" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
+                        <div class="page-header">
+                            <h1>菜单管理</h1>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="menuIdFilter">ID</label>
+                                    <input type="number" id="menuIdFilter" v-model="menuManagementFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="menuNameFilter">菜单名称</label>
+                                    <select id="menuNameFilter" v-model="menuManagementFilters.name">
+                                        <option value="">全部</option>
+                                        <option v-for="menu in menuManagementList" :key="menu.id" :value="menu.name">{{ menu.name }}</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="menuStatusFilter">状态</label>
+                                    <select id="menuStatusFilter" v-model="menuManagementFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">启用</option>
+                                        <option value="1">禁用</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="filterMenuManagement">搜索</button>
+                                <button class="reset-btn" @click="resetMenuManagementFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>菜单名称</th>
+                                    <th>上级菜单</th>
+                                    <th>排序</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="menu in paginatedMenuManagement" :key="menu.id">
+                                    <td>{{ menu.id }}</td>
+                                    <td>{{ menu.name }}</td>
+                                    <td>{{ menu.parent_name || '-' }}</td>
+                                    <td>{{ menu.sort_order }}</td>
+                                    <td>{{ getMenuStatusText(menu.status) }}</td>
+                                    <td class="action-column">
+                                        <button v-if="menu.status === 1" class="edit-btn" @click="openEditMenuModal(menu)">编辑</button>
+                                        <button v-if="menu.status === 1" class="enable-btn" @click="openEnableMenuConfirm(menu)">启用</button>
+                                        <button v-if="menu.status === 0" class="disable-btn" @click="openDisableMenuConfirm(menu)">禁用</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- 分页控件 -->
+                        <div class="pagination" v-if="menuManagementTotalPages > 1">
+                            <button class="page-btn" @click="changeMenuManagementPage(1)" :disabled="menuManagementCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeMenuManagementPage(menuManagementCurrentPage - 1)" :disabled="menuManagementCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ menuManagementCurrentPage }} / {{ menuManagementTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeMenuManagementPage(menuManagementCurrentPage + 1)" :disabled="menuManagementCurrentPage === menuManagementTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeMenuManagementPage(menuManagementTotalPages)" :disabled="menuManagementCurrentPage === menuManagementTotalPages">末页</button>
+                        </div>
+                    </div>
+
                     <!-- 审批流管理页面 -->
                     <div v-if="activeMenu === 'approval_flow_management'" style="position: relative;">
                         <div class="page-header">
@@ -2858,6 +2936,62 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="closeDisableRoleConfirm">取消</button>
                     <button class="delete-btn" @click="confirmDisableRole">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑菜单弹窗 -->
+        <div class="modal-overlay" v-if="showEditMenuModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>编辑菜单</h3>
+                    <button class="close-btn" @click="closeEditMenuModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editMenuName">菜单名称 <span class="required">*</span></label>
+                        <input type="text" id="editMenuName" v-model="editMenuData.name" placeholder="请输入菜单名称" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editMenuSortOrder">排序 <span class="required">*</span></label>
+                        <input type="number" id="editMenuSortOrder" v-model="editMenuData.sort_order" placeholder="请输入排序" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEditMenuModal">取消</button>
+                    <button class="confirm-btn" @click="submitEditMenu">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 启用菜单确认弹窗 -->
+        <div class="modal-overlay" v-if="showEnableMenuConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认启用</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否启用该菜单？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEnableMenuConfirm">取消</button>
+                    <button class="confirm-btn" @click="confirmEnableMenu">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 禁用菜单确认弹窗 -->
+        <div class="modal-overlay" v-if="showDisableMenuConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认禁用</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否禁用该菜单？</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeDisableMenuConfirm">取消</button>
+                    <button class="delete-btn" @click="confirmDisableMenu">确认</button>
                 </div>
             </div>
         </div>

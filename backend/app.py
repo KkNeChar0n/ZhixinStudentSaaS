@@ -8307,6 +8307,173 @@ def get_permissions_tree():
         if connection:
             connection.close()
 
+# ==================== 菜单管理API ====================
+
+# API接口：获取菜单列表（用于管理）
+@app.route('/api/menu-management', methods=['GET'])
+def get_menu_management():
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询条件
+        conditions = []
+        params = []
+
+        # ID筛选（精准搜索）
+        if request.args.get('id'):
+            conditions.append('m.id = %s')
+            params.append(request.args.get('id'))
+
+        # 菜单名称筛选（精准搜索）
+        if request.args.get('name'):
+            conditions.append('m.name = %s')
+            params.append(request.args.get('name'))
+
+        # 状态筛选
+        if request.args.get('status') is not None and request.args.get('status') != '':
+            conditions.append('m.status = %s')
+            params.append(request.args.get('status'))
+
+        where_clause = ' AND '.join(conditions) if conditions else '1=1'
+
+        # 查询菜单列表，关联父级菜单获取上级菜单名称
+        cursor.execute(f"""
+            SELECT
+                m.id,
+                m.name,
+                m.parent_id,
+                pm.name as parent_name,
+                m.route,
+                m.sort_order,
+                m.status,
+                m.create_time,
+                m.update_time
+            FROM menu m
+            LEFT JOIN menu pm ON m.parent_id = pm.id
+            WHERE {where_clause}
+            ORDER BY m.sort_order ASC, m.id ASC
+        """, params)
+
+        menus = cursor.fetchall()
+        return jsonify({'menus': menus}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新菜单信息
+@app.route('/api/menu-management/<int:menu_id>', methods=['PUT'])
+def update_menu(menu_id):
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        name = data.get('name')
+        sort_order = data.get('sort_order')
+
+        if not name:
+            return jsonify({'error': '菜单名称不能为空'}), 400
+
+        if sort_order is None:
+            return jsonify({'error': '排序不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查菜单是否存在
+        cursor.execute("SELECT id, parent_id, status FROM menu WHERE id = %s", (menu_id,))
+        menu = cursor.fetchone()
+        if not menu:
+            return jsonify({'error': '菜单不存在'}), 404
+
+        # 检查菜单状态是否为禁用
+        if menu['status'] == 0:
+            return jsonify({'error': '只能编辑禁用状态的菜单'}), 400
+
+        # 检查同parent_id下的排序是否重复
+        cursor.execute("""
+            SELECT id FROM menu
+            WHERE parent_id <=> %s AND sort_order = %s AND id != %s
+        """, (menu['parent_id'], sort_order, menu_id))
+        if cursor.fetchone():
+            return jsonify({'error': '同级菜单下排序不能重复'}), 400
+
+        # 更新菜单
+        cursor.execute("""
+            UPDATE menu
+            SET name = %s, sort_order = %s, update_time = NOW()
+            WHERE id = %s
+        """, (name, sort_order, menu_id))
+        connection.commit()
+
+        return jsonify({'message': '菜单更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：更新菜单状态
+@app.route('/api/menu-management/<int:menu_id>/status', methods=['PUT'])
+def update_menu_status(menu_id):
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        status = data.get('status')
+
+        if status not in [0, 1]:
+            return jsonify({'error': '状态值无效'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查菜单是否存在
+        cursor.execute("SELECT id FROM menu WHERE id = %s", (menu_id,))
+        if not cursor.fetchone():
+            return jsonify({'error': '菜单不存在'}), 404
+
+        # 更新状态
+        cursor.execute("""
+            UPDATE menu
+            SET status = %s, update_time = NOW()
+            WHERE id = %s
+        """, (status, menu_id))
+        connection.commit()
+
+        return jsonify({'message': '菜单状态更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     # 以调试模式运行
     app.run(debug=True, host='0.0.0.0', port=5001)
