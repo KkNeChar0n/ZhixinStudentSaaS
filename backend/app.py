@@ -8351,9 +8351,7 @@ def get_menu_management():
                 pm.name as parent_name,
                 m.route,
                 m.sort_order,
-                m.status,
-                m.create_time,
-                m.update_time
+                m.status
             FROM menu m
             LEFT JOIN menu pm ON m.parent_id = pm.id
             WHERE {where_clause}
@@ -8414,7 +8412,7 @@ def update_menu(menu_id):
         # 更新菜单
         cursor.execute("""
             UPDATE menu
-            SET name = %s, sort_order = %s, update_time = NOW()
+            SET name = %s, sort_order = %s
             WHERE id = %s
         """, (name, sort_order, menu_id))
         connection.commit()
@@ -8457,7 +8455,7 @@ def update_menu_status(menu_id):
         # 更新状态
         cursor.execute("""
             UPDATE menu
-            SET status = %s, update_time = NOW()
+            SET status = %s
             WHERE id = %s
         """, (status, menu_id))
         connection.commit()
