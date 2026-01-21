@@ -1445,14 +1445,43 @@
                             <div class="loading-text">加载中...</div>
                         </div>
 
-                        <h1>账号管理</h1>
+                        <div class="page-header">
+                            <h1>账号管理</h1>
+                            <button v-if="hasPermission('add_account')" class="add-btn" @click="openAddAccountModal">+ 新增账号</button>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="accountIdFilter">ID</label>
+                                    <input type="number" id="accountIdFilter" v-model="accountFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="accountPhoneFilter">手机号</label>
+                                    <input type="text" id="accountPhoneFilter" v-model="accountFilters.phone" placeholder="请输入手机号">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="accountRoleFilter">角色</label>
+                                    <select id="accountRoleFilter" v-model="accountFilters.role_id">
+                                        <option value="">全部</option>
+                                        <option v-for="role in allRoles" :key="role.id" :value="role.id">{{ role.name }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="filterAccounts">搜索</button>
+                                <button class="reset-btn" @click="resetAccountFilters">重置</button>
+                            </div>
+                        </div>
 
                         <table class="data-table">
                             <thead>
                                 <tr>
                                     <th>ID</th>
-                                    <th>账号</th>
-                                    <th>密码</th>
+                                    <th>姓名</th>
+                                    <th>手机号</th>
+                                    <th>角色</th>
                                     <th>状态</th>
                                     <th>操作</th>
                                 </tr>
@@ -1460,8 +1489,9 @@
                             <tbody>
                                 <tr v-for="account in paginatedAccounts" :key="account.id">
                                     <td>{{ account.id }}</td>
-                                    <td>{{ account.username }}</td>
-                                    <td>{{ account.password }}</td>
+                                    <td>{{ account.name || '-' }}</td>
+                                    <td>{{ account.phone || '-' }}</td>
+                                    <td>{{ account.role_name || '-' }}</td>
                                     <td>{{ account.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
                                         <button v-if="hasPermission('enable_account') && account.status === 1" class="enable-btn" @click="enableAccount(account.id)">启用</button>
@@ -2992,6 +3022,37 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="closeDisableMenuConfirm">取消</button>
                     <button class="delete-btn" @click="confirmDisableMenu">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增账号弹窗 -->
+        <div class="modal-overlay" v-if="showAddAccountModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>新增账号</h3>
+                    <button class="close-btn" @click="closeAddAccountModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="addAccountName">姓名 <span class="required">*</span></label>
+                        <input type="text" id="addAccountName" v-model="addAccountData.name" placeholder="请输入姓名" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addAccountPhone">手机号 <span class="required">*</span></label>
+                        <input type="text" id="addAccountPhone" v-model="addAccountData.phone" placeholder="请输入手机号" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addAccountRole">角色 <span class="required">*</span></label>
+                        <select id="addAccountRole" v-model="addAccountData.role_id" required>
+                            <option value="">请选择角色</option>
+                            <option v-for="role in activeRoles" :key="role.id" :value="role.id">{{ role.name }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAddAccountModal">取消</button>
+                    <button class="confirm-btn" @click="submitAddAccount">确认</button>
                 </div>
             </div>
         </div>

@@ -14,6 +14,21 @@ createApp({
             students: [],
             coaches: [],
             accounts: [],
+            // 账号筛选条件
+            accountFilters: {
+                id: '',
+                phone: '',
+                role_id: ''
+            },
+            // 账号管理相关数据
+            showAddAccountModal: false,
+            addAccountData: {
+                name: '',
+                phone: '',
+                role_id: ''
+            },
+            activeRoles: [], // 启用的角色列表
+            allRoles: [], // 所有角色列表
             orders: [],
             attributes: [],
             classifies: [],
@@ -1880,13 +1895,120 @@ createApp({
         async fetchAccounts() {
             this.loadingAccounts = true;
             try {
-                const response = await axios.get('/api/accounts', { withCredentials: true });
+                const params = new URLSearchParams();
+                if (this.accountFilters.id) params.append('id', this.accountFilters.id);
+                if (this.accountFilters.phone) params.append('phone', this.accountFilters.phone);
+                if (this.accountFilters.role_id) params.append('role_id', this.accountFilters.role_id);
+
+                const response = await axios.get(`/api/accounts?${params.toString()}`, { withCredentials: true });
                 this.accounts = response.data.accounts;
+
+                // 加载所有角色用于筛选
+                await this.fetchAllRoles();
             } catch (err) {
                 console.error('获取账号数据失败:', err);
                 this.error = '获取账号数据失败';
             } finally {
                 this.loadingAccounts = false;
+            }
+        },
+
+        // 获取所有角色（用于筛选）
+        async fetchAllRoles() {
+            try {
+                const response = await fetch('/api/roles', { credentials: 'include' });
+                if (response.ok) {
+                    const data = await response.json();
+                    this.allRoles = data.roles || [];
+                }
+            } catch (err) {
+                console.error('获取角色列表失败:', err);
+            }
+        },
+
+        // 获取启用的角色（用于新增账号）
+        async fetchActiveRoles() {
+            try {
+                const response = await fetch('/api/roles?status=0', { credentials: 'include' });
+                if (response.ok) {
+                    const data = await response.json();
+                    this.activeRoles = data.roles || [];
+                }
+            } catch (err) {
+                console.error('获取启用角色失败:', err);
+            }
+        },
+
+        // 筛选账号
+        filterAccounts() {
+            this.fetchAccounts();
+            this.accountCurrentPage = 1;
+        },
+
+        // 重置账号筛选
+        resetAccountFilters() {
+            this.accountFilters = {
+                id: '',
+                phone: '',
+                role_id: ''
+            };
+            this.fetchAccounts();
+            this.accountCurrentPage = 1;
+        },
+
+        // 打开新增账号弹窗
+        async openAddAccountModal() {
+            await this.fetchActiveRoles();
+            this.addAccountData = {
+                name: '',
+                phone: '',
+                role_id: ''
+            };
+            this.showAddAccountModal = true;
+        },
+
+        // 关闭新增账号弹窗
+        closeAddAccountModal() {
+            this.showAddAccountModal = false;
+        },
+
+        // 提交新增账号
+        async submitAddAccount() {
+            if (!this.addAccountData.name) {
+                alert('请输入姓名');
+                return;
+            }
+
+            if (!this.addAccountData.phone) {
+                alert('请输入手机号');
+                return;
+            }
+
+            if (!this.addAccountData.role_id) {
+                alert('请选择角色');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/accounts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(this.addAccountData)
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '创建账号失败');
+                }
+
+                alert('账号创建成功');
+                this.closeAddAccountModal();
+                this.fetchAccounts();
+            } catch (err) {
+                alert('创建账号失败：' + err.message);
             }
         },
 
