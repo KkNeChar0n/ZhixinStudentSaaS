@@ -1277,8 +1277,8 @@ h1 {
     overflow-x: auto;
 }
 
-/* 操作按钮样式优化 - 已注释，使用全局样式 */
-/* .tab-content .action-btn {
+/* 操作按钮样式优化 */
+.tab-content .action-btn {
     padding: 6px 12px;
     font-size: 12px;
     margin-right: 5px;
@@ -1303,7 +1303,7 @@ h1 {
 
 .tab-content .action-btn.delete-btn:hover {
     background-color: #c0392b;
-} */
+}
 
 /* 弹窗中的确认按钮样式 */
 .confirm-btn {
