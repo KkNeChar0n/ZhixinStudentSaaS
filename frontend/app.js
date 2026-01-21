@@ -379,6 +379,7 @@ createApp({
                 orders_id: '',
                 childorders_id: '',
                 goods_id: '',
+                payment_id: '',
                 payment_type: '',
                 type: ''
             },
@@ -2833,6 +2834,11 @@ createApp({
                 }
             }
 
+            // 如果还没有生成退费信息补充，自动生成
+            if (!this.refundForm.supplement_generated) {
+                this.generateRefundSupplement();
+            }
+
             // 校验退费信息补充（如果已生成）
             if (this.refundForm.supplement_generated) {
                 // 校验淘宝退费
@@ -3044,7 +3050,7 @@ createApp({
         // 获取退款订单状态文本
         getRefundOrderStatusText(status) {
             const statusMap = {
-                0: '退费中',
+                0: '待审批',
                 10: '已通过',
                 20: '已驳回'
             };
@@ -7202,6 +7208,7 @@ createApp({
                 if (this.separateAccountFilters.orders_id) params.append('orders_id', this.separateAccountFilters.orders_id);
                 if (this.separateAccountFilters.childorders_id) params.append('childorders_id', this.separateAccountFilters.childorders_id);
                 if (this.separateAccountFilters.goods_id) params.append('goods_id', this.separateAccountFilters.goods_id);
+                if (this.separateAccountFilters.payment_id) params.append('payment_id', this.separateAccountFilters.payment_id);
                 if (this.separateAccountFilters.payment_type !== '') params.append('payment_type', this.separateAccountFilters.payment_type);
                 if (this.separateAccountFilters.type !== '') params.append('type', this.separateAccountFilters.type);
 
@@ -7230,6 +7237,7 @@ createApp({
                 orders_id: '',
                 childorders_id: '',
                 goods_id: '',
+                payment_id: '',
                 payment_type: '',
                 type: ''
             };
@@ -7244,7 +7252,7 @@ createApp({
 
         // 获取分账类型文本
         getSeparateAccountTypeText(type) {
-            const map = { 0: '售卖', 1: '冲回' };
+            const map = { 0: '售卖', 1: '冲回', 2: '退费' };
             return map[type] || '-';
         },
 

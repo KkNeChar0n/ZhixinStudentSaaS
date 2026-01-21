@@ -1203,8 +1203,8 @@ h1 {
     font-weight: bold;
 }
 
-/* 淘宝收款表格样式优化 */
-.tab-content .data-table {
+/* 淘宝收款表格样式优化 - 已注释，使用全局样式 */
+/* .tab-content .data-table {
     font-size: 13px;
 }
 
@@ -1218,10 +1218,10 @@ h1 {
 .tab-content .data-table th {
     font-size: 12px;
     padding: 12px 8px;
-}
+} */
 
-/* 淘宝收款筛选条件优化 */
-.tab-content .filter-section {
+/* 淘宝收款筛选条件优化 - 已注释，使用全局样式 */
+/* .tab-content .filter-section {
     background-color: #f8f9fa;
     padding: 15px;
     border-radius: 8px;
@@ -1270,15 +1270,15 @@ h1 {
     display: flex;
     gap: 10px;
     align-items: center;
-}
+} */
 
 /* 确保表格可以横向滚动 */
 .tab-content {
     overflow-x: auto;
 }
 
-/* 操作按钮样式优化 */
-.tab-content .action-btn {
+/* 操作按钮样式优化 - 已注释，使用全局样式 */
+/* .tab-content .action-btn {
     padding: 6px 12px;
     font-size: 12px;
     margin-right: 5px;
@@ -1303,7 +1303,7 @@ h1 {
 
 .tab-content .action-btn.delete-btn:hover {
     background-color: #c0392b;
-}
+} */
 
 /* 弹窗中的确认按钮样式 */
 .confirm-btn {

@@ -3539,6 +3539,495 @@ def generate_separate_accounts_for_taobao(cursor, taobao_payment_id, order_id):
             WHERE id = %s
         """, (new_status, child_order_id))
 
+def process_refund_chargeback_and_reallocation(cursor, refund_order_id, order_id):
+    """
+    处理退费审批通过后的冲回和重新分账逻辑
+
+    步骤：
+    1. 获取退费收款信息（regular和taobao）
+    2. 检查每个收款的分账金额总和是否>=退费金额
+    3. 如果存在任何收款的分账金额<退费金额，则执行冲回和重新分账：
+       a. 冲回所有未冲回的售卖类分账明细
+       b. 重新生成售卖类分账明细，优先分配给被退费的子订单
+       c. 生成退费类分账明细
+    4. 更新子订单状态
+    5. 更新订单状态
+    """
+
+    print(f"=== 开始执行退费冲回和重分账逻辑 ===")
+    print(f"退费订单ID: {refund_order_id}, 订单ID: {order_id}")
+
+    # 1. 获取退费相关信息
+    # 获取常规退费补充信息和对应的收款
+    cursor.execute("""
+        SELECT rrs.id, rrs.refund_amount
+        FROM refund_regular_supplement rrs
+        WHERE rrs.refund_order_id = %s
+    """, (refund_order_id,))
+    regular_supplement_list = cursor.fetchall()
+
+    # 获取淘宝退费补充信息
+    cursor.execute("""
+        SELECT rts.id, rts.refund_amount
+        FROM refund_taobao_supplement rts
+        WHERE rts.refund_order_id = %s
+    """, (refund_order_id,))
+    taobao_supplement_list = cursor.fetchall()
+
+    # 获取该订单的所有常规收款（已到账）
+    cursor.execute("""
+        SELECT id as payment_id, payment_amount, 0 as payment_type
+        FROM payment_collection
+        WHERE order_id = %s AND status IN (10, 20)
+        ORDER BY id ASC
+    """, (order_id,))
+    regular_payments = cursor.fetchall()
+
+    # 获取该订单的所有淘宝收款（已到账）
+    cursor.execute("""
+        SELECT id as payment_id, payment_amount, 1 as payment_type
+        FROM taobao_payment
+        WHERE order_id = %s AND status = 30
+        ORDER BY id ASC
+    """, (order_id,))
+    taobao_payments = cursor.fetchall()
+
+    # 检查是否有退费信息和收款信息
+    has_refund = len(regular_supplement_list) > 0 or len(taobao_supplement_list) > 0
+    has_payment = len(regular_payments) > 0 or len(taobao_payments) > 0
+
+    print(f"常规退费补充信息数量: {len(regular_supplement_list)}")
+    print(f"淘宝退费补充信息数量: {len(taobao_supplement_list)}")
+    print(f"常规收款数量: {len(regular_payments)}")
+    print(f"淘宝收款数量: {len(taobao_payments)}")
+
+    if not has_refund or not has_payment:
+        print(f"!!! 提前退出：无退费信息或无收款信息")
+        return  # 无退费信息或无收款信息，直接返回
+
+    # 2. 检查是否需要执行冲回
+    need_chargeback = False
+
+    # 获取本次退费涉及的子订单ID列表
+    cursor.execute("""
+        SELECT DISTINCT childorder_id
+        FROM refund_order_item
+        WHERE refund_order_id = %s
+    """, (refund_order_id,))
+    refund_childorder_ids = [row['childorder_id'] for row in cursor.fetchall()]
+
+    print(f"退费子订单数量: {len(refund_childorder_ids)}")
+    print(f"退费子订单IDs: {refund_childorder_ids}")
+
+    # 获取收款列表区填写的退费金额（按收款维度）
+    cursor.execute("""
+        SELECT payment_id, payment_type, refund_amount
+        FROM refund_payment
+        WHERE refund_order_id = %s
+    """, (refund_order_id,))
+    refund_payments_list = cursor.fetchall()
+
+    # 检查每个收款的分账金额是否充足
+    for rp in refund_payments_list:
+        payment_id = rp['payment_id']
+        payment_type = rp['payment_type']
+        refund_amount = float(rp['refund_amount'])
+
+        # 计算该收款在被退费子订单上的分账总额（仅计算未冲回的售卖类）
+        if refund_childorder_ids:
+            placeholders = ','.join(['%s'] * len(refund_childorder_ids))
+            cursor.execute(f"""
+                SELECT COALESCE(SUM(separate_amount), 0) as total_separate
+                FROM separate_account
+                WHERE payment_id = %s AND payment_type = %s
+                    AND childorders_id IN ({placeholders})
+                    AND type = 0
+                    AND id NOT IN (
+                        SELECT parent_id FROM separate_account
+                        WHERE payment_id = %s AND payment_type = %s AND parent_id IS NOT NULL
+                    )
+            """, (payment_id, payment_type, *refund_childorder_ids, payment_id, payment_type))
+            result = cursor.fetchone()
+            total_separate = float(result['total_separate']) if result else 0
+
+            print(f"收款{payment_id}(类型{payment_type}): 分账金额={total_separate}, 退费金额={refund_amount}")
+
+            # 如果分账金额 < 退费金额，需要冲回
+            if total_separate < refund_amount:
+                need_chargeback = True
+                print(f"需要冲回！收款{payment_id}的分账金额不足")
+                break
+
+    print(f"是否需要冲回: {need_chargeback}")
+
+    # 3. 执行冲回和重新分账
+    if need_chargeback:
+        print(f"=== 开始执行冲回流程 ===")
+        # 3a. 冲回所有未冲回的售卖类分账明细
+        # 获取该订单所有未冲回的售卖类分账明细
+        cursor.execute("""
+            SELECT id, uid, orders_id, childorders_id, payment_id, payment_type,
+                   goods_id, goods_name, separate_amount
+            FROM separate_account
+            WHERE orders_id = %s AND type = 0
+                AND id NOT IN (
+                    SELECT parent_id FROM separate_account
+                    WHERE orders_id = %s AND parent_id IS NOT NULL
+                )
+        """, (order_id, order_id))
+        original_separates = cursor.fetchall()
+
+        print(f"需要冲回的售卖类分账明细数量: {len(original_separates)}")
+
+        # 生成冲回记录（type=1，负金额，记录parent_id）
+        for sep in original_separates:
+            cursor.execute("""
+                INSERT INTO separate_account
+                (uid, orders_id, childorders_id, payment_id, payment_type,
+                 goods_id, goods_name, separate_amount, type, parent_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
+            """, (sep['uid'], sep['orders_id'], sep['childorders_id'],
+                  sep['payment_id'], sep['payment_type'], sep['goods_id'],
+                  sep['goods_name'], -sep['separate_amount'], sep['id']))
+
+        # 3b. 重新生成售卖类分账明细
+        print(f"=== 开始重新生成售卖类分账明细 ===")
+        # 获取订单的学生ID
+        cursor.execute("SELECT student_id FROM orders WHERE id = %s", (order_id,))
+        order_info = cursor.fetchone()
+        student_id = order_info['student_id']
+
+        # 使用前面已获取的收款数据
+        all_payments = list(regular_payments) + list(taobao_payments)
+
+        # 获取退费收款分配列表（用户填写的）
+        cursor.execute("""
+            SELECT payment_id, payment_type, refund_amount
+            FROM refund_payment
+            WHERE refund_order_id = %s
+            ORDER BY payment_id ASC
+        """, (refund_order_id,))
+        refund_payments_list = cursor.fetchall()
+
+        # 获取退费子订单列表
+        cursor.execute("""
+            SELECT roi.childorder_id, roi.refund_amount, co.goodsid, g.name as goods_name
+            FROM refund_order_item roi
+            INNER JOIN childorders co ON roi.childorder_id = co.id
+            LEFT JOIN goods g ON co.goodsid = g.id
+            WHERE roi.refund_order_id = %s
+            ORDER BY roi.childorder_id ASC
+        """, (refund_order_id,))
+        refund_items_list = cursor.fetchall()
+
+        # 构建map用于快速查询
+        refund_payment_map = {}  # {(payment_id, payment_type): refund_amount}
+        for rp in refund_payments_list:
+            key = (rp['payment_id'], rp['payment_type'])
+            refund_payment_map[key] = float(rp['refund_amount'])
+
+        refund_item_map = {}  # {childorder_id: refund_amount}
+        refund_item_goods = {}  # {childorder_id: (goods_id, goods_name)}
+        for ri in refund_items_list:
+            refund_item_map[ri['childorder_id']] = float(ri['refund_amount'])
+            refund_item_goods[ri['childorder_id']] = (ri['goodsid'], ri['goods_name'])
+
+        # 第一批售卖分账：用退费收款分配给退费子订单
+        print(f"第一批售卖分账：用{len(refund_payments_list)}个退费收款分配给{len(refund_items_list)}个退费子订单")
+
+        # 为退费子订单记录剩余需求
+        refund_child_remaining = {}
+        for childorder_id, refund_amount in refund_item_map.items():
+            refund_child_remaining[childorder_id] = refund_amount
+
+        # 按退费收款顺序分配
+        for rp in refund_payments_list:
+            payment_id = rp['payment_id']
+            payment_type = rp['payment_type']
+            refund_amount = float(rp['refund_amount'])
+
+            remaining_to_allocate = refund_amount
+
+            print(f"  退费收款{payment_id}(类型{payment_type})退费金额{refund_amount}元")
+
+            # 按退费子订单顺序分配
+            for ri in refund_items_list:
+                if remaining_to_allocate <= 0:
+                    break
+
+                childorder_id = ri['childorder_id']
+                if refund_child_remaining[childorder_id] <= 0:
+                    continue
+
+                goods_id, goods_name = refund_item_goods[childorder_id]
+
+                # 本次分配金额 = min(退费收款剩余, 退费子订单剩余需求)
+                allocate_amount = min(remaining_to_allocate, refund_child_remaining[childorder_id])
+
+                # 插入第一批售卖分账明细
+                cursor.execute("""
+                    INSERT INTO separate_account
+                    (uid, orders_id, childorders_id, payment_id, payment_type,
+                     goods_id, goods_name, separate_amount, type)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)
+                """, (student_id, order_id, childorder_id, payment_id, payment_type,
+                      goods_id, goods_name, allocate_amount))
+
+                remaining_to_allocate -= allocate_amount
+                refund_child_remaining[childorder_id] -= allocate_amount
+
+                print(f"    分配{allocate_amount}元给退费子订单{childorder_id}")
+
+        # 第二批售卖分账：用剩余收款分配给剩余子订单需求
+        print(f"第二批售卖分账：用剩余收款分配给剩余子订单需求")
+
+        # 计算每个收款的剩余金额 = 总金额 - 退费金额
+        payment_remaining = {}
+        for payment in all_payments:
+            payment_id = payment['payment_id']
+            payment_type = payment['payment_type']
+            payment_key = (payment_id, payment_type)
+
+            total_amount = float(payment['payment_amount'])
+            refund_amount = refund_payment_map.get(payment_key, 0)
+            remaining = total_amount - refund_amount
+
+            payment_remaining[payment_key] = remaining
+            print(f"  收款{payment_id}(类型{payment_type})总{total_amount}元-退费{refund_amount}元=剩余{remaining}元")
+
+        # 获取所有子订单
+        cursor.execute("""
+            SELECT co.id, co.goodsid, co.amount_received, g.name AS goods_name
+            FROM childorders co
+            LEFT JOIN goods g ON co.goodsid = g.id
+            WHERE co.parentsid = %s
+            ORDER BY co.id ASC
+        """, (order_id,))
+        all_child_orders = cursor.fetchall()
+
+        # 计算每个子订单的剩余需求 = 实收金额 - 退费金额
+        child_remaining_need = {}
+        for child in all_child_orders:
+            childorder_id = child['id']
+            actual_amount = float(child['amount_received'])
+            refund_amount = refund_item_map.get(childorder_id, 0)
+            remaining_need = actual_amount - refund_amount
+            child_remaining_need[childorder_id] = remaining_need
+            print(f"  子订单{childorder_id}实收{actual_amount}元-退费{refund_amount}元=剩余需求{remaining_need}元")
+
+        # 按收款顺序分配剩余金额
+        for payment in all_payments:
+            payment_id = payment['payment_id']
+            payment_type = payment['payment_type']
+            payment_key = (payment_id, payment_type)
+
+            if payment_remaining[payment_key] <= 0:
+                continue
+
+            # 按子订单顺序分配
+            for child in all_child_orders:
+                if payment_remaining[payment_key] <= 0:
+                    break
+
+                childorder_id = child['id']
+                goods_id = child['goodsid']
+                goods_name = child['goods_name']
+
+                if child_remaining_need[childorder_id] <= 0:
+                    continue
+
+                # 本次分配金额 = min(收款剩余, 子订单剩余需求)
+                allocate_amount = min(payment_remaining[payment_key], child_remaining_need[childorder_id])
+
+                # 插入第二批售卖分账明细
+                cursor.execute("""
+                    INSERT INTO separate_account
+                    (uid, orders_id, childorders_id, payment_id, payment_type,
+                     goods_id, goods_name, separate_amount, type)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)
+                """, (student_id, order_id, childorder_id, payment_id, payment_type,
+                      goods_id, goods_name, allocate_amount))
+
+                payment_remaining[payment_key] -= allocate_amount
+                child_remaining_need[childorder_id] -= allocate_amount
+
+                print(f"    从收款{payment_id}(类型{payment_type})分配{allocate_amount}元给子订单{childorder_id}")
+
+        print(f"=== 售卖类分账明细生成完成 ===")
+
+    # 3c. 生成退费类分账明细
+    print(f"=== 开始生成退费类分账明细 ===")
+    # 获取学生ID
+    cursor.execute("SELECT student_id FROM refund_order WHERE id = %s", (refund_order_id,))
+    refund_order_info = cursor.fetchone()
+    student_id = refund_order_info['student_id']
+
+    # 获取所有退费子订单和退费金额
+    cursor.execute("""
+        SELECT roi.childorder_id, roi.refund_amount, co.goodsid, g.name as goods_name
+        FROM refund_order_item roi
+        INNER JOIN childorders co ON roi.childorder_id = co.id
+        LEFT JOIN goods g ON co.goodsid = g.id
+        WHERE roi.refund_order_id = %s
+        ORDER BY roi.childorder_id ASC
+    """, (refund_order_id,))
+    refund_items_list = cursor.fetchall()
+
+    print(f"需要生成退费类分账的子订单数量: {len(refund_items_list)}")
+
+    # 使用前面已获取的收款数据
+    all_payments = list(regular_payments) + list(taobao_payments)
+
+    print(f"可用收款数量: {len(all_payments)}")
+
+    # 为每个退费子订单按收款顺序分配退费金额，生成退费类分账明细
+    for item in refund_items_list:
+        child_order_id = item['childorder_id']
+        item_refund_amount = float(item['refund_amount'])
+        goods_id = item['goodsid']
+        goods_name = item['goods_name']
+
+        remaining_refund = item_refund_amount  # 待分配的退费金额
+
+        # 按收款顺序分配退费金额
+        for payment in all_payments:
+            if remaining_refund <= 0:
+                break
+
+            payment_id = payment['payment_id']
+            payment_type = payment['payment_type']
+
+            # 计算该收款可以承担的退费金额
+            # 为简化逻辑，直接按比例分配，或者全部分配到第一个收款
+            allocated_refund = remaining_refund
+
+            # 插入退费类分账明细（负金额）
+            print(f"插入退费类分账: 子订单{child_order_id}, 收款{payment_id}, 金额-{allocated_refund}")
+            cursor.execute("""
+                INSERT INTO separate_account
+                (uid, orders_id, childorders_id, payment_id, payment_type,
+                 goods_id, goods_name, separate_amount, type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 2)
+            """, (student_id, order_id, child_order_id, payment_id, payment_type,
+                  goods_id, goods_name, -allocated_refund))
+
+            remaining_refund = 0  # 简化处理：退费金额全部分配到第一个收款
+            break  # 分配完成，跳出循环
+
+    print(f"=== 退费类分账明细生成完成 ===")
+
+    # 4. 更新子订单状态
+    cursor.execute("""
+        SELECT id, amount_received
+        FROM childorders
+        WHERE parentsid = %s
+    """, (order_id,))
+    all_child_orders = cursor.fetchall()
+
+    for child_order in all_child_orders:
+        child_order_id = child_order['id']
+        actual_amount = float(child_order['amount_received'])
+
+        # 计算该子订单的净分账金额（售卖类未冲回的 - 退费类）
+        cursor.execute("""
+            SELECT COALESCE(SUM(separate_amount), 0) as net_allocated
+            FROM separate_account
+            WHERE childorders_id = %s
+                AND (
+                    (type = 0 AND id NOT IN (
+                        SELECT parent_id FROM separate_account
+                        WHERE childorders_id = %s AND parent_id IS NOT NULL
+                    ))
+                    OR type = 2
+                )
+        """, (child_order_id, child_order_id))
+        result = cursor.fetchone()
+        net_allocated = float(result['net_allocated']) if result else 0
+
+        # 更新子订单状态
+        if net_allocated <= 0:
+            new_status = 10  # 未支付
+        elif net_allocated < actual_amount:
+            new_status = 20  # 部分支付
+        else:
+            new_status = 30  # 已支付
+
+        cursor.execute("""
+            UPDATE childorders SET status = %s WHERE id = %s
+        """, (new_status, child_order_id))
+
+    # 5. 更新订单状态
+    # 计算订单总收款金额（常规+淘宝）
+    cursor.execute("""
+        SELECT COALESCE(SUM(payment_amount), 0) AS total_paid
+        FROM payment_collection
+        WHERE order_id = %s AND status IN (10, 20)
+    """, (order_id,))
+    result = cursor.fetchone()
+    regular_paid = float(result['total_paid']) if result else 0
+
+    cursor.execute("""
+        SELECT COALESCE(SUM(payment_amount), 0) AS total_paid
+        FROM taobao_payment
+        WHERE order_id = %s AND status = 30
+    """, (order_id,))
+    result = cursor.fetchone()
+    taobao_paid = float(result['total_paid']) if result else 0
+
+    total_paid = regular_paid + taobao_paid
+
+    # 计算订单总退费金额（包含当前退费订单和其他已通过的退费订单）
+    cursor.execute("""
+        SELECT COALESCE(SUM(refund_amount), 0) AS total_refund
+        FROM refund_regular_supplement
+        WHERE refund_order_id IN (
+            SELECT id FROM refund_order
+            WHERE order_id = %s AND (status = 10 OR id = %s)
+        )
+    """, (order_id, refund_order_id))
+    result = cursor.fetchone()
+    regular_refund = float(result['total_refund']) if result else 0
+
+    cursor.execute("""
+        SELECT COALESCE(SUM(refund_amount), 0) AS total_refund
+        FROM refund_taobao_supplement
+        WHERE refund_order_id IN (
+            SELECT id FROM refund_order
+            WHERE order_id = %s AND (status = 10 OR id = %s)
+        )
+    """, (order_id, refund_order_id))
+    result = cursor.fetchone()
+    taobao_refund = float(result['total_refund']) if result else 0
+
+    total_refund = regular_refund + taobao_refund
+
+    print(f"订单{order_id}总收款: {total_paid}, 总退费: {total_refund}")
+
+    # 净收款 = 总收款 - 总退费
+    net_paid = total_paid - total_refund
+
+    # 获取订单应收金额
+    cursor.execute("""
+        SELECT amount_received FROM orders WHERE id = %s
+    """, (order_id,))
+    order = cursor.fetchone()
+    amount_received = float(order['amount_received'])
+
+    # 更新订单状态
+    if net_paid <= 0:
+        new_order_status = 20  # 未支付
+    elif net_paid >= amount_received:
+        new_order_status = 40  # 已支付
+    else:
+        new_order_status = 30  # 部分支付
+
+    cursor.execute("""
+        UPDATE orders SET status = %s WHERE id = %s
+    """, (new_order_status, order_id))
+
+    print(f"=== 退费冲回和重分账逻辑执行完成 ===")
+    print(f"最终订单状态: {new_order_status}")
+
 # 获取收款列表
 @app.route('/api/payment-collections', methods=['GET'])
 def get_payment_collections():
@@ -4511,6 +5000,7 @@ def get_separate_accounts():
         orders_id = request.args.get('orders_id')
         childorders_id = request.args.get('childorders_id')
         goods_id = request.args.get('goods_id')
+        payment_id = request.args.get('payment_id')
         payment_type = request.args.get('payment_type')
         type_filter = request.args.get('type')
 
@@ -4534,6 +5024,10 @@ def get_separate_accounts():
             sql += " AND sa.goods_id = %s"
             params.append(goods_id)
 
+        if payment_id:
+            sql += " AND sa.payment_id = %s"
+            params.append(payment_id)
+
         if payment_type is not None and payment_type != '':
             sql += " AND sa.payment_type = %s"
             params.append(payment_type)
@@ -4542,8 +5036,8 @@ def get_separate_accounts():
             sql += " AND sa.type = %s"
             params.append(type_filter)
 
-        # 按创建时间倒序排列
-        sql += " ORDER BY sa.create_time DESC"
+        # 按ID倒序排列
+        sql += " ORDER BY sa.id DESC"
 
         cursor.execute(sql, params)
         separate_accounts = cursor.fetchall()
@@ -7163,6 +7657,13 @@ def approve_approval_flow():
                     """, (template_info['create_time'], template_info['create_time']))
                     refund_info = cursor.fetchone()
                     if refund_info:
+                        # 执行冲回和重新分账逻辑
+                        process_refund_chargeback_and_reallocation(
+                            cursor,
+                            refund_info['refund_order_id'],
+                            refund_info['order_id']
+                        )
+
                         # 更新退费订单状态为已通过（10）
                         cursor.execute("""
                             UPDATE refund_order

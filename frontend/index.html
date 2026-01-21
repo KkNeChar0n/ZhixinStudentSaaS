@@ -1814,9 +1814,11 @@
 
                                     <!-- 分页 -->
                                     <div class="pagination" v-if="totalTaobaoPaymentPages > 1">
-                                        <button @click="changeTaobaoPaymentPage(taobaoPaymentCurrentPage - 1)" :disabled="taobaoPaymentCurrentPage === 1">上一页</button>
-                                        <span>第 {{ taobaoPaymentCurrentPage }} / {{ totalTaobaoPaymentPages }} 页</span>
-                                        <button @click="changeTaobaoPaymentPage(taobaoPaymentCurrentPage + 1)" :disabled="taobaoPaymentCurrentPage === totalTaobaoPaymentPages">下一页</button>
+                                        <button class="page-btn" @click="changeTaobaoPaymentPage(1)" :disabled="taobaoPaymentCurrentPage === 1">首页</button>
+                                        <button class="page-btn" @click="changeTaobaoPaymentPage(taobaoPaymentCurrentPage - 1)" :disabled="taobaoPaymentCurrentPage === 1">上一页</button>
+                                        <span class="page-info">第 {{ taobaoPaymentCurrentPage }} / {{ totalTaobaoPaymentPages }} 页</span>
+                                        <button class="page-btn" @click="changeTaobaoPaymentPage(taobaoPaymentCurrentPage + 1)" :disabled="taobaoPaymentCurrentPage === totalTaobaoPaymentPages">下一页</button>
+                                        <button class="page-btn" @click="changeTaobaoPaymentPage(totalTaobaoPaymentPages)" :disabled="taobaoPaymentCurrentPage === totalTaobaoPaymentPages">末页</button>
                                     </div>
                                 </div>
 
@@ -1943,9 +1945,15 @@
                                     <label for="separateAccountChildordersIdFilter">子订单ID</label>
                                     <input type="number" id="separateAccountChildordersIdFilter" v-model="separateAccountFilters.childorders_id" placeholder="请输入子订单ID">
                                 </div>
+                            </div>
+                            <div class="filter-row">
                                 <div class="filter-item">
                                     <label for="separateAccountGoodsIdFilter">商品ID</label>
                                     <input type="number" id="separateAccountGoodsIdFilter" v-model="separateAccountFilters.goods_id" placeholder="请输入商品ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="separateAccountPaymentIdFilter">收款ID</label>
+                                    <input type="number" id="separateAccountPaymentIdFilter" v-model="separateAccountFilters.payment_id" placeholder="请输入收款ID">
                                 </div>
                                 <div class="filter-item">
                                     <label for="separateAccountPaymentTypeFilter">收款类型</label>
@@ -1961,6 +1969,7 @@
                                         <option value="">全部</option>
                                         <option value="0">售卖</option>
                                         <option value="1">冲回</option>
+                                        <option value="2">退费</option>
                                     </select>
                                 </div>
                             </div>
