@@ -7992,6 +7992,321 @@ def create_approval_flow_from_template():
         if connection:
             connection.close()
 
+# ==================== 角色管理 ====================
+
+# 获取角色列表
+@app.route('/api/roles', methods=['GET'])
+def get_roles():
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询SQL
+        sql = "SELECT id, name, comment, status, create_time, update_time FROM role WHERE 1=1"
+        params = []
+
+        # 获取筛选参数
+        id_filter = request.args.get('id')
+        name_filter = request.args.get('name')
+        status_filter = request.args.get('status')
+
+        if id_filter:
+            sql += " AND id = %s"
+            params.append(id_filter)
+
+        if name_filter:
+            sql += " AND name = %s"
+            params.append(name_filter)
+
+        if status_filter is not None and status_filter != '':
+            sql += " AND status = %s"
+            params.append(status_filter)
+
+        sql += " ORDER BY id DESC"
+
+        cursor.execute(sql, params)
+        roles = cursor.fetchall()
+
+        return jsonify({'roles': roles}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 创建角色
+@app.route('/api/roles', methods=['POST'])
+def create_role():
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        name = data.get('name')
+        comment = data.get('comment', '')
+
+        if not name:
+            return jsonify({'error': '角色名称不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查角色名称是否已存在
+        cursor.execute("SELECT id FROM role WHERE name = %s", (name,))
+        if cursor.fetchone():
+            return jsonify({'error': '角色名称已存在'}), 400
+
+        # 创建角色（默认状态为禁用：1）
+        cursor.execute("""
+            INSERT INTO role (name, comment, status)
+            VALUES (%s, %s, 1)
+        """, (name, comment))
+
+        connection.commit()
+        return jsonify({'message': '角色创建成功'}), 201
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 更新角色信息
+@app.route('/api/roles/<int:role_id>', methods=['PUT'])
+def update_role(role_id):
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        name = data.get('name')
+        comment = data.get('comment', '')
+
+        if not name:
+            return jsonify({'error': '角色名称不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查角色是否存在
+        cursor.execute("SELECT status FROM role WHERE id = %s", (role_id,))
+        role = cursor.fetchone()
+        if not role:
+            return jsonify({'error': '角色不存在'}), 404
+
+        # 只有禁用状态才能编辑
+        if role['status'] == 0:
+            return jsonify({'error': '启用状态下不能编辑角色'}), 400
+
+        # 检查角色名称是否已被其他角色使用
+        cursor.execute("SELECT id FROM role WHERE name = %s AND id != %s", (name, role_id))
+        if cursor.fetchone():
+            return jsonify({'error': '角色名称已存在'}), 400
+
+        # 更新角色
+        cursor.execute("""
+            UPDATE role SET name = %s, comment = %s
+            WHERE id = %s
+        """, (name, comment, role_id))
+
+        connection.commit()
+        return jsonify({'message': '角色更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 更新角色状态
+@app.route('/api/roles/<int:role_id>/status', methods=['PUT'])
+def update_role_status(role_id):
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        status = data.get('status')
+
+        if status not in [0, 1]:
+            return jsonify({'error': '状态值无效'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查角色是否存在
+        cursor.execute("SELECT id FROM role WHERE id = %s", (role_id,))
+        if not cursor.fetchone():
+            return jsonify({'error': '角色不存在'}), 404
+
+        # 更新状态
+        cursor.execute("UPDATE role SET status = %s WHERE id = %s", (status, role_id))
+
+        connection.commit()
+        return jsonify({'message': '状态更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取角色权限
+@app.route('/api/roles/<int:role_id>/permissions', methods=['GET'])
+def get_role_permissions(role_id):
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取角色的权限ID列表
+        cursor.execute("""
+            SELECT permissions_id
+            FROM role_permissions
+            WHERE role_id = %s
+        """, (role_id,))
+
+        permission_ids = [row['permissions_id'] for row in cursor.fetchall()]
+
+        return jsonify({'permission_ids': permission_ids}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 更新角色权限
+@app.route('/api/roles/<int:role_id>/permissions', methods=['PUT'])
+def update_role_permissions(role_id):
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        permission_ids = data.get('permission_ids', [])
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查角色是否存在且为禁用状态
+        cursor.execute("SELECT status FROM role WHERE id = %s", (role_id,))
+        role = cursor.fetchone()
+        if not role:
+            return jsonify({'error': '角色不存在'}), 404
+
+        if role['status'] == 0:
+            return jsonify({'error': '启用状态下不能修改权限'}), 400
+
+        # 删除原有权限
+        cursor.execute("DELETE FROM role_permissions WHERE role_id = %s", (role_id,))
+
+        # 添加新权限
+        if permission_ids:
+            values = [(role_id, pid) for pid in permission_ids]
+            cursor.executemany("""
+                INSERT INTO role_permissions (role_id, permissions_id)
+                VALUES (%s, %s)
+            """, values)
+
+        connection.commit()
+        return jsonify({'message': '权限更新成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# 获取权限树形结构
+@app.route('/api/permissions/tree', methods=['GET'])
+def get_permissions_tree():
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 获取所有二级菜单（实际功能菜单）
+        cursor.execute("""
+            SELECT id, name
+            FROM menu
+            WHERE parent_id IS NOT NULL
+            ORDER BY id ASC
+        """)
+        menus = cursor.fetchall()
+
+        # 构建树形结构
+        tree = []
+        for menu in menus:
+            # 获取该菜单下状态为启用(status=0)的权限
+            cursor.execute("""
+                SELECT p.id, p.name
+                FROM permissions p
+                WHERE p.menu_id = %s AND p.status = 0
+                ORDER BY p.id ASC
+            """, (menu['id'],))
+            permissions = cursor.fetchall()
+
+            # 只添加有权限的菜单
+            if permissions:
+                tree.append({
+                    'menu_id': menu['id'],
+                    'name': menu['name'],
+                    'permissions': permissions
+                })
+
+        return jsonify({'tree': tree}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 if __name__ == '__main__':
     # 以调试模式运行
     app.run(debug=True, host='0.0.0.0', port=5001)

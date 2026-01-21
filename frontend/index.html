@@ -805,6 +805,86 @@
                         </div>
                     </div>
 
+                    <!-- 角色管理页面 -->
+                    <div v-if="activeMenu === 'roles'" style="position: relative;">
+                        <!-- Loading遮罩层 -->
+                        <div v-if="loadingRoles" class="loading-overlay">
+                            <div class="loading-spinner"></div>
+                            <div class="loading-text">加载中...</div>
+                        </div>
+
+                        <div class="page-header">
+                            <h1>角色管理</h1>
+                            <button class="add-btn" @click="openAddRoleModal">+ 新增角色</button>
+                        </div>
+
+                        <!-- 筛选表单 -->
+                        <div class="filter-form">
+                            <div class="filter-row">
+                                <div class="filter-item">
+                                    <label for="roleIdFilter">ID</label>
+                                    <input type="number" id="roleIdFilter" v-model="roleFilters.id" placeholder="请输入ID">
+                                </div>
+                                <div class="filter-item">
+                                    <label for="roleNameFilter">角色名称</label>
+                                    <select id="roleNameFilter" v-model="roleFilters.name">
+                                        <option value="">全部</option>
+                                        <option v-for="role in roles" :key="role.id" :value="role.name">{{ role.name }}</option>
+                                    </select>
+                                </div>
+                                <div class="filter-item">
+                                    <label for="roleStatusFilter">状态</label>
+                                    <select id="roleStatusFilter" v-model="roleFilters.status">
+                                        <option value="">全部</option>
+                                        <option value="0">启用</option>
+                                        <option value="1">禁用</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-actions">
+                                <button class="search-btn" @click="filterRoles">搜索</button>
+                                <button class="reset-btn" @click="resetRoleFilters">重置</button>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>角色名称</th>
+                                    <th>角色描述</th>
+                                    <th>状态</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="role in paginatedRoles" :key="role.id">
+                                    <td>{{ role.id }}</td>
+                                    <td>{{ role.name }}</td>
+                                    <td>{{ role.comment || '-' }}</td>
+                                    <td>{{ getRoleStatusText(role.status) }}</td>
+                                    <td>{{ role.create_time }}</td>
+                                    <td class="action-column">
+                                        <button v-if="role.status === 0" class="disable-btn" @click="openDisableRoleConfirm(role)">禁用</button>
+                                        <button v-if="role.status === 1" class="enable-btn" @click="openEnableRoleConfirm(role)">启用</button>
+                                        <button v-if="role.status === 1" class="edit-btn" @click="openRolePermissionsModal(role)">权限</button>
+                                        <button v-if="role.status === 1" class="edit-btn" @click="openEditRoleModal(role)">编辑</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- 分页控件 -->
+                        <div class="pagination" v-if="roleTotalPages > 1">
+                            <button class="page-btn" @click="changeRolePage(1)" :disabled="roleCurrentPage === 1">首页</button>
+                            <button class="page-btn" @click="changeRolePage(roleCurrentPage - 1)" :disabled="roleCurrentPage === 1">上一页</button>
+                            <span class="page-info">第 {{ roleCurrentPage }} / {{ roleTotalPages }} 页</span>
+                            <button class="page-btn" @click="changeRolePage(roleCurrentPage + 1)" :disabled="roleCurrentPage === roleTotalPages">下一页</button>
+                            <button class="page-btn" @click="changeRolePage(roleTotalPages)" :disabled="roleCurrentPage === roleTotalPages">末页</button>
+                        </div>
+                    </div>
+
                     <!-- 审批流管理页面 -->
                     <div v-if="activeMenu === 'approval_flow_management'" style="position: relative;">
                         <div class="page-header">
@@ -2646,6 +2726,138 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="showDisablePermissionConfirm = false">取消</button>
                     <button class="delete-btn" @click="doDisablePermission">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增角色弹窗 -->
+        <div class="modal-overlay" v-if="showAddRoleModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>新增角色</h3>
+                    <button class="close-btn" @click="closeAddRoleModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="addRoleName">角色名称 <span class="required">*</span></label>
+                        <input type="text" id="addRoleName" v-model="addRoleData.name" placeholder="请输入角色名称" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addRoleComment">角色描述</label>
+                        <input type="text" id="addRoleComment" v-model="addRoleData.comment" placeholder="请输入角色描述">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeAddRoleModal">取消</button>
+                    <button class="confirm-btn" @click="submitAddRole">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑角色弹窗 -->
+        <div class="modal-overlay" v-if="showEditRoleModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>编辑角色</h3>
+                    <button class="close-btn" @click="closeEditRoleModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editRoleName">角色名称 <span class="required">*</span></label>
+                        <input type="text" id="editRoleName" v-model="editRoleData.name" placeholder="请输入角色名称" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editRoleComment">角色描述</label>
+                        <input type="text" id="editRoleComment" v-model="editRoleData.comment" placeholder="请输入角色描述">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEditRoleModal">取消</button>
+                    <button class="confirm-btn" @click="submitEditRole">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 角色权限配置弹窗 -->
+        <div class="modal-overlay" v-if="showRolePermissionsModal">
+            <div class="modal large-modal">
+                <div class="modal-header">
+                    <h3>权限配置 - {{ currentRole ? currentRole.name : '' }}</h3>
+                    <button class="close-btn" @click="closeRolePermissionsModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="dual-selection-container">
+                        <!-- 可用权限列表 -->
+                        <div class="selection-box">
+                            <div class="selection-header">可用权限</div>
+                            <div class="selection-list">
+                                <div v-for="perm in getAvailablePermissionsList()" :key="perm.id" class="selection-item">
+                                    <span>{{ perm.menu_name }} - {{ perm.name }}</span>
+                                    <button class="add-selection-btn" @click="selectPermission(perm.id)">+</button>
+                                </div>
+                                <div v-if="getAvailablePermissionsList().length === 0" class="empty-message">
+                                    无可用权限
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 中间箭头 -->
+                        <div class="selection-arrows">
+                            <div style="font-size: 24px; color: #ccc;">⇄</div>
+                        </div>
+
+                        <!-- 已选权限列表 -->
+                        <div class="selection-box">
+                            <div class="selection-header">已选权限</div>
+                            <div class="selection-list">
+                                <div v-for="perm in getSelectedPermissionsList()" :key="perm.id" class="selection-item">
+                                    <span>{{ perm.menu_name }} - {{ perm.name }}</span>
+                                    <button class="remove-selection-btn" @click="deselectPermission(perm.id)">-</button>
+                                </div>
+                                <div v-if="getSelectedPermissionsList().length === 0" class="empty-message">
+                                    未选择任何权限
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeRolePermissionsModal">取消</button>
+                    <button class="confirm-btn" @click="submitRolePermissions">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 启用角色确认弹窗 -->
+        <div class="modal-overlay" v-if="showEnableRoleConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认启用</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否启用该角色？</p>
+                    <p style="color: #27ae60; font-size: 14px;">启用后该角色将可以被分配给用户。</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEnableRoleConfirm">取消</button>
+                    <button class="confirm-btn" @click="confirmEnableRole">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 禁用角色确认弹窗 -->
+        <div class="modal-overlay" v-if="showDisableRoleConfirm">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>确认禁用</h2>
+                </div>
+                <div class="modal-body">
+                    <p>是否禁用该角色？</p>
+                    <p style="color: #e74c3c; font-size: 14px;">禁用后可以编辑角色信息和权限配置。</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeDisableRoleConfirm">取消</button>
+                    <button class="delete-btn" @click="confirmDisableRole">确认</button>
                 </div>
             </div>
         </div>

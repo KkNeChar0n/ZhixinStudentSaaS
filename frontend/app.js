@@ -783,7 +783,35 @@ createApp({
             loadingPaymentCollections: false,
             loadingUnclaimedPayments: false,
             loadingTaobaoPayments: false,
-            loadingTaobaoUnclaimed: false
+            loadingTaobaoUnclaimed: false,
+            // 角色管理数据
+            roles: [],
+            filteredRoles: [],
+            roleFilters: {
+                id: '',
+                name: '',
+                status: ''
+            },
+            roleCurrentPage: 1,
+            loadingRoles: false,
+            showAddRoleModal: false,
+            showEditRoleModal: false,
+            showRolePermissionsModal: false,
+            showEnableRoleConfirm: false,
+            showDisableRoleConfirm: false,
+            currentRole: null,
+            addRoleData: {
+                name: '',
+                comment: ''
+            },
+            editRoleData: {
+                id: '',
+                name: '',
+                comment: ''
+            },
+            permissionsTree: [],
+            selectedRolePermissions: [],
+            availablePermissions: []
         };
     },
     computed: {
@@ -1179,6 +1207,15 @@ createApp({
         },
         activityDetailGoodsTotalPages() {
             return Math.ceil(this.activityDetailData.goods.length / this.pageSize);
+        },
+        // 角色管理分页数据
+        paginatedRoles() {
+            const start = (this.roleCurrentPage - 1) * this.pageSize;
+            const end = start + this.pageSize;
+            return this.filteredRoles.slice(start, end);
+        },
+        roleTotalPages() {
+            return Math.ceil(this.filteredRoles.length / this.pageSize);
         }
     },
     mounted() {
@@ -1329,6 +1366,8 @@ createApp({
             } else if (menu === 'permissions') {
                 this.fetchPermissions();
                 this.fetchSecondLevelMenus();
+            } else if (menu === 'roles') {
+                this.fetchRoles();
             }
         },
         
@@ -7260,6 +7299,340 @@ createApp({
         getPaymentTypeText(paymentType) {
             const map = { 0: '常规收款', 1: '淘宝收款' };
             return map[paymentType] || '-';
+        },
+
+        // ==================== 角色管理相关方法 ====================
+
+        // 获取角色列表
+        async fetchRoles() {
+            this.loadingRoles = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.roleFilters.id) params.append('id', this.roleFilters.id);
+                if (this.roleFilters.name) params.append('name', this.roleFilters.name);
+                if (this.roleFilters.status !== '') params.append('status', this.roleFilters.status);
+
+                const response = await fetch(`/api/roles?${params.toString()}`, {
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '获取角色列表失败');
+                }
+                const data = await response.json();
+                this.roles = data.roles || [];
+                this.filteredRoles = this.roles;
+            } catch (error) {
+                this.error = error.message;
+                alert('获取角色列表失败：' + error.message);
+            } finally {
+                this.loadingRoles = false;
+            }
+        },
+
+        // 筛选角色
+        filterRoles() {
+            this.fetchRoles();
+            this.roleCurrentPage = 1;
+        },
+
+        // 重置角色筛选
+        resetRoleFilters() {
+            this.roleFilters = {
+                id: '',
+                name: '',
+                status: ''
+            };
+            this.fetchRoles();
+            this.roleCurrentPage = 1;
+        },
+
+        // 打开新增角色弹窗
+        openAddRoleModal() {
+            this.addRoleData = {
+                name: '',
+                comment: ''
+            };
+            this.showAddRoleModal = true;
+        },
+
+        // 关闭新增角色弹窗
+        closeAddRoleModal() {
+            this.showAddRoleModal = false;
+        },
+
+        // 提交新增角色
+        async submitAddRole() {
+            if (!this.addRoleData.name) {
+                alert('请输入角色名称');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/roles', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(this.addRoleData)
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '创建角色失败');
+                }
+
+                alert('角色创建成功');
+                this.closeAddRoleModal();
+                this.fetchRoles();
+            } catch (error) {
+                alert('创建角色失败：' + error.message);
+            }
+        },
+
+        // 打开编辑角色弹窗
+        openEditRoleModal(role) {
+            this.editRoleData = {
+                id: role.id,
+                name: role.name,
+                comment: role.comment || ''
+            };
+            this.currentRole = role;
+            this.showEditRoleModal = true;
+        },
+
+        // 关闭编辑角色弹窗
+        closeEditRoleModal() {
+            this.showEditRoleModal = false;
+            this.currentRole = null;
+        },
+
+        // 提交编辑角色
+        async submitEditRole() {
+            if (!this.editRoleData.name) {
+                alert('请输入角色名称');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/roles/${this.editRoleData.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        name: this.editRoleData.name,
+                        comment: this.editRoleData.comment
+                    })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '更新角色失败');
+                }
+
+                alert('角色更新成功');
+                this.closeEditRoleModal();
+                this.fetchRoles();
+            } catch (error) {
+                alert('更新角色失败：' + error.message);
+            }
+        },
+
+        // 打开启用角色确认
+        openEnableRoleConfirm(role) {
+            this.currentRole = role;
+            this.showEnableRoleConfirm = true;
+        },
+
+        // 关闭启用角色确认
+        closeEnableRoleConfirm() {
+            this.showEnableRoleConfirm = false;
+            this.currentRole = null;
+        },
+
+        // 确认启用角色
+        async confirmEnableRole() {
+            try {
+                const response = await fetch(`/api/roles/${this.currentRole.id}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ status: 0 })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '启用角色失败');
+                }
+
+                alert('角色已启用');
+                this.closeEnableRoleConfirm();
+                this.fetchRoles();
+            } catch (error) {
+                alert('启用角色失败：' + error.message);
+            }
+        },
+
+        // 打开禁用角色确认
+        openDisableRoleConfirm(role) {
+            this.currentRole = role;
+            this.showDisableRoleConfirm = true;
+        },
+
+        // 关闭禁用角色确认
+        closeDisableRoleConfirm() {
+            this.showDisableRoleConfirm = false;
+            this.currentRole = null;
+        },
+
+        // 确认禁用角色
+        async confirmDisableRole() {
+            try {
+                const response = await fetch(`/api/roles/${this.currentRole.id}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ status: 1 })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '禁用角色失败');
+                }
+
+                alert('角色已禁用');
+                this.closeDisableRoleConfirm();
+                this.fetchRoles();
+            } catch (error) {
+                alert('禁用角色失败：' + error.message);
+            }
+        },
+
+        // 打开权限配置弹窗
+        async openRolePermissionsModal(role) {
+            this.currentRole = role;
+            this.showRolePermissionsModal = true;
+
+            try {
+                // 获取权限树
+                const treeResponse = await fetch('/api/permissions/tree', {
+                    credentials: 'include'
+                });
+                if (!treeResponse.ok) {
+                    throw new Error('获取权限树失败');
+                }
+                const treeData = await treeResponse.json();
+                this.permissionsTree = treeData.tree || [];
+
+                // 构建可用权限列表（扁平化）
+                this.availablePermissions = [];
+                treeData.tree.forEach(menu => {
+                    if (menu.permissions && menu.permissions.length > 0) {
+                        menu.permissions.forEach(perm => {
+                            this.availablePermissions.push({
+                                id: perm.id,
+                                name: perm.name,
+                                menu_name: menu.name
+                            });
+                        });
+                    }
+                });
+
+                // 获取角色已有权限
+                const permResponse = await fetch(`/api/roles/${role.id}/permissions`, {
+                    credentials: 'include'
+                });
+                if (!permResponse.ok) {
+                    throw new Error('获取角色权限失败');
+                }
+                const permData = await permResponse.json();
+                this.selectedRolePermissions = permData.permission_ids || [];
+
+            } catch (error) {
+                alert('加载权限数据失败：' + error.message);
+                this.closeRolePermissionsModal();
+            }
+        },
+
+        // 关闭权限配置弹窗
+        closeRolePermissionsModal() {
+            this.showRolePermissionsModal = false;
+            this.currentRole = null;
+            this.permissionsTree = [];
+            this.selectedRolePermissions = [];
+            this.availablePermissions = [];
+        },
+
+        // 选择权限（从可用列表移到已选列表）
+        selectPermission(permissionId) {
+            if (!this.selectedRolePermissions.includes(permissionId)) {
+                this.selectedRolePermissions.push(permissionId);
+            }
+        },
+
+        // 取消选择权限（从已选列表移除）
+        deselectPermission(permissionId) {
+            const index = this.selectedRolePermissions.indexOf(permissionId);
+            if (index > -1) {
+                this.selectedRolePermissions.splice(index, 1);
+            }
+        },
+
+        // 获取可用权限列表（未被选中的）
+        getAvailablePermissionsList() {
+            return this.availablePermissions.filter(perm =>
+                !this.selectedRolePermissions.includes(perm.id)
+            );
+        },
+
+        // 获取已选权限列表
+        getSelectedPermissionsList() {
+            return this.availablePermissions.filter(perm =>
+                this.selectedRolePermissions.includes(perm.id)
+            );
+        },
+
+        // 提交权限配置
+        async submitRolePermissions() {
+            try {
+                const response = await fetch(`/api/roles/${this.currentRole.id}/permissions`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        permission_ids: this.selectedRolePermissions
+                    })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '更新权限失败');
+                }
+
+                alert('权限更新成功');
+                this.closeRolePermissionsModal();
+            } catch (error) {
+                alert('更新权限失败：' + error.message);
+            }
+        },
+
+        // 角色管理分页切换
+        changeRolePage(page) {
+            this.roleCurrentPage = page;
+        },
+
+        // 获取角色状态文本
+        getRoleStatusText(status) {
+            return status === 0 ? '启用' : '禁用';
         }
     }
 }).mount('#app');
