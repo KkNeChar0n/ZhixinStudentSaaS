@@ -1523,7 +1523,10 @@ createApp({
                     this.isLoggedIn = true;
                     this.username = response.data.username;
                     this.password = ''; // 清空密码
-                    // 登录成功后获取学生和教练数据
+                    // 登录成功后重新加载菜单和权限
+                    await this.fetchMenus();
+                    await this.fetchEnabledPermissions();
+                    // 获取学生和教练数据
                     this.fetchStudents();
                     this.fetchCoaches();
                 }
