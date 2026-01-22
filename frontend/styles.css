@@ -1,3 +1,8 @@
+/* 防止Vue初始化前闪烁 */
+[v-cloak] {
+    display: none;
+}
+
 * {
     margin: 0;
     padding: 0;
