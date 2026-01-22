@@ -2,9 +2,10 @@ nul
 .claude/settings.local.json
 .DS_Store
 *.sql
-!init_database.sql
-!migrate_field_names.sql
-!update_db_*.sql
+*.py
 *.log
+*.md
+!README.md
 __pycache__/
 *.pyc
+cookies.txt
