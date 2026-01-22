@@ -44,8 +44,13 @@ def login():
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
         
-        # 查询用户
-        cursor.execute("SELECT id, username, status, role_id FROM useraccount WHERE username = %s AND password = %s", (username, password))
+        # 查询用户及其角色信息
+        cursor.execute("""
+            SELECT ua.id, ua.username, ua.status, ua.role_id, r.is_super_admin
+            FROM useraccount ua
+            LEFT JOIN role r ON ua.role_id = r.id
+            WHERE ua.username = %s AND ua.password = %s
+        """, (username, password))
         user = cursor.fetchone()
 
         if user:
@@ -56,7 +61,13 @@ def login():
             session['username'] = user['username']
             session['user_id'] = user['id']
             session['role_id'] = user['role_id']
-            return jsonify({'message': '登录成功', 'username': user['username']}), 200
+            is_super_admin = user['is_super_admin'] == 1 if user['is_super_admin'] is not None else False
+            session['is_super_admin'] = is_super_admin
+            return jsonify({
+                'message': '登录成功',
+                'username': user['username'],
+                'is_super_admin': is_super_admin
+            }), 200
         else:
             return jsonify({'error': '用户名或密码错误'}), 401
             
@@ -75,6 +86,60 @@ def get_profile():
         return jsonify({'username': session['username']}), 200
     else:
         return jsonify({'error': '未登录'}), 401
+
+# API接口：同步当前用户的角色信息
+@app.route('/api/sync-role', methods=['GET'])
+def sync_role():
+    connection = None
+    cursor = None
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        user_id = session['user_id']
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 查询当前用户的最新角色信息
+        cursor.execute("""
+            SELECT ua.role_id, r.is_super_admin
+            FROM useraccount ua
+            LEFT JOIN role r ON ua.role_id = r.id
+            WHERE ua.id = %s
+        """, (user_id,))
+
+        user_info = cursor.fetchone()
+
+        if not user_info:
+            return jsonify({'error': '用户不存在'}), 404
+
+        # 检查角色是否发生变化
+        old_role_id = session.get('role_id')
+        old_is_super_admin = session.get('is_super_admin', False)
+
+        new_role_id = user_info['role_id']
+        new_is_super_admin = user_info['is_super_admin'] == 1 if user_info['is_super_admin'] is not None else False
+
+        role_changed = (old_role_id != new_role_id) or (old_is_super_admin != new_is_super_admin)
+
+        # 更新session
+        session['role_id'] = new_role_id
+        session['is_super_admin'] = new_is_super_admin
+
+        return jsonify({
+            'role_changed': role_changed,
+            'role_id': new_role_id,
+            'is_super_admin': new_is_super_admin
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
 
 # API接口：用户登出
 @app.route('/api/logout', methods=['POST'])
@@ -182,9 +247,17 @@ def add_account():
             return jsonify({'error': '未登录'}), 401
 
         data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
         name = data.get('name')
         phone = data.get('phone')
         role_id = data.get('role_id')
+
+        if not username:
+            return jsonify({'error': '账号不能为空'}), 400
+
+        if not password:
+            return jsonify({'error': '密码不能为空'}), 400
 
         if not name:
             return jsonify({'error': '姓名不能为空'}), 400
@@ -198,14 +271,15 @@ def add_account():
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
+        # 检查账号是否已存在
+        cursor.execute("SELECT id FROM useraccount WHERE username = %s", (username,))
+        if cursor.fetchone():
+            return jsonify({'error': '账号已存在'}), 400
+
         # 检查手机号是否已存在
         cursor.execute("SELECT id FROM useraccount WHERE phone = %s", (phone,))
         if cursor.fetchone():
             return jsonify({'error': '手机号已存在'}), 400
-
-        # 使用手机号作为用户名和初始密码
-        username = phone
-        password = phone
 
         # 插入新账号
         cursor.execute("""
@@ -215,6 +289,66 @@ def add_account():
         connection.commit()
 
         return jsonify({'message': '账号创建成功'}), 200
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+# API接口：编辑账号
+@app.route('/api/accounts/<int:account_id>', methods=['PUT'])
+def update_account(account_id):
+    connection = None
+    cursor = None
+    try:
+        if 'username' not in session:
+            return jsonify({'error': '未登录'}), 401
+
+        data = request.get_json()
+        password = data.get('password')
+        name = data.get('name')
+        phone = data.get('phone')
+        role_id = data.get('role_id')
+
+        if not password:
+            return jsonify({'error': '密码不能为空'}), 400
+
+        if not name:
+            return jsonify({'error': '姓名不能为空'}), 400
+
+        if not phone:
+            return jsonify({'error': '手机号不能为空'}), 400
+
+        if not role_id:
+            return jsonify({'error': '角色不能为空'}), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 检查账号是否存在
+        cursor.execute("SELECT id FROM useraccount WHERE id = %s", (account_id,))
+        if not cursor.fetchone():
+            return jsonify({'error': '账号不存在'}), 404
+
+        # 检查手机号是否被其他账号使用
+        cursor.execute("SELECT id FROM useraccount WHERE phone = %s AND id != %s", (phone, account_id))
+        if cursor.fetchone():
+            return jsonify({'error': '手机号已被其他账号使用'}), 400
+
+        # 更新账号信息
+        cursor.execute("""
+            UPDATE useraccount
+            SET password = %s, name = %s, phone = %s, role_id = %s
+            WHERE id = %s
+        """, (password, name, phone, role_id, account_id))
+        connection.commit()
+
+        return jsonify({'message': '账号更新成功'}), 200
 
     except Exception as e:
         if connection:
@@ -1730,42 +1864,11 @@ def get_menus():
         connection = get_db_connection()
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 获取当前用户的角色ID
-        role_id = session.get('role_id')
+        # 检查是否为超级管理员
+        is_super_admin = session.get('is_super_admin', False)
 
-        if role_id:
-            # 如果用户有角色，根据角色权限筛选菜单
-            # 获取该角色有权限访问的菜单ID列表
-            cursor.execute("""
-                SELECT DISTINCT p.menu_id
-                FROM role_permissions rp
-                JOIN permissions p ON rp.permissions_id = p.id
-                WHERE rp.role_id = %s AND p.status = 0
-            """, (role_id,))
-            allowed_menu_ids = [row['menu_id'] for row in cursor.fetchall()]
-
-            if not allowed_menu_ids:
-                # 如果角色没有任何权限，返回空菜单
-                return jsonify({'menus': []}), 200
-
-            # 获取允许访问的菜单项及其父菜单
-            placeholders = ','.join(['%s'] * len(allowed_menu_ids))
-            cursor.execute(f"""
-                SELECT DISTINCT m.id, m.name, m.parent_id, m.route, m.sort_order
-                FROM menu m
-                WHERE m.status = 0 AND (
-                    m.id IN ({placeholders})
-                    OR m.id IN (
-                        SELECT DISTINCT parent_id
-                        FROM menu
-                        WHERE id IN ({placeholders}) AND parent_id IS NOT NULL
-                    )
-                )
-                ORDER BY m.sort_order ASC
-            """, allowed_menu_ids + allowed_menu_ids)
-            all_menus = cursor.fetchall()
-        else:
-            # 如果用户没有角色，返回所有启用的菜单
+        # 如果是超级管理员，返回所有启用的菜单
+        if is_super_admin:
             cursor.execute("""
                 SELECT id, name, parent_id, route, sort_order
                 FROM menu
@@ -1773,6 +1876,50 @@ def get_menus():
                 ORDER BY sort_order ASC
             """)
             all_menus = cursor.fetchall()
+        else:
+            # 获取当前用户的角色ID
+            role_id = session.get('role_id')
+
+            if role_id:
+                # 如果用户有角色，根据角色权限筛选菜单
+                # 获取该角色有权限访问的菜单ID列表
+                cursor.execute("""
+                    SELECT DISTINCT p.menu_id
+                    FROM role_permissions rp
+                    JOIN permissions p ON rp.permissions_id = p.id
+                    WHERE rp.role_id = %s AND p.status = 0
+                """, (role_id,))
+                allowed_menu_ids = [row['menu_id'] for row in cursor.fetchall()]
+
+                if not allowed_menu_ids:
+                    # 如果角色没有任何权限，返回空菜单
+                    return jsonify({'menus': []}), 200
+
+                # 获取允许访问的菜单项及其父菜单
+                placeholders = ','.join(['%s'] * len(allowed_menu_ids))
+                cursor.execute(f"""
+                    SELECT DISTINCT m.id, m.name, m.parent_id, m.route, m.sort_order
+                    FROM menu m
+                    WHERE m.status = 0 AND (
+                        m.id IN ({placeholders})
+                        OR m.id IN (
+                            SELECT DISTINCT parent_id
+                            FROM menu
+                            WHERE id IN ({placeholders}) AND parent_id IS NOT NULL
+                        )
+                    )
+                    ORDER BY m.sort_order ASC
+                """, allowed_menu_ids + allowed_menu_ids)
+                all_menus = cursor.fetchall()
+            else:
+                # 如果用户没有角色，返回所有启用的菜单
+                cursor.execute("""
+                    SELECT id, name, parent_id, route, sort_order
+                    FROM menu
+                    WHERE status = 0
+                    ORDER BY sort_order ASC
+                """)
+                all_menus = cursor.fetchall()
 
         # 构建树形结构
         menu_tree = []
@@ -8132,7 +8279,7 @@ def get_roles():
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
         # 构建查询SQL
-        sql = "SELECT id, name, comment, status, create_time, update_time FROM role WHERE 1=1"
+        sql = "SELECT id, name, comment, status, is_super_admin, create_time, update_time FROM role WHERE 1=1"
         params = []
 
         # 获取筛选参数

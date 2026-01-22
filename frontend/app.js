@@ -9,6 +9,8 @@ createApp({
             isLoading: false,
             error: null,
             activeMenu: 'students',
+            isSuperAdmin: false, // 是否为超级管理员
+            syncingRole: false, // 正在同步角色信息
             enabledPermissions: [], // 存储启用的权限action_id列表
             loadingPermissions: false, // 权限加载状态
             students: [],
@@ -23,6 +25,16 @@ createApp({
             // 账号管理相关数据
             showAddAccountModal: false,
             addAccountData: {
+                username: '',
+                password: '',
+                name: '',
+                phone: '',
+                role_id: ''
+            },
+            showEditAccountModal: false,
+            editAccountData: {
+                id: null,
+                password: '',
                 name: '',
                 phone: '',
                 role_id: ''
@@ -1343,6 +1355,9 @@ createApp({
 
         // 设置活动菜单
         async setActiveMenu(menu) {
+            // 先同步角色信息，检查是否有变更
+            await this.syncRoleInfo();
+
             this.activeMenu = menu;
             // 每次切换菜单时重新加载权限列表
             await this.fetchEnabledPermissions();
@@ -1522,6 +1537,7 @@ createApp({
                 if (response.data.message === '登录成功') {
                     this.isLoggedIn = true;
                     this.username = response.data.username;
+                    this.isSuperAdmin = response.data.is_super_admin || false; // 存储是否为超级管理员
                     this.password = ''; // 清空密码
                     // 登录成功后重新加载菜单和权限
                     await this.fetchMenus();
@@ -1977,6 +1993,16 @@ createApp({
 
         // 提交新增账号
         async submitAddAccount() {
+            if (!this.addAccountData.username) {
+                alert('请输入账号');
+                return;
+            }
+
+            if (!this.addAccountData.password) {
+                alert('请输入密码');
+                return;
+            }
+
             if (!this.addAccountData.name) {
                 alert('请输入姓名');
                 return;
@@ -2009,9 +2035,97 @@ createApp({
 
                 alert('账号创建成功');
                 this.closeAddAccountModal();
+                // 重置表单
+                this.addAccountData = {
+                    username: '',
+                    password: '',
+                    name: '',
+                    phone: '',
+                    role_id: ''
+                };
                 this.fetchAccounts();
             } catch (err) {
                 alert('创建账号失败：' + err.message);
+            }
+        },
+
+        // 打开编辑账号弹窗
+        async openEditAccountModal(account) {
+            // 加载启用的角色列表
+            await this.fetchActiveRoles();
+
+            // 填充编辑表单数据
+            this.editAccountData = {
+                id: account.id,
+                password: '', // 密码字段留空，让用户输入新密码
+                name: account.name,
+                phone: account.phone,
+                role_id: account.role_id
+            };
+
+            this.showEditAccountModal = true;
+        },
+
+        // 关闭编辑账号弹窗
+        closeEditAccountModal() {
+            this.showEditAccountModal = false;
+            // 重置表单
+            this.editAccountData = {
+                id: null,
+                password: '',
+                name: '',
+                phone: '',
+                role_id: ''
+            };
+        },
+
+        // 提交编辑账号
+        async submitEditAccount() {
+            if (!this.editAccountData.password) {
+                alert('请输入密码');
+                return;
+            }
+
+            if (!this.editAccountData.name) {
+                alert('请输入姓名');
+                return;
+            }
+
+            if (!this.editAccountData.phone) {
+                alert('请输入手机号');
+                return;
+            }
+
+            if (!this.editAccountData.role_id) {
+                alert('请选择角色');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/accounts/${this.editAccountData.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        password: this.editAccountData.password,
+                        name: this.editAccountData.name,
+                        phone: this.editAccountData.phone,
+                        role_id: this.editAccountData.role_id
+                    })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '编辑账号失败');
+                }
+
+                alert('账号编辑成功');
+                this.closeEditAccountModal();
+                this.fetchAccounts();
+            } catch (err) {
+                alert('编辑账号失败：' + err.message);
             }
         },
 
@@ -4098,6 +4212,38 @@ createApp({
             }
         },
 
+        // 同步当前用户的角色信息
+        async syncRoleInfo() {
+            try {
+                const response = await axios.get('/api/sync-role', { withCredentials: true });
+
+                if (response.data.role_changed) {
+                    // 显示全局loading状态
+                    this.syncingRole = true;
+
+                    try {
+                        // 角色发生变化，更新本地状态
+                        this.isSuperAdmin = response.data.is_super_admin;
+                        console.log('角色已更新:', response.data.is_super_admin ? '超级管理员' : '普通角色');
+
+                        // 重新加载菜单和权限
+                        await this.fetchMenus();
+                        await this.fetchEnabledPermissions();
+
+                        // 提示用户角色已更新
+                        alert('您的角色权限已更新，页面已自动刷新');
+                    } finally {
+                        // 确保loading状态被关闭
+                        this.syncingRole = false;
+                    }
+                }
+            } catch (err) {
+                // 同步失败时不影响正常使用，只记录错误
+                console.error('同步角色信息失败:', err);
+                this.syncingRole = false;
+            }
+        },
+
         // 获取启用的权限列表（用于按钮权限控制）
         async fetchEnabledPermissions() {
             this.loadingPermissions = true;
@@ -4115,6 +4261,10 @@ createApp({
 
         // 检查是否有某个权限
         hasPermission(actionId) {
+            // 超级管理员拥有所有权限
+            if (this.isSuperAdmin) {
+                return true;
+            }
             return this.enabledPermissions.includes(actionId);
         },
 

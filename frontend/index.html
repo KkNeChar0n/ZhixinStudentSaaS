@@ -31,12 +31,20 @@
 
         <!-- 登录成功页面 -->
         <div class="app-container" v-else>
+            <!-- 全局角色同步Loading遮罩层 -->
+            <div v-if="syncingRole" class="global-loading-overlay">
+                <div class="global-loading-content">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">正在更新角色权限...</div>
+                </div>
+            </div>
+
             <!-- 顶部导航栏 -->
             <header class="top-header">
                 <div class="username-display">欢迎，<strong>{{ username }}</strong></div>
                 <button class="logout-btn" @click="logout">登出</button>
             </header>
-            
+
             <!-- 主内容区域 -->
             <div class="main-content">
                 <!-- 左侧菜单栏 -->
@@ -866,10 +874,10 @@
                                     <td>{{ getRoleStatusText(role.status) }}</td>
                                     <td>{{ role.create_time }}</td>
                                     <td class="action-column">
-                                        <button v-if="role.status === 0" class="disable-btn" @click="openDisableRoleConfirm(role)">禁用</button>
-                                        <button v-if="role.status === 1" class="enable-btn" @click="openEnableRoleConfirm(role)">启用</button>
-                                        <button v-if="role.status === 1" class="edit-btn" @click="openRolePermissionsModal(role)">权限</button>
-                                        <button v-if="role.status === 1" class="edit-btn" @click="openEditRoleModal(role)">编辑</button>
+                                        <button v-if="!role.is_super_admin && role.status === 0" class="disable-btn" @click="openDisableRoleConfirm(role)">禁用</button>
+                                        <button v-if="!role.is_super_admin && role.status === 1" class="enable-btn" @click="openEnableRoleConfirm(role)">启用</button>
+                                        <button v-if="!role.is_super_admin && role.status === 1" class="edit-btn" @click="openRolePermissionsModal(role)">权限</button>
+                                        <button v-if="!role.is_super_admin && role.status === 1" class="edit-btn" @click="openEditRoleModal(role)">编辑</button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1494,6 +1502,7 @@
                                     <td>{{ account.role_name || '-' }}</td>
                                     <td>{{ account.status === 0 ? '启用' : '禁用' }}</td>
                                     <td class="action-column">
+                                        <button v-if="hasPermission('edit_account')" class="edit-btn" @click="openEditAccountModal(account)">编辑</button>
                                         <button v-if="hasPermission('enable_account') && account.status === 1" class="enable-btn" @click="enableAccount(account.id)">启用</button>
                                         <button v-if="hasPermission('disable_account') && account.status === 0" class="disable-btn" @click="disableAccount(account.id)">禁用</button>
                                     </td>
@@ -3035,6 +3044,14 @@
                 </div>
                 <div class="modal-body">
                     <div class="form-group">
+                        <label for="addAccountUsername">账号 <span class="required">*</span></label>
+                        <input type="text" id="addAccountUsername" v-model="addAccountData.username" placeholder="请输入账号" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addAccountPassword">密码 <span class="required">*</span></label>
+                        <input type="password" id="addAccountPassword" v-model="addAccountData.password" placeholder="请输入密码" required>
+                    </div>
+                    <div class="form-group">
                         <label for="addAccountName">姓名 <span class="required">*</span></label>
                         <input type="text" id="addAccountName" v-model="addAccountData.name" placeholder="请输入姓名" required>
                     </div>
@@ -3053,6 +3070,41 @@
                 <div class="modal-footer">
                     <button class="cancel-btn" @click="closeAddAccountModal">取消</button>
                     <button class="confirm-btn" @click="submitAddAccount">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑账号弹窗 -->
+        <div class="modal-overlay" v-if="showEditAccountModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>编辑账号</h3>
+                    <button class="close-btn" @click="closeEditAccountModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editAccountPassword">密码 <span class="required">*</span></label>
+                        <input type="password" id="editAccountPassword" v-model="editAccountData.password" placeholder="请输入新密码" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editAccountName">姓名 <span class="required">*</span></label>
+                        <input type="text" id="editAccountName" v-model="editAccountData.name" placeholder="请输入姓名" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editAccountPhone">手机号 <span class="required">*</span></label>
+                        <input type="text" id="editAccountPhone" v-model="editAccountData.phone" placeholder="请输入手机号" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editAccountRole">角色 <span class="required">*</span></label>
+                        <select id="editAccountRole" v-model="editAccountData.role_id" required>
+                            <option value="">请选择角色</option>
+                            <option v-for="role in activeRoles" :key="role.id" :value="role.id">{{ role.name }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-btn" @click="closeEditAccountModal">取消</button>
+                    <button class="confirm-btn" @click="submitEditAccount">确认</button>
                 </div>
             </div>
         </div>
